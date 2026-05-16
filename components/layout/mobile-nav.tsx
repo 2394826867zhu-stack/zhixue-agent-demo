@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/lib/store";
+import { TurbineLogo } from "@/components/ui/turbine-logo";
 
 const NAV = [
   { href: "/dashboard", label: "首页",     icon: LayoutDashboard },
@@ -38,9 +39,7 @@ export function MobileHeader() {
           <Menu size={20} />
         </button>
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-md bg-primary flex items-center justify-center text-primary-foreground font-bold text-xs">
-            知
-          </div>
+          <TurbineLogo className="w-6 h-6 text-primary" />
           <span className="font-semibold text-sm text-sidebar-foreground">知曜</span>
         </div>
       </header>
@@ -63,9 +62,7 @@ export function MobileHeader() {
         {/* Header */}
         <div className="px-5 py-4 border-b border-sidebar-border flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">
-              知
-            </div>
+            <TurbineLogo className="w-8 h-8 text-primary shrink-0" />
             <div>
               <p className="font-semibold text-sidebar-foreground text-sm leading-tight">知曜</p>
               <p className="text-[10px] text-muted-foreground leading-tight">智学Agent</p>
