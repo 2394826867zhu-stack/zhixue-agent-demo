@@ -1,16 +1,21 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
 import { Providers } from "@/components/providers";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// ui-ux-pro-max recommendation: Plus Jakarta Sans — Friendly SaaS
+// Best for: SaaS products, dashboards, productivity tools, EdTech
+const plusJakarta = Plus_Jakarta_Sans({
+  variable: "--font-geist-sans", // reuse existing CSS token
   subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  display: "swap", // font-display: swap per UX guideline
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -26,7 +31,7 @@ export default function RootLayout({
   return (
     <html
       lang="zh-CN"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${plusJakarta.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <Providers>{children}</Providers>

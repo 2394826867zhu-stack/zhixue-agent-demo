@@ -157,7 +157,7 @@ export default function KnowledgePage() {
           const m = MASTERY_CONFIG[kp.mastery];
           const sc = SUBJECT_COLORS[kp.subject] || "bg-slate-50 border-slate-200 text-slate-700";
           return (
-            <Card key={kp.id} size="sm" className="hover:shadow-md transition-all cursor-pointer group">
+            <Card key={kp.id} size="sm" className="hover:shadow-md transition-all cursor-pointer group focus-within:ring-2 focus-within:ring-primary/40">
               <CardContent className="py-3.5 space-y-2.5">
                 <div className="flex items-start justify-between gap-2">
                   <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${sc}`}>
