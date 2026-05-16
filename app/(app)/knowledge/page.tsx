@@ -60,7 +60,7 @@ export default function KnowledgePage() {
   };
 
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-6">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-5 md:space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">知识点</h1>
@@ -68,7 +68,7 @@ export default function KnowledgePage() {
       </div>
 
       {/* Stats bar */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {(Object.keys(MASTERY_CONFIG) as Mastery[]).map((m) => {
           const cfg = MASTERY_CONFIG[m];
           return (
@@ -127,7 +127,7 @@ export default function KnowledgePage() {
       </div>
 
       {/* KP List */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {filtered.map((kp) => {
           const m = MASTERY_CONFIG[kp.mastery];
           const sc = SUBJECT_COLORS[kp.subject] || "bg-slate-50 border-slate-200 text-slate-700";

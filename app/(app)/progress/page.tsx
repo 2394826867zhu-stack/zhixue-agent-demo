@@ -89,14 +89,14 @@ export default function ProgressPage() {
   const weekMinutes = WEEKLY_DATA.reduce((a, d) => a + d.minutes, 0);
 
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-8">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-5 md:space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-foreground">学习进度</h1>
         <p className="text-sm text-muted-foreground mt-0.5">全局视角，掌握你的成长轨迹</p>
       </div>
 
       {/* Key stats */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
         {[
           { label: "本周学习", value: `${weekMinutes}min`, sub: "较上周 +12%", icon: Clock, color: "text-primary" },
           { label: "连续学习", value: "14天", sub: "保持纪录", icon: Flame, color: "text-orange-500" },
@@ -157,7 +157,7 @@ export default function ProgressPage() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
         {/* Weekly bar chart */}
         <Card>
           <CardHeader>

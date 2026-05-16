@@ -69,7 +69,7 @@ export default function TrainingPage() {
 
   if (phase === "config") {
     return (
-      <div className="p-8 max-w-2xl mx-auto space-y-6">
+      <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-5 md:space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">训练</h1>
           <p className="text-sm text-muted-foreground mt-0.5">布鲁姆分层出题，精准提升各阶段能力</p>
@@ -154,7 +154,7 @@ export default function TrainingPage() {
 
   if (phase === "answering") {
     return (
-      <div className="p-8 max-w-2xl mx-auto space-y-6">
+      <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-5 md:space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">训练中</h1>

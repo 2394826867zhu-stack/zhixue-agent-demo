@@ -70,7 +70,7 @@ export default function MistakesPage() {
   }
 
   return (
-    <div className="p-8 max-w-3xl mx-auto space-y-6">
+    <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-5 md:space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">错题本</h1>
@@ -83,7 +83,7 @@ export default function MistakesPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-2 md:gap-3">
         {[
           { label: "待攻克", value: visible.length, color: "text-destructive" },
           { label: "本周新增", value: 3, color: "text-amber-600" },

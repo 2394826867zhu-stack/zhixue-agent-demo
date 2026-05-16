@@ -186,7 +186,7 @@ function NotesList() {
       </div>
 
       {/* Notes grid */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {filtered.map((note) => (
           <Card
             key={note.id}
@@ -236,7 +236,7 @@ export default function NotesPage() {
   });
 
   return (
-    <div className="p-8 max-w-4xl mx-auto space-y-6">
+    <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-5 md:space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">笔记</h1>

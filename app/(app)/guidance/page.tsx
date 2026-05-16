@@ -83,9 +83,9 @@ export default function GuidancePage() {
   }
 
   return (
-    <div className="h-[calc(100vh-0px)] flex">
-      {/* Sidebar panel */}
-      <div className="w-64 border-r border-border flex flex-col bg-sidebar">
+    <div className="h-[calc(100vh-56px)] md:h-screen flex">
+      {/* Sidebar panel — hidden on mobile */}
+      <div className="hidden md:flex w-64 border-r border-border flex-col bg-sidebar">
         <div className="p-4 border-b border-sidebar-border">
           <h2 className="font-semibold text-sm text-sidebar-foreground flex items-center gap-2">
             <MessageCircle size={15} className="text-primary" /> 引导问答

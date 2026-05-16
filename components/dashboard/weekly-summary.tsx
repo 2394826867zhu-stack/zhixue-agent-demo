@@ -45,7 +45,7 @@ export function WeeklySummary() {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-4 gap-4 mb-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-4">
           {stats.map((s) => (
             <div key={s.label} className="text-center">
               <p className="text-xl font-bold text-foreground">{s.value}</p>

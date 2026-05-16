@@ -195,7 +195,7 @@ export default function TasksPage() {
   const doneTasks = tasks.filter((t) => t.done);
 
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-6">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-5 md:space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">每日任务</h1>
@@ -216,9 +216,9 @@ export default function TasksPage() {
         <Progress value={progress} className="h-2" />
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
         {/* Task list */}
-        <div className="col-span-2 space-y-4">
+        <div className="md:col-span-2 space-y-4">
           {/* Pending */}
           <div className="space-y-2">
             {pendingTasks.map((task) => (

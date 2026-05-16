@@ -57,7 +57,7 @@ export function StatsRow() {
   ];
 
   return (
-    <div className="grid grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
       {stats.map((s) => (
         <Card key={s.label} className="border-border/60">
           <CardContent className="p-5">
