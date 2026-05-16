@@ -35,7 +35,7 @@ class TrainingQuestion(Base):
     __tablename__ = "training_questions"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("training_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    session_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("training_sessions.id", ondelete="CASCADE"), nullable=True, index=True)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     knowledge_point_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("knowledge_points.id", ondelete="CASCADE"), nullable=False)
 
@@ -52,7 +52,10 @@ class TrainingQuestion(Base):
     ai_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_wrong: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    is_retry: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    original_question_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("training_questions.id", ondelete="SET NULL"), nullable=True)
+
     answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
-    session: Mapped["TrainingSession"] = relationship("TrainingSession", back_populates="questions")
+    session: Mapped["TrainingSession | None"] = relationship("TrainingSession", back_populates="questions")
