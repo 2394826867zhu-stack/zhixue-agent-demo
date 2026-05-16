@@ -48,13 +48,13 @@ export default function FlashcardsPage() {
   const [finished, setFinished] = useState(false);
   const [usingMock, setUsingMock] = useState(false);
 
-  const { data: apiCards, isLoading, isError } = useQuery<Flashcard[]>({
+  const { data: apiCards, isLoading } = useQuery<Flashcard[]>({
     queryKey: ["due-cards"],
     queryFn: () => getDueCards(),
-  });
+    onError: () => setUsingMock(true),
+  } as Parameters<typeof useQuery>[0]);
 
-  // v5: onError removed — derive mock flag from isError status
-  const cards: Flashcard[] = usingMock || isError || (!isLoading && (!apiCards || apiCards.length === 0))
+  const cards: Flashcard[] = usingMock || (!isLoading && (!apiCards || apiCards.length === 0))
     ? MOCK_CARDS
     : (apiCards ?? []);
 
@@ -141,37 +141,22 @@ export default function FlashcardsPage() {
     );
   }
 
-  // Ring
-  const R_fc = 28;
-  const circ_fc = 2 * Math.PI * R_fc;
-  const ringOffset_fc = circ_fc * (1 - progress / 100);
-
   return (
-    <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-6 md:space-y-8">
-      {/* Header with ring */}
-      <div className="flex items-center gap-5">
-        <div className="relative shrink-0">
-          <svg width="68" height="68" className="-rotate-90">
-            <circle cx="34" cy="34" r={R_fc} fill="none" stroke="hsl(var(--muted))" strokeWidth="5.5" />
-            <circle
-              cx="34" cy="34" r={R_fc} fill="none"
-              stroke="hsl(var(--primary))"
-              strokeWidth="5.5"
-              strokeDasharray={circ_fc}
-              strokeDashoffset={ringOffset_fc}
-              strokeLinecap="round"
-              className="transition-all duration-500"
-            />
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-sm font-bold text-foreground leading-none">{doneIds.length}/{total}</span>
-          </div>
-        </div>
+    <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-5 md:space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">闪卡复习</h1>
-          <p className="text-sm text-muted-foreground mt-1">今日到期 {total} 张，已完成 {doneIds.length} 张</p>
+          <h1 className="text-2xl font-bold text-foreground">闪卡复习</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">今日到期 {total} 张</p>
+        </div>
+        <div className="text-right">
+          <p className="text-sm font-medium text-foreground">{doneIds.length} / {total}</p>
+          <p className="text-xs text-muted-foreground">已完成</p>
         </div>
       </div>
+
+      {/* Progress */}
+      <Progress value={progress} className="h-1.5" />
 
       {/* Card */}
       <div className="relative" style={{ perspective: "1000px" }}>
@@ -216,26 +201,23 @@ export default function FlashcardsPage() {
       </div>
 
       {/* Rating buttons */}
-      <div className={`transition-opacity duration-300 space-y-2 ${flipped ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
-        <p className="text-xs font-medium text-muted-foreground text-center">你记住了吗？</p>
-        <div className="grid grid-cols-4 gap-2.5">
-          {RATING_CONFIG.map(({ rating, label, desc, color }) => (
-            <button
-              key={rating}
-              onClick={() => handleRate(rating)}
-              disabled={reviewMutation.isPending}
-              className={`flex flex-col items-center py-4 px-2 rounded-2xl border-2 text-center transition-all active:scale-95 ${color} disabled:opacity-50 hover:shadow-sm`}
-            >
-              <span className="font-bold text-base leading-none">{label}</span>
-              <span className="text-[10px] mt-1.5 opacity-60 leading-tight">{desc}</span>
-            </button>
-          ))}
-        </div>
+      <div className={`grid grid-cols-4 gap-3 transition-opacity duration-300 ${flipped ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+        {RATING_CONFIG.map(({ rating, label, desc, color }) => (
+          <button
+            key={rating}
+            onClick={() => handleRate(rating)}
+            disabled={reviewMutation.isPending}
+            className={`flex flex-col items-center py-3 px-2 rounded-xl border text-center transition-all ${color} disabled:opacity-50`}
+          >
+            <span className="font-semibold text-sm">{label}</span>
+            <span className="text-[11px] mt-0.5 opacity-70">{desc}</span>
+          </button>
+        ))}
       </div>
 
       {!flipped && (
         <p className="text-center text-xs text-muted-foreground">
-          先默想答案，再翻转评分——效果更好
+          回想答案后再翻转，评分更准确
         </p>
       )}
     </div>

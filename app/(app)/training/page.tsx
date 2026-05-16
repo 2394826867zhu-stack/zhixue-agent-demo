@@ -71,7 +71,7 @@ export default function TrainingPage() {
     return (
       <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-5 md:space-y-6">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">训练</h1>
+          <h1 className="text-2xl font-bold text-foreground">训练</h1>
           <p className="text-sm text-muted-foreground mt-0.5">布鲁姆分层出题，精准提升各阶段能力</p>
         </div>
 

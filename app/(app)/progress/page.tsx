@@ -91,7 +91,7 @@ export default function ProgressPage() {
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-5 md:space-y-8">
       <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">学习进度</h1>
+        <h1 className="text-2xl font-bold text-foreground">学习进度</h1>
         <p className="text-sm text-muted-foreground mt-0.5">全局视角，掌握你的成长轨迹</p>
       </div>
 

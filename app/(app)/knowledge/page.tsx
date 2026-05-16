@@ -59,37 +59,12 @@ export default function KnowledgePage() {
     new: MOCK_KPS.filter((k) => k.mastery === "new").length,
   };
 
-  const masteryPct = Math.round((stats.mastered / stats.total) * 100);
-  const R_kp = 44;
-  const circ_kp = 2 * Math.PI * R_kp;
-  const ringOffset_kp = circ_kp * (1 - masteryPct / 100);
-
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6 md:space-y-8">
-      {/* Header with mastery ring */}
-      <div className="flex items-center gap-6">
-        <div className="relative shrink-0">
-          <svg width="100" height="100" className="-rotate-90">
-            <circle cx="50" cy="50" r={R_kp} fill="none" stroke="hsl(var(--muted))" strokeWidth="8" />
-            <circle
-              cx="50" cy="50" r={R_kp} fill="none"
-              stroke="hsl(142 76% 36%)"
-              strokeWidth="8"
-              strokeDasharray={circ_kp}
-              strokeDashoffset={ringOffset_kp}
-              strokeLinecap="round"
-              className="transition-all duration-700"
-            />
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-xl font-bold text-foreground leading-none">{masteryPct}%</span>
-            <span className="text-[10px] text-muted-foreground mt-0.5">掌握</span>
-          </div>
-        </div>
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">知识点</h1>
-          <p className="text-sm text-muted-foreground mt-1">共 {stats.total} 个 · 已掌握 {stats.mastered} 个</p>
-        </div>
+    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-5 md:space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">知识点</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">共 {stats.total} 个知识点</p>
       </div>
 
       {/* Stats bar */}
@@ -100,15 +75,15 @@ export default function KnowledgePage() {
             <button
               key={m}
               onClick={() => setFilterMastery(filterMastery === m ? null : m)}
-              className={`p-4 rounded-2xl border text-left transition-all hover:shadow-sm ${
-                filterMastery === m ? "ring-2 ring-primary border-primary/30 shadow-sm" : "border-border hover:border-primary/30"
+              className={`p-3.5 rounded-xl border text-left transition-all ${
+                filterMastery === m ? "ring-2 ring-primary border-primary/30" : "border-border hover:border-primary/30"
               } bg-card`}
             >
-              <div className="flex items-center gap-2 mb-2">
-                <div className={`w-2.5 h-2.5 rounded-full ${cfg.dot}`} />
+              <div className="flex items-center gap-2 mb-1.5">
+                <div className={`w-2 h-2 rounded-full ${cfg.dot}`} />
                 <span className="text-xs text-muted-foreground">{cfg.label}</span>
               </div>
-              <p className="text-2xl font-bold text-foreground">{stats[m]}</p>
+              <p className="text-xl font-bold text-foreground">{stats[m]}</p>
             </button>
           );
         })}
@@ -157,7 +132,7 @@ export default function KnowledgePage() {
           const m = MASTERY_CONFIG[kp.mastery];
           const sc = SUBJECT_COLORS[kp.subject] || "bg-slate-50 border-slate-200 text-slate-700";
           return (
-            <Card key={kp.id} size="sm" className="hover:shadow-md transition-all cursor-pointer group focus-within:ring-2 focus-within:ring-primary/40">
+            <Card key={kp.id} size="sm" className="hover:shadow-md transition-all cursor-pointer group">
               <CardContent className="py-3.5 space-y-2.5">
                 <div className="flex items-start justify-between gap-2">
                   <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${sc}`}>

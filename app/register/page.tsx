@@ -7,7 +7,6 @@ import { register, login } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, Eye, EyeOff, AlertCircle, CheckCircle2 } from "lucide-react";
-import { SpiralLogo } from "@/components/ui/spiral-logo";
 
 const GRADES = ["初一", "初二", "初三", "高一", "高二", "高三", "大一", "大二", "大三", "大四", "其他"];
 
@@ -86,12 +85,12 @@ export default function RegisterPage() {
       <div className="w-full max-w-sm space-y-6">
         {/* Logo */}
         <div className="text-center space-y-2">
-          <div className="w-14 h-14 rounded-2xl bg-primary/8 flex items-center justify-center mx-auto shadow-sm ring-1 ring-primary/15">
-            <SpiralLogo className="w-8 h-8 text-primary" />
+          <div className="w-12 h-12 rounded-2xl bg-primary flex items-center justify-center text-primary-foreground font-bold text-xl mx-auto">
+            知
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-foreground tracking-tight">创建账号</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">开始你的 AI 学习之旅</p>
+            <h1 className="text-xl font-bold text-foreground">创建账号</h1>
+            <p className="text-sm text-muted-foreground">开始你的 AI 学习之旅</p>
           </div>
         </div>
 

@@ -161,10 +161,10 @@ export default function GuidancePage() {
                 )}
               >
                 {msg.thinking ? (
-                  <div className="flex gap-1.5 items-center py-1">
-                    <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-pulse [animation-delay:0ms]" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-pulse [animation-delay:200ms]" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-pulse [animation-delay:400ms]" />
+                  <div className="flex gap-1 items-center py-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:0ms]" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:150ms]" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:300ms]" />
                   </div>
                 ) : (
                   <p className="whitespace-pre-line">{msg.content}</p>

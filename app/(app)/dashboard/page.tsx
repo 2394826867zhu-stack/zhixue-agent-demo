@@ -10,7 +10,7 @@ export default function DashboardPage() {
     <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-5 md:space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">学习总览</h1>
+        <h1 className="text-xl md:text-2xl font-bold text-foreground">学习总览</h1>
         <p className="text-sm text-muted-foreground mt-0.5">今天也要加油</p>
       </div>
 
