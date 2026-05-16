@@ -1,21 +1,10 @@
 "use client";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { getHeatmap } from "@/lib/api";
 
-function generateMockHeatmap() {
-  const days: { date: string; minutes: number }[] = [];
-  const today = new Date();
-  for (let i = 89; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    const rand = Math.random();
-    const minutes = rand < 0.2 ? 0 : rand < 0.5 ? Math.floor(Math.random() * 30) + 10 : Math.floor(Math.random() * 90) + 25;
-    days.push({ date: d.toISOString().slice(0, 10), minutes });
-  }
-  return days;
-}
-
-const HEAT_DATA = generateMockHeatmap();
+interface HeatDay { date: string; minutes: number }
 
 function getIntensity(minutes: number) {
   if (minutes === 0) return 0;
@@ -33,13 +22,34 @@ const INTENSITY_CLASS = [
   "bg-primary",
 ];
 
+function generateMockHeatmap(): HeatDay[] {
+  const days: HeatDay[] = [];
+  const today = new Date();
+  for (let i = 89; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const rand = Math.random();
+    const minutes =
+      rand < 0.2 ? 0 : rand < 0.5 ? Math.floor(rand * 30) + 10 : Math.floor(rand * 90) + 25;
+    days.push({ date: d.toISOString().slice(0, 10), minutes });
+  }
+  return days;
+}
+
 export function HeatmapChart() {
-  const weeks: { date: string; minutes: number }[][] = [];
-  for (let i = 0; i < HEAT_DATA.length; i += 7) {
-    weeks.push(HEAT_DATA.slice(i, i + 7));
+  const { data: apiData, isError } = useQuery<HeatDay[]>({
+    queryKey: ["heatmap", 90],
+    queryFn: () => getHeatmap(90),
+  });
+
+  const heatData: HeatDay[] = isError || !apiData ? generateMockHeatmap() : apiData;
+
+  const weeks: HeatDay[][] = [];
+  for (let i = 0; i < heatData.length; i += 7) {
+    weeks.push(heatData.slice(i, i + 7));
   }
 
-  const totalMinutes = HEAT_DATA.reduce((s, d) => s + d.minutes, 0);
+  const totalMinutes = heatData.reduce((s, d) => s + d.minutes, 0);
   const totalHours = Math.floor(totalMinutes / 60);
 
   return (
