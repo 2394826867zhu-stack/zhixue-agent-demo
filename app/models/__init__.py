@@ -3,5 +3,6 @@ from app.models.note import Note
 from app.models.knowledge_point import KnowledgePoint
 from app.models.flashcard import Flashcard
 from app.models.training import TrainingSession, TrainingQuestion
+from app.models.task import DailyTask, PomodoroRecord
 
-__all__ = ["User", "Note", "KnowledgePoint", "Flashcard", "TrainingSession", "TrainingQuestion"]
+__all__ = ["User", "Note", "KnowledgePoint", "Flashcard", "TrainingSession", "TrainingQuestion", "DailyTask", "PomodoroRecord"]
