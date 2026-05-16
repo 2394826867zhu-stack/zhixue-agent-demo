@@ -194,26 +194,46 @@ export default function TasksPage() {
   const pendingTasks = tasks.filter((t) => !t.done);
   const doneTasks = tasks.filter((t) => t.done);
 
-  return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-5 md:space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">每日任务</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">今天，{new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long" })}</p>
-        </div>
-        <Button onClick={handleGenerate} disabled={generating} variant="outline" className="gap-2">
-          <Sparkles size={15} className={generating ? "animate-spin" : ""} />
-          {generating ? "AI 生成中…" : "AI 重排任务"}
-        </Button>
-      </div>
+  // Ring progress values
+  const R = 38;
+  const circ = 2 * Math.PI * R;
+  const ringOffset = circ * (1 - progress / 100);
 
-      {/* Progress bar */}
-      <div className="space-y-1.5">
-        <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">今日进度</span>
-          <span className="font-medium text-foreground">{done} / {total} 完成</span>
+  return (
+    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6 md:space-y-8">
+      {/* Header with ring progress */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-5">
+          {/* Progress ring */}
+          <div className="relative shrink-0">
+            <svg width="88" height="88" className="-rotate-90">
+              <circle cx="44" cy="44" r={R} fill="none" stroke="hsl(var(--muted))" strokeWidth="7" />
+              <circle
+                cx="44" cy="44" r={R} fill="none"
+                stroke="hsl(var(--primary))"
+                strokeWidth="7"
+                strokeDasharray={circ}
+                strokeDashoffset={ringOffset}
+                strokeLinecap="round"
+                className="transition-all duration-700"
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-lg font-bold text-foreground leading-none">{done}/{total}</span>
+              <span className="text-[10px] text-muted-foreground mt-0.5">完成</span>
+            </div>
+          </div>
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">每日任务</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              {new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long" })}
+            </p>
+          </div>
         </div>
-        <Progress value={progress} className="h-2" />
+        <Button onClick={handleGenerate} disabled={generating} variant="outline" className="gap-2 shrink-0">
+          <Sparkles size={15} className={generating ? "animate-spin" : ""} />
+          <span className="hidden sm:inline">{generating ? "AI 生成中…" : "AI 重排任务"}</span>
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
@@ -224,7 +244,7 @@ export default function TasksPage() {
             {pendingTasks.map((task) => (
               <div
                 key={task.id}
-                className="flex items-start gap-3 p-3.5 rounded-xl border border-border bg-card hover:border-primary/30 transition-colors cursor-pointer group"
+                className="flex items-start gap-3 p-4 rounded-2xl border border-border bg-card hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer group"
                 onClick={() => toggleTask(task.id)}
               >
                 <button className="mt-0.5 shrink-0 text-muted-foreground group-hover:text-primary transition-colors">
@@ -256,7 +276,7 @@ export default function TasksPage() {
               {doneTasks.map((task) => (
                 <div
                   key={task.id}
-                  className="flex items-start gap-3 p-3.5 rounded-xl border border-border bg-muted/30 cursor-pointer opacity-60 hover:opacity-80 transition-opacity"
+                  className="flex items-start gap-3 p-4 rounded-2xl border border-border bg-muted/30 cursor-pointer opacity-55 hover:opacity-75 transition-opacity"
                   onClick={() => toggleTask(task.id)}
                 >
                   <CheckCircle2 size={18} className="text-green-500 mt-0.5 shrink-0" />
