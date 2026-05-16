@@ -85,8 +85,9 @@ export default function RegisterPage() {
       <div className="w-full max-w-sm space-y-6">
         {/* Logo */}
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-primary flex items-center justify-center text-primary-foreground font-bold text-xl mx-auto">
-            知
+          <div className="w-12 h-12 rounded-2xl bg-[oklch(0.11_0.015_45)] border border-[oklch(0.70_0.155_52)/30] flex items-center justify-center mx-auto relative overflow-hidden shadow-lg">
+            <span className="text-[oklch(0.70_0.155_52)] font-black text-2xl leading-none">知</span>
+            <span className="absolute inset-0 rounded-2xl ring-1 ring-inset ring-[oklch(0.70_0.155_52)/20] pointer-events-none" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-foreground">创建账号</h1>

@@ -38,10 +38,10 @@ export function MobileHeader() {
           <Menu size={20} />
         </button>
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-md bg-primary flex items-center justify-center text-primary-foreground font-bold text-xs">
-            知
+          <div className="w-6 h-6 rounded-md bg-sidebar-accent border border-sidebar-primary/40 flex items-center justify-center relative overflow-hidden">
+            <span className="text-sidebar-primary font-black text-xs leading-none">知</span>
           </div>
-          <span className="font-semibold text-sm text-sidebar-foreground">知曜</span>
+          <span className="font-semibold text-sm text-sidebar-accent-foreground tracking-wide">知曜</span>
         </div>
       </header>
 
@@ -63,12 +63,13 @@ export function MobileHeader() {
         {/* Header */}
         <div className="px-5 py-4 border-b border-sidebar-border flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">
-              知
+            <div className="w-8 h-8 rounded-lg bg-sidebar-accent border border-sidebar-primary/40 flex items-center justify-center relative overflow-hidden shrink-0">
+              <span className="text-sidebar-primary font-black text-base leading-none">知</span>
+              <span className="absolute inset-0 rounded-lg ring-1 ring-inset ring-sidebar-primary/20 pointer-events-none" />
             </div>
             <div>
-              <p className="font-semibold text-sidebar-foreground text-sm leading-tight">知曜</p>
-              <p className="text-[10px] text-muted-foreground leading-tight">智学Agent</p>
+              <p className="font-semibold text-sidebar-accent-foreground text-sm leading-tight tracking-wide">知曜</p>
+              <p className="text-[10px] text-sidebar-foreground/50 leading-tight tracking-widest uppercase">Zhiyao AI</p>
             </div>
           </div>
           <button
@@ -105,7 +106,7 @@ export function MobileHeader() {
         {/* User footer */}
         <div className="px-3 py-4 border-t border-sidebar-border">
           <div className="flex items-center gap-2 px-3 py-2">
-            <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center text-primary text-xs font-semibold">
+            <div className="w-7 h-7 rounded-full bg-sidebar-primary/20 border border-sidebar-primary/30 flex items-center justify-center text-sidebar-primary text-xs font-semibold">
               {(user?.nickname || user?.username || "U")[0].toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
