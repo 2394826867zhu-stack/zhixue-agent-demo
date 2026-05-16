@@ -39,7 +39,7 @@ export function MobileHeader() {
           <Menu size={20} />
         </button>
         <div className="flex items-center gap-2">
-          <TurbineLogo className="w-6 h-6 text-primary" />
+          <TurbineLogo className="w-6 h-6" dark />
           <span className="font-semibold text-sm text-sidebar-foreground">知曜</span>
         </div>
       </header>
@@ -62,7 +62,7 @@ export function MobileHeader() {
         {/* Header */}
         <div className="px-5 py-4 border-b border-sidebar-border flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <TurbineLogo className="w-8 h-8 text-primary shrink-0" />
+            <TurbineLogo className="w-8 h-8 shrink-0" dark />
             <div>
               <p className="font-semibold text-sidebar-foreground text-sm leading-tight">知曜</p>
               <p className="text-[10px] text-muted-foreground leading-tight">智学Agent</p>
