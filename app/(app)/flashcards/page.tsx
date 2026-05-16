@@ -48,13 +48,13 @@ export default function FlashcardsPage() {
   const [finished, setFinished] = useState(false);
   const [usingMock, setUsingMock] = useState(false);
 
-  const { data: apiCards, isLoading } = useQuery<Flashcard[]>({
+  const { data: apiCards, isLoading, isError } = useQuery<Flashcard[]>({
     queryKey: ["due-cards"],
     queryFn: () => getDueCards(),
-    onError: () => setUsingMock(true),
-  } as Parameters<typeof useQuery>[0]);
+  });
 
-  const cards: Flashcard[] = usingMock || (!isLoading && (!apiCards || apiCards.length === 0))
+  // v5: onError removed — derive mock flag from isError status
+  const cards: Flashcard[] = usingMock || isError || (!isLoading && (!apiCards || apiCards.length === 0))
     ? MOCK_CARDS
     : (apiCards ?? []);
 
