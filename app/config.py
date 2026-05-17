@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # LLM — DeepSeek 主模型（OpenAI 兼容接口）
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
-    DEEPSEEK_MODEL: str = "deepseek-chat"
+    DEEPSEEK_MODEL: str = "deepseek-v4-flash"
 
     # 备用模型（可选）
     ANTHROPIC_API_KEY: str = ""
