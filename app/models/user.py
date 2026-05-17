@@ -26,6 +26,7 @@ class User(Base):
     # 引导对话
     onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     learning_profile: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    agent_memory: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
 
     # 套餐
     plan_type: Mapped[str] = mapped_column(String(20), default="free")
