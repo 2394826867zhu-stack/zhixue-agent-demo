@@ -43,6 +43,7 @@ async def dispatch_tool(
         "start_training": _start_training,
         "manage_exams": _manage_exams,
         "generate_note": _generate_note,
+        "save_memory": _save_memory,
     }
     handler = handlers.get(tool_name)
     if not handler:
@@ -459,3 +460,42 @@ async def _generate_note(
         "status": "generating",
         "message": f"「{topic}」的笔记正在生成中，大约需要 30 秒，请稍后在笔记页查看。",
     }
+
+
+# ── 工具 9：save_memory ─────────────────────────────────────────────────────
+
+async def _save_memory(
+    db: AsyncSession,
+    uid: uuid.UUID,
+    updates: dict,
+    **_,
+) -> dict:
+    from app.models.user import User
+
+    row = await db.execute(select(User).where(User.id == uid))
+    user = row.scalar_one_or_none()
+    if not user:
+        return {"error": "用户不存在"}
+
+    memory = dict(user.agent_memory or {})
+    for section, data in updates.items():
+        if isinstance(data, list):
+            existing = memory.get(section, [])
+            if not isinstance(existing, list):
+                existing = []
+            for item in data:
+                if item not in existing:
+                    existing.append(item)
+            memory[section] = existing
+        elif isinstance(data, dict):
+            existing = memory.get(section, {})
+            if not isinstance(existing, dict):
+                existing = {}
+            existing.update(data)
+            memory[section] = existing
+        else:
+            memory[section] = data
+
+    user.agent_memory = memory
+    await db.commit()
+    return {"saved": True, "sections_updated": list(updates.keys())}

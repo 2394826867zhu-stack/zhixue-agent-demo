@@ -85,6 +85,9 @@ async def load_user_context(db: AsyncSession, user_id: str) -> AgentContext:
     checkin = checkin_row.scalar_one_or_none()
     checkin_summary = checkin.ai_summary if checkin else None
 
+    # 7. 加载 agent_memory
+    agent_memory = dict(user.agent_memory or {}) if user else {}
+
     return AgentContext(
         username=username,
         grade=grade,
@@ -97,6 +100,7 @@ async def load_user_context(db: AsyncSession, user_id: str) -> AgentContext:
         weakest_subject=weakest_subject,
         learning_count=learning_count,
         checkin_summary=checkin_summary,
+        agent_memory=agent_memory,
     )
 
 
