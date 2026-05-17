@@ -18,14 +18,28 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Dev mock — 后端未启动时直接绕过
+  const DEV_USER = "demo";
+  const DEV_PASS = "zhiyao2025";
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!username.trim() || !password.trim()) return;
     setLoading(true);
     setError("");
+
+    // 1. Dev bypass：无需后端
+    if (username === DEV_USER && password === DEV_PASS) {
+      await new Promise((r) => setTimeout(r, 600));
+      setAuth({ id: "dev-001", username: DEV_USER, nickname: "Demo用户" }, "dev-token");
+      router.replace("/dashboard");
+      setLoading(false);
+      return;
+    }
+
+    // 2. 正式登录：调用真实后端
     try {
       const data = await login({ username, password });
-      // Backend returns { access_token, user } or { token, user }
       const token = data.access_token ?? data.token;
       const user = data.user ?? { id: "", username, nickname: username };
       setAuth(user, token);
