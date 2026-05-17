@@ -121,7 +121,7 @@ class TrainingService:
             "ai_score": score,
             "ai_feedback": feedback,
             "is_wrong": is_wrong,
-            "reference_answer": question.reference_answer,
+            "reference": question.reference_answer,
             "session_completed": session_completed,
             "session_avg_score": session.avg_score,
         }

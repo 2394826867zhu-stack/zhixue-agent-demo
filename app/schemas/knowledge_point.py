@@ -69,6 +69,8 @@ class KnowledgePointResponse(BaseModel):
     mastery_status: str
     tags: list
     flashcard_count: int = 0
+    next_review_date: str | None = None   # ISO date，最早到期闪卡日期
+    stability: float | None = None        # 对应闪卡的 FSRS stability
     created_at: datetime
     updated_at: datetime
     model_config = {"from_attributes": True}

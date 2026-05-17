@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, date
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, computed_field, field_validator
 
 
 class DailyTaskCreate(BaseModel):
@@ -55,6 +55,16 @@ class DailyTaskOut(BaseModel):
     created_at: datetime
     model_config = {"from_attributes": True}
 
+    @computed_field
+    @property
+    def is_done(self) -> bool:
+        return self.status == "done"
+
+    @computed_field
+    @property
+    def duration(self) -> int:
+        return self.estimated_minutes
+
 
 class PomodoroCreate(BaseModel):
     task_id: str | None = None
@@ -84,7 +94,6 @@ class PomodoroOut(BaseModel):
 
 
 class PomodoroStats(BaseModel):
-    today_count: int
-    today_minutes: int
-    week_count: int
-    week_minutes: int
+    sessions: int       # 本周番茄钟次数
+    focus_minutes: int  # 本周专注分钟数
+    streak_days: int    # 连续学习天数

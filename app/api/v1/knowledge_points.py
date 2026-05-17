@@ -58,6 +58,8 @@ async def list_kps(
     for item in result["items"]:
         resp = KnowledgePointResponse.model_validate(item["kp"])
         resp.flashcard_count = item["flashcard_count"]
+        resp.next_review_date = item.get("next_review_date")
+        resp.stability = item.get("stability")
         items.append(resp)
     return ok({
         "items": items,

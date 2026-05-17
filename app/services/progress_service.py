@@ -26,7 +26,16 @@ class ProgressService:
             .group_by(KnowledgePoint.mastery_status)
         )
         dist = {r[0]: r[1] for r in mastery_rows}
-        total_kp = sum(dist.values())
+        total_kps = sum(dist.values())
+
+        # kp delta this week
+        kp_delta_result = await db.execute(
+            select(func.count()).where(
+                KnowledgePoint.user_id == uid,
+                func.date(KnowledgePoint.created_at) >= week_start,
+            )
+        )
+        kp_delta_week = kp_delta_result.scalar() or 0
 
         # today tasks
         today_tasks = await db.execute(
@@ -44,6 +53,15 @@ class ProgressService:
         )
         wp = week_pomo.one()
 
+        # due flashcards today
+        due_result = await db.execute(
+            select(func.count()).where(
+                Flashcard.user_id == uid,
+                Flashcard.due_date <= today,
+            )
+        )
+        due_cards = due_result.scalar() or 0
+
         # total wrong (not yet resolved)
         wrong_result = await db.execute(
             select(func.count()).where(
@@ -53,13 +71,9 @@ class ProgressService:
             )
         )
 
-        # total flashcards
-        fc_result = await db.execute(
-            select(func.count()).where(Flashcard.user_id == uid)
-        )
-
         return {
-            "total_kp": total_kp,
+            "total_kps": total_kps,
+            "kp_delta_week": kp_delta_week,
             "mastery_distribution": {
                 "new": dist.get("new", 0),
                 "learning": dist.get("learning", 0),
@@ -68,10 +82,10 @@ class ProgressService:
             },
             "today_tasks_total": tt[0] or 0,
             "today_tasks_done": tt[1] or 0,
-            "week_pomodoro_count": wp[0] or 0,
-            "week_study_minutes": wp[1] or 0,
-            "total_wrong": wrong_result.scalar() or 0,
-            "total_flashcards": fc_result.scalar() or 0,
+            "weekly_pomodoros": wp[0] or 0,
+            "weekly_minutes": wp[1] or 0,
+            "due_cards": due_cards,
+            "mistake_count": wrong_result.scalar() or 0,
         }
 
     async def get_heatmap(self, db: AsyncSession, user_id: str, days: int = 90) -> list[dict]:
@@ -94,6 +108,8 @@ class ProgressService:
 
     async def get_subjects(self, db: AsyncSession, user_id: str) -> list[dict]:
         uid = uuid.UUID(user_id)
+        today = date.today()
+        week_start = today - timedelta(days=today.weekday())
 
         subject_rows = await db.execute(
             select(
@@ -106,10 +122,23 @@ class ProgressService:
             .order_by(func.count().desc())
         )
 
+        # weekly minutes per subject (via pomodoro → task → subject)
+        weekly_rows = await db.execute(
+            select(DailyTask.subject, func.sum(PomodoroRecord.duration_minutes))
+            .join(DailyTask, PomodoroRecord.task_id == DailyTask.id)
+            .where(
+                PomodoroRecord.user_id == uid,
+                PomodoroRecord.record_date >= week_start,
+                DailyTask.subject.isnot(None),
+            )
+            .group_by(DailyTask.subject)
+        )
+        weekly_minutes_by_subject = {r[0]: r[1] or 0 for r in weekly_rows}
+
         result = []
         for row in subject_rows:
             subject, kp_count, mastered_count = row
-            mastery_rate = round(mastered_count / kp_count * 100, 1) if kp_count else 0.0
+            mastery = round(mastered_count / kp_count * 100, 1) if kp_count else 0.0
 
             fc_result = await db.execute(
                 select(func.count(Flashcard.id))
@@ -135,7 +164,8 @@ class ProgressService:
                 "subject": subject or "未分类",
                 "kp_count": kp_count,
                 "mastered_count": mastered_count,
-                "mastery_rate": mastery_rate,
+                "mastery": mastery,
+                "weekly_minutes": weekly_minutes_by_subject.get(subject, 0),
                 "flashcard_count": fc_result.scalar() or 0,
                 "wrong_count": wrong_result.scalar() or 0,
             })
@@ -143,13 +173,11 @@ class ProgressService:
         return result
 
     async def get_weekly_report(self, db: AsyncSession, user_id: str, offset_weeks: int = 0) -> dict:
-        """offset_weeks=0 → this week, 1 → last week"""
         uid = uuid.UUID(user_id)
         today = date.today()
         week_start = today - timedelta(days=today.weekday()) - timedelta(weeks=offset_weeks)
         week_end = week_start + timedelta(days=6)
 
-        # new KPs this week
         new_kp = await db.execute(
             select(func.count()).where(
                 KnowledgePoint.user_id == uid,
@@ -157,9 +185,8 @@ class ProgressService:
                 func.date(KnowledgePoint.created_at) <= week_end,
             )
         )
-        new_kp_count = new_kp.scalar() or 0
+        new_kps = new_kp.scalar() or 0
 
-        # flashcard completion rate: reviewed this week / due this week
         due_this_week = await db.execute(
             select(func.count()).where(
                 Flashcard.user_id == uid,
@@ -178,7 +205,6 @@ class ProgressService:
         reviewed_cnt = reviewed_this_week.scalar() or 0
         fc_rate = round(reviewed_cnt / due_cnt * 100, 1) if due_cnt else 0.0
 
-        # avg training score this week
         score_result = await db.execute(
             select(func.avg(TrainingQuestion.ai_score)).where(
                 TrainingQuestion.user_id == uid,
@@ -188,9 +214,8 @@ class ProgressService:
             )
         )
         avg_score_raw = score_result.scalar()
-        avg_score = round(float(avg_score_raw), 1) if avg_score_raw else None
+        training_avg_score = round(float(avg_score_raw), 1) if avg_score_raw else None
 
-        # wrong count (total unresolved)
         wrong_result = await db.execute(
             select(func.count()).where(
                 TrainingQuestion.user_id == uid,
@@ -200,7 +225,6 @@ class ProgressService:
         )
         wrong_count = wrong_result.scalar() or 0
 
-        # pomodoro stats
         pomo_result = await db.execute(
             select(func.count(), func.sum(PomodoroRecord.duration_minutes))
             .where(
@@ -211,9 +235,8 @@ class ProgressService:
         )
         pr = pomo_result.one()
         pomo_count = pr[0] or 0
-        study_minutes = pr[1] or 0
+        total_minutes = pr[1] or 0
 
-        # weak subjects (most wrong questions)
         weak_rows = await db.execute(
             select(KnowledgePoint.subject, func.count(TrainingQuestion.id))
             .join(TrainingQuestion, TrainingQuestion.knowledge_point_id == KnowledgePoint.id)
@@ -229,7 +252,6 @@ class ProgressService:
         )
         weak_subjects = [r[0] for r in weak_rows]
 
-        # weak KPs (lowest mastery, non-mastered)
         weak_kp_rows = await db.execute(
             select(KnowledgePoint.name)
             .where(
@@ -242,19 +264,19 @@ class ProgressService:
         weak_kps = [r[0] for r in weak_kp_rows]
 
         ai_advice = await self._generate_advice(
-            new_kp_count, fc_rate, avg_score, wrong_count,
-            study_minutes, pomo_count, weak_subjects, weak_kps
+            new_kps, fc_rate, training_avg_score, wrong_count,
+            total_minutes, pomo_count, weak_subjects, weak_kps
         )
 
         return {
             "week_start": str(week_start),
             "week_end": str(week_end),
-            "new_kp_count": new_kp_count,
+            "new_kps": new_kps,
             "flashcard_completion_rate": fc_rate,
-            "avg_training_score": avg_score,
+            "training_avg_score": training_avg_score,
             "wrong_count": wrong_count,
             "pomodoro_count": pomo_count,
-            "study_minutes": study_minutes,
+            "total_minutes": total_minutes,
             "weak_subjects": weak_subjects,
             "ai_advice": ai_advice,
         }

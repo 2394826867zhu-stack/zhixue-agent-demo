@@ -65,7 +65,8 @@ class KnowledgePointService:
         items = []
         for kp in kps:
             fc_count = await self._flashcard_count(db, kp.id)
-            items.append({"kp": kp, "flashcard_count": fc_count})
+            fc_info = await self._earliest_flashcard_info(db, kp.id)
+            items.append({"kp": kp, "flashcard_count": fc_count, **fc_info})
 
         return {"items": items, "total": total, "page": page, "page_size": page_size}
 
@@ -132,6 +133,18 @@ class KnowledgePointService:
             select(func.count()).where(Flashcard.knowledge_point_id == kp_id)
         )
         return result.scalar() or 0
+
+    async def _earliest_flashcard_info(self, db: AsyncSession, kp_id: uuid.UUID) -> dict:
+        result = await db.execute(
+            select(Flashcard.due_date, Flashcard.stability)
+            .where(Flashcard.knowledge_point_id == kp_id)
+            .order_by(Flashcard.due_date.asc())
+            .limit(1)
+        )
+        row = result.one_or_none()
+        if not row:
+            return {"next_review_date": None, "stability": None}
+        return {"next_review_date": str(row[0]), "stability": row[1]}
 
 
 kp_service = KnowledgePointService()

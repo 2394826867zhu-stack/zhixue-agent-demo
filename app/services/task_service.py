@@ -200,23 +200,33 @@ class TaskService:
         today = date.today()
         week_start = today - timedelta(days=today.weekday())
 
-        today_result = await db.execute(
-            select(func.count(), func.sum(PomodoroRecord.duration_minutes))
-            .where(PomodoroRecord.user_id == uid, PomodoroRecord.record_date == today)
-        )
-        today_row = today_result.one()
-
         week_result = await db.execute(
             select(func.count(), func.sum(PomodoroRecord.duration_minutes))
             .where(PomodoroRecord.user_id == uid, PomodoroRecord.record_date >= week_start)
         )
         week_row = week_result.one()
 
+        # streak: consecutive days with at least one pomodoro going back from today
+        streak_dates_result = await db.execute(
+            select(PomodoroRecord.record_date)
+            .where(
+                PomodoroRecord.user_id == uid,
+                PomodoroRecord.record_date >= today - timedelta(days=60),
+            )
+            .distinct()
+            .order_by(PomodoroRecord.record_date.desc())
+        )
+        dates_with_records = {r[0] for r in streak_dates_result}
+        streak = 0
+        d = today
+        while d in dates_with_records:
+            streak += 1
+            d -= timedelta(days=1)
+
         return {
-            "today_count": today_row[0] or 0,
-            "today_minutes": today_row[1] or 0,
-            "week_count": week_row[0] or 0,
-            "week_minutes": week_row[1] or 0,
+            "sessions": week_row[0] or 0,
+            "focus_minutes": week_row[1] or 0,
+            "streak_days": streak,
         }
 
     async def _ai_rank(self, raw_tasks: list[dict], today: date) -> list[dict]:

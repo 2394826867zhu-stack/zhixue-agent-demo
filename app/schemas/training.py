@@ -29,14 +29,29 @@ class TrainingQuestionOut(BaseModel):
     knowledge_point_id: uuid.UUID
     bloom_level: str
     question_type: str
-    question_text: str
-    reference_answer: str | None = None
+    question: str           # 对应 DB 的 question_text
+    reference: str | None   # 对应 DB 的 reference_answer
     user_answer: str | None
     ai_score: int | None
     ai_feedback: str | None
     is_wrong: bool
     answered_at: datetime | None
-    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm(cls, q: object) -> "TrainingQuestionOut":
+        return cls(
+            id=q.id,
+            knowledge_point_id=q.knowledge_point_id,
+            bloom_level=q.bloom_level,
+            question_type=q.question_type,
+            question=q.question_text,
+            reference=q.reference_answer,
+            user_answer=q.user_answer,
+            ai_score=q.ai_score,
+            ai_feedback=q.ai_feedback,
+            is_wrong=q.is_wrong,
+            answered_at=q.answered_at,
+        )
 
 
 class TrainingSessionOut(BaseModel):
@@ -73,6 +88,6 @@ class AnswerResult(BaseModel):
     ai_score: int
     ai_feedback: str
     is_wrong: bool
-    reference_answer: str
+    reference: str          # 对应 DB 的 reference_answer
     session_completed: bool
     session_avg_score: float | None
