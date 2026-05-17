@@ -11,7 +11,7 @@ type DemoTask = {
   estimated_minutes?: number;
   priority?: string;
   is_done: boolean;
-  ai_reason?: string;
+  ai_priority_reason?: string;
 };
 
 type DemoNote = {
@@ -31,6 +31,130 @@ type DemoFlashcard = {
   due_in?: string;
 };
 
+export type PathNode = {
+  id: string;
+  stage_id: string;
+  title: string;
+  node_type: "lesson" | "review" | "training" | "project";
+  status: "locked" | "current" | "done" | "review";
+  subject: string | null;
+  estimated_minutes: number;
+  reward: string | null;
+  note_id: string | null;
+  kp_ids: string[];
+  prerequisite_ids: string[];
+  sort_order: number;
+  completed_at: string | null;
+};
+
+export type PathStage = {
+  id: string;
+  title: string;
+  description: string;
+  sort_order: number;
+  progress: number;
+  is_ai_generated: boolean;
+  nodes: PathNode[];
+};
+
+export type CoachTip = {
+  message: string;
+  suggested_node_id: string | null;
+  suggested_action: "start" | "review" | "continue" | null;
+};
+
+export type ProfileInsights = {
+  total_notes: number;
+  total_kps: number;
+  mastered_kps: number;
+  total_focus_minutes: number;
+  total_pomodoros: number;
+  total_flashcard_reviews: number;
+  total_training_sessions: number;
+  training_avg_score: number | null;
+  total_guidance_sessions: number;
+  streak_days: number;
+  achievements_earned: number;
+  achievements_total: number;
+};
+
+export type Achievement = {
+  id: string;
+  title: string;
+  icon: string;
+  description: string;
+  earned: boolean;
+  progress: number;
+  target: number;
+  progress_pct: number;
+};
+
+export type Reflection = {
+  id: string;
+  week_start: string;
+  week_end: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OnboardingDraft = {
+  grade?: string;
+  grade_type?: string;
+  subjects?: string[];
+  progress?: Record<string, string>;
+  performance?: Record<string, string>;
+  next_exam_name?: string;
+  next_exam_date?: string;
+  next_exam_subject?: string;
+  goal?: string;
+  upload?: string;
+  [key: string]: unknown;
+};
+
+export type OnboardingStatus = {
+  current_step: string;
+  step_index: number;
+  total_steps: number;
+  completed: boolean;
+  question: string;
+  profile_draft: OnboardingDraft;
+};
+
+export type OnboardingChatResponse = {
+  reply: string;
+  step: string;
+  step_index: number;
+  total_steps: number;
+  completed: boolean;
+  profile_draft: OnboardingDraft;
+};
+
+export type CheckInUpdate = {
+  kp_updates?: { kp_id: string; new_mastery: string; reason: string }[];
+  kps_created?: { name: string; subject: string; mastery_status: string }[];
+  tasks_created?: { title: string; subject: string; estimated_minutes: number }[];
+};
+
+export type CheckIn = {
+  id: string;
+  raw_content: string;
+  ai_summary: string | null;
+  parsed_updates: CheckInUpdate;
+  created_at: string;
+};
+
+export type AgentChatEvent =
+  | { thinking: string }
+  | { delta: string }
+  | { done: true; session_id: string; tools_called?: string[] };
+
+export type AgentChatHandlers = {
+  onThinking?: (thinking: string) => void;
+  onDelta?: (delta: string) => void;
+  onDone?: (event: Extract<AgentChatEvent, { done: true }>) => void;
+};
+
 const isBrowser = () => typeof window !== "undefined";
 
 const isLocalHost = (hostname: string) =>
@@ -39,20 +163,33 @@ const isLocalHost = (hostname: string) =>
 const apiBaseIsLocal = () =>
   API_BASE.includes("localhost") || API_BASE.includes("127.0.0.1");
 
+const getLocalStorageItem = (key: string) => {
+  if (!isBrowser()) return null;
+  try {
+    return window.localStorage?.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
 export function isDemoMode() {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") return true;
   if (!isBrowser()) return false;
 
-  const localOverride = (() => {
-    try {
-      return window.localStorage?.getItem("zhiyao_demo_mode") === "true";
-    } catch {
-      return false;
-    }
-  })();
+  const demoToken = getLocalStorageItem("access_token");
+  const hasRealToken = !!demoToken && demoToken !== "dev-token" && demoToken !== "demo-token";
+  if (hasRealToken) return false;
+
+  const localOverride = getLocalStorageItem("zhiyao_demo_mode") === "true";
+  const persistedAuth = getLocalStorageItem("zhiyao-auth") ?? "";
+  const demoAuthSnapshot =
+    persistedAuth.includes("dev-001") ||
+    persistedAuth.includes("demo-user") ||
+    persistedAuth.includes('"username":"demo"') ||
+    persistedAuth.includes('"nickname":"Demo用户"');
   const externalViewerUsingLocalApi = apiBaseIsLocal() && !isLocalHost(window.location.hostname);
 
-  return localOverride || externalViewerUsingLocalApi;
+  return localOverride || demoToken === "dev-token" || demoToken === "demo-token" || demoAuthSnapshot || externalViewerUsingLocalApi;
 }
 
 function delay<T>(data: T, ms = 220): Promise<T> {
@@ -74,7 +211,7 @@ let demoTasks: DemoTask[] = [
     estimated_minutes: 24,
     priority: "high",
     is_done: false,
-    ai_reason: "12张到期卡已等待复习，间隔重复效果最佳，控制在25分钟内完成。",
+    ai_priority_reason: "12张到期卡已等待复习，间隔重复效果最佳，控制在25分钟内完成。",
   },
   {
     id: "task-2",
@@ -84,7 +221,7 @@ let demoTasks: DemoTask[] = [
     estimated_minutes: 18,
     priority: "high",
     is_done: false,
-    ai_reason: "受力分析是本周错误率最高的考点，3道重练题可精准校准掌握度。",
+    ai_priority_reason: "受力分析是本周错误率最高的考点，3道重练题可精准校准掌握度。",
   },
   {
     id: "task-3",
@@ -94,7 +231,7 @@ let demoTasks: DemoTask[] = [
     estimated_minutes: 16,
     priority: "normal",
     is_done: true,
-    ai_reason: "已识别出8个可沉淀为闪卡的高频词，整理后直接生成复习队列。",
+    ai_priority_reason: "已识别出8个可沉淀为闪卡的高频词，整理后直接生成复习队列。",
   },
   {
     id: "task-4",
@@ -104,7 +241,7 @@ let demoTasks: DemoTask[] = [
     estimated_minutes: 25,
     priority: "normal",
     is_done: false,
-    ai_reason: "化学知识点积累偏少，今天预习可为后续闪卡和训练打好基础。",
+    ai_priority_reason: "化学知识点积累偏少，今天预习可为后续闪卡和训练打好基础。",
   },
 ];
 
@@ -174,6 +311,223 @@ const demoCards: DemoFlashcard[] = [
   },
 ];
 
+let demoPathStages: PathStage[] = [
+  {
+    id: "stage-1",
+    title: "阶段 1：建立基础框架",
+    description: "先把核心概念和公式整理清楚，形成可复习的知识原子。",
+    sort_order: 1,
+    progress: 1,
+    is_ai_generated: true,
+    nodes: [
+      {
+        id: "node-1",
+        stage_id: "stage-1",
+        title: "整理等差与等比数列公式",
+        node_type: "lesson",
+        status: "done",
+        subject: "数学",
+        estimated_minutes: 18,
+        reward: "公式徽章",
+        note_id: "note-1",
+        kp_ids: ["kp-1"],
+        prerequisite_ids: [],
+        sort_order: 1,
+        completed_at: todayISO(-2),
+      },
+      {
+        id: "node-2",
+        stage_id: "stage-1",
+        title: "复习牛顿三大运动定律",
+        node_type: "review",
+        status: "done",
+        subject: "物理",
+        estimated_minutes: 20,
+        reward: "力学入门",
+        note_id: "note-2",
+        kp_ids: ["kp-2"],
+        prerequisite_ids: [],
+        sort_order: 2,
+        completed_at: todayISO(-1),
+      },
+    ],
+  },
+  {
+    id: "stage-2",
+    title: "阶段 2：进入主动提取",
+    description: "用闪卡、错题和小训练把知识从“看懂”推进到“能用”。",
+    sort_order: 2,
+    progress: 0.55,
+    is_ai_generated: true,
+    nodes: [
+      {
+        id: "node-3",
+        stage_id: "stage-2",
+        title: "完成 12 张数学闪卡复习",
+        node_type: "review",
+        status: "current",
+        subject: "数学",
+        estimated_minutes: 24,
+        reward: "连续复习 +1",
+        note_id: null,
+        kp_ids: ["kp-1"],
+        prerequisite_ids: ["node-1"],
+        sort_order: 1,
+        completed_at: null,
+      },
+      {
+        id: "node-4",
+        stage_id: "stage-2",
+        title: "物理受力分析错题重练",
+        node_type: "training",
+        status: "review",
+        subject: "物理",
+        estimated_minutes: 18,
+        reward: "薄弱点修复",
+        note_id: null,
+        kp_ids: ["kp-2"],
+        prerequisite_ids: ["node-2"],
+        sort_order: 2,
+        completed_at: null,
+      },
+      {
+        id: "node-5",
+        stage_id: "stage-2",
+        title: "氧化还原反应判断训练",
+        node_type: "training",
+        status: "locked",
+        subject: "化学",
+        estimated_minutes: 25,
+        reward: "化学基础",
+        note_id: "note-3",
+        kp_ids: ["kp-3"],
+        prerequisite_ids: ["node-3"],
+        sort_order: 3,
+        completed_at: null,
+      },
+    ],
+  },
+  {
+    id: "stage-3",
+    title: "阶段 3：考前综合输出",
+    description: "进入混合训练和费曼输出，检查能否跨知识点迁移。",
+    sort_order: 3,
+    progress: 0.12,
+    is_ai_generated: true,
+    nodes: [
+      {
+        id: "node-6",
+        stage_id: "stage-3",
+        title: "完成一次数学综合训练",
+        node_type: "project",
+        status: "locked",
+        subject: "数学",
+        estimated_minutes: 35,
+        reward: "阶段通关",
+        note_id: null,
+        kp_ids: ["kp-1"],
+        prerequisite_ids: ["node-5"],
+        sort_order: 1,
+        completed_at: null,
+      },
+    ],
+  },
+];
+
+let demoReflections: Reflection[] = [
+  {
+    id: "reflection-1",
+    week_start: todayISO(-6),
+    week_end: todayISO(),
+    content: "这周数学复习节奏比较稳定，物理受力分析还需要更多主动训练。下周优先把错题重练和闪卡复习固定下来。",
+    created_at: todayISO(),
+    updated_at: todayISO(),
+  },
+];
+
+const onboardingSteps = [
+  {
+    key: "grade",
+    question: "先告诉我你现在是几年级？",
+    suggestions: ["初一", "初二", "初三", "高一", "高二", "高三"],
+  },
+  {
+    key: "subjects",
+    question: "这学期你最想让我重点照看的科目有哪些？",
+    suggestions: ["数学、物理、英语", "语文、数学、英语", "全科都要", "先管薄弱科"],
+  },
+  {
+    key: "progress",
+    question: "你们最近各科大概学到哪里了？可以像“数学二次函数，物理浮力”这样说。",
+    suggestions: ["数学二次函数，物理浮力", "英语 Unit 4，化学酸碱盐", "我不确定，之后上传课程表"],
+  },
+  {
+    key: "performance",
+    question: "目前成绩大概处于什么水平？不用精确，我只需要判断节奏。",
+    suggestions: ["班级前 20%", "中等偏上", "中等", "有点吃力"],
+  },
+  {
+    key: "next_exam",
+    question: "下一次重要考试是什么？大概几月几号？",
+    suggestions: ["期末考试，6月25日", "一模，6月12日", "月考，下周五", "暂时不清楚"],
+  },
+  {
+    key: "goal",
+    question: "这段时间你最希望我帮你达成什么目标？",
+    suggestions: ["稳定完成作业和复习", "把数学提上去", "冲刺重点高中", "减少学习焦虑"],
+  },
+  {
+    key: "upload",
+    question: "如果你愿意，可以把课程表、成绩单或考试安排的文字粘贴给我；也可以先跳过。",
+    suggestions: ["先跳过", "我有课程表", "我有成绩单", "我有考试安排"],
+  },
+  {
+    key: "confirm",
+    question: "我已经整理好你的学习档案。确认后，我会建立基础知识库、考试时间线和第一周计划。",
+    suggestions: ["确认建立", "我想修改前面信息"],
+  },
+];
+
+let demoOnboardingIndex = 0;
+let demoOnboardingCompleted = false;
+let demoOnboardingDraft: OnboardingDraft = {};
+let demoCheckIns: CheckIn[] = [];
+
+const buildDemoOnboardingStatus = (): OnboardingStatus => {
+  const step = onboardingSteps[Math.min(demoOnboardingIndex, onboardingSteps.length - 1)];
+  return {
+    current_step: demoOnboardingCompleted ? "completed" : step.key,
+    step_index: demoOnboardingCompleted ? onboardingSteps.length : demoOnboardingIndex,
+    total_steps: onboardingSteps.length,
+    completed: demoOnboardingCompleted,
+    question: demoOnboardingCompleted ? "学习档案已经建立，可以开始每日同步了。" : step.question,
+    profile_draft: demoOnboardingDraft,
+  };
+};
+
+const applyDemoOnboardingAnswer = (message: string) => {
+  const step = onboardingSteps[Math.min(demoOnboardingIndex, onboardingSteps.length - 1)];
+  if (step.key === "grade") demoOnboardingDraft.grade = message;
+  if (step.key === "subjects") demoOnboardingDraft.subjects = message.split(/[、,，\s]+/).filter(Boolean);
+  if (step.key === "progress") demoOnboardingDraft.progress = { 最近学习: message };
+  if (step.key === "performance") demoOnboardingDraft.performance = { 当前水平: message };
+  if (step.key === "next_exam") {
+    demoOnboardingDraft.next_exam_name = message;
+    demoOnboardingDraft.next_exam_date = "2026-06-25";
+  }
+  if (step.key === "goal") demoOnboardingDraft.goal = message;
+  if (step.key === "upload") demoOnboardingDraft.upload = message;
+  if (step.key === "confirm") {
+    demoOnboardingCompleted = true;
+    try {
+      localStorage.setItem("zhiyao_onboarding_completed", "true");
+      localStorage.removeItem("zhiyao_needs_onboarding");
+    } catch {}
+  } else {
+    demoOnboardingIndex = Math.min(demoOnboardingIndex + 1, onboardingSteps.length - 1);
+  }
+};
+
 export const api = axios.create({
   baseURL: API_BASE,
   headers: { "Content-Type": "application/json" },
@@ -188,7 +542,7 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   async (err) => {
-    if (err.response?.status === 401 && isBrowser()) {
+    if (err.response?.status === 401 && isBrowser() && !isDemoMode()) {
       localStorage.removeItem("access_token");
       window.location.href = "/login";
     }
@@ -403,30 +757,334 @@ export const submitAnswer = (sessionId: string, questionId: string, body: object
 };
 
 // ---- Guidance ----
+const demoGuidanceStartResponse = (question: string) =>
+  delay({
+    session_id: `demo-guid-${Date.now()}`,
+    message: {
+      id: `msg-${Date.now()}`,
+      role: "assistant",
+      content: `好，我们先不急着给答案。你刚才提到“${question.slice(0, 32)}”，我想先确认一件事：你现在最卡住的是概念本身、解题步骤，还是不知道什么时候使用它？`,
+    },
+  });
+
+const demoGuidanceChatResponse = (sessionId: string, message: string) =>
+  delay({
+    session_id: sessionId,
+    message: {
+      id: `msg-${Date.now()}`,
+      role: "assistant",
+      content: `我明白了。你说到“${message.slice(0, 28)}”，这里可以拆成两步看：先找已知条件，再判断它和目标之间缺哪一环。你愿意先用自己的话说说，你觉得最关键的已知条件是哪一个吗？`,
+    },
+  });
+
+const shouldUseGuidanceFallback = (err: unknown) => {
+  const status = (err as { response?: { status?: number } })?.response?.status;
+  return isDemoMode() || (apiBaseIsLocal() && (status === 401 || status === 403 || status == null));
+};
+
 export const startGuidance = (body: { question: string; subject?: string }) => {
-  if (isDemoMode()) {
-    return delay({
-      session_id: "demo-guid-1",
-      message: { id: "msg-1", role: "assistant", content: "好问题！在我解释之前，我想先了解一下你目前对这个概念的理解——你能用自己的话描述一下它大概是什么吗？" },
-    });
-  }
-  return api.post("/guidance/sessions", body).then((r) => r.data.data);
+  if (isDemoMode()) return demoGuidanceStartResponse(body.question);
+  return api.post("/guidance/sessions", body).then((r) => r.data.data).catch((err) => {
+    if (shouldUseGuidanceFallback(err)) return demoGuidanceStartResponse(body.question);
+    throw err;
+  });
 };
 
 export const chatGuidance = (sessionId: string, message: string) => {
-  if (isDemoMode()) {
-    return delay({
-      session_id: sessionId,
-      message: { id: Date.now().toString(), role: "assistant", content: "很好，你提到了关键点。那你觉得，如果把这个条件去掉，结果会发生什么变化呢？" },
-    });
-  }
-  return api.post(`/guidance/sessions/${sessionId}/chat`, { message }).then((r) => r.data.data);
+  if (isDemoMode()) return demoGuidanceChatResponse(sessionId, message);
+  return api.post(`/guidance/sessions/${sessionId}/chat`, { message }).then((r) => r.data.data).catch((err) => {
+    if (shouldUseGuidanceFallback(err)) return demoGuidanceChatResponse(sessionId, message);
+    throw err;
+  });
 };
 
 export const listGuidanceSessions = (page = 1) => {
   if (isDemoMode()) return delay({ items: [], total: 0 });
-  return api.get(`/guidance/sessions?page=${page}`).then((r) => r.data.data);
+  return api.get(`/guidance/sessions?page=${page}`).then((r) => r.data.data).catch((err) => {
+    if (shouldUseGuidanceFallback(err)) return delay({ items: [], total: 0, page, page_size: 10 });
+    throw err;
+  });
 };
+
+// ---- Learning Path ----
+export const getPathStages = () => {
+  if (isDemoMode()) return delay(demoPathStages);
+  return api.get("/path/stages").then((r) => r.data.data);
+};
+
+export const generatePath = (body: { subjects?: string[]; goal?: string }) => {
+  if (isDemoMode()) return delay(demoPathStages, 700);
+  return api.post("/path/ai-generate", body).then((r) => r.data.data);
+};
+
+export const completePathNode = (nodeId: string) => {
+  if (isDemoMode()) {
+    let completed: PathNode | null = null;
+    demoPathStages = demoPathStages.map((stage) => ({
+      ...stage,
+      nodes: stage.nodes.map((node) => {
+        if (node.id !== nodeId) return node;
+        completed = { ...node, status: "done", completed_at: todayISO() };
+        return completed;
+      }),
+    }));
+    return delay(completed ?? { id: nodeId });
+  }
+  return api.post(`/path/nodes/${nodeId}/complete`).then((r) => r.data.data);
+};
+
+export const getCoachTip = () => {
+  if (isDemoMode()) {
+    return delay<CoachTip>({
+      message: "今天适合先完成数学闪卡复习，再用 18 分钟处理物理受力分析错题。保持轻量推进就很好。",
+      suggested_node_id: "node-3",
+      suggested_action: "start",
+    });
+  }
+  return api.get("/path/coach-tip").then((r) => r.data.data);
+};
+
+export const createPathStage = (body: { title: string; description?: string; sort_order?: number }) => {
+  if (isDemoMode()) {
+    const stage: PathStage = {
+      id: `stage-${Date.now()}`,
+      title: body.title,
+      description: body.description ?? "手动创建的学习阶段",
+      sort_order: body.sort_order ?? demoPathStages.length + 1,
+      progress: 0,
+      is_ai_generated: false,
+      nodes: [],
+    };
+    demoPathStages = [...demoPathStages, stage];
+    return delay(stage);
+  }
+  return api.post("/path/stages", body).then((r) => r.data.data);
+};
+
+export const createPathNode = (body: Partial<PathNode> & { stage_id: string; title: string }) => {
+  if (isDemoMode()) {
+    const node: PathNode = {
+      id: `node-${Date.now()}`,
+      stage_id: body.stage_id,
+      title: body.title,
+      node_type: body.node_type ?? "lesson",
+      status: body.status ?? "locked",
+      subject: body.subject ?? null,
+      estimated_minutes: body.estimated_minutes ?? 20,
+      reward: body.reward ?? null,
+      note_id: body.note_id ?? null,
+      kp_ids: body.kp_ids ?? [],
+      prerequisite_ids: body.prerequisite_ids ?? [],
+      sort_order: body.sort_order ?? 1,
+      completed_at: null,
+    };
+    demoPathStages = demoPathStages.map((stage) =>
+      stage.id === node.stage_id ? { ...stage, nodes: [...stage.nodes, node] } : stage
+    );
+    return delay(node);
+  }
+  return api.post("/path/nodes", body).then((r) => r.data.data);
+};
+
+// ---- Profile ----
+export const getProfileInsights = () => {
+  if (isDemoMode()) {
+    return delay<ProfileInsights>({
+      total_notes: demoNotes.length,
+      total_kps: 142,
+      mastered_kps: 68,
+      total_focus_minutes: 4860,
+      total_pomodoros: 82,
+      total_flashcard_reviews: 236,
+      total_training_sessions: 18,
+      training_avg_score: 84,
+      total_guidance_sessions: 11,
+      streak_days: 14,
+      achievements_earned: 9,
+      achievements_total: 20,
+    });
+  }
+  return api.get("/profile/insights").then((r) => r.data.data);
+};
+
+export const getAchievements = () => {
+  if (isDemoMode()) {
+    const items: Achievement[] = [
+      { id: "first_note", title: "初记者", icon: "N", description: "创建第一篇笔记", earned: true, progress: 1, target: 1, progress_pct: 100 },
+      { id: "kp_50", title: "知识积累者", icon: "K", description: "累计 50 个知识点", earned: true, progress: 142, target: 50, progress_pct: 100 },
+      { id: "flash_200", title: "复习高手", icon: "F", description: "完成 200 次闪卡复习", earned: true, progress: 236, target: 200, progress_pct: 100 },
+      { id: "focus_100", title: "专注冠军", icon: "P", description: "完成 100 个番茄钟", earned: false, progress: 82, target: 100, progress_pct: 82 },
+      { id: "streak_30", title: "月度坚持", icon: "S", description: "连续学习 30 天", earned: false, progress: 14, target: 30, progress_pct: 47 },
+      { id: "guidance_10", title: "深度思考者", icon: "G", description: "完成 10 次引导问答", earned: true, progress: 11, target: 10, progress_pct: 100 },
+    ];
+    return delay(items);
+  }
+  return api.get("/profile/achievements").then((r) => r.data.data);
+};
+
+export const saveReflection = (body: { content: string; week_start?: string }) => {
+  if (isDemoMode()) {
+    const reflection: Reflection = {
+      id: `reflection-${Date.now()}`,
+      week_start: body.week_start ?? todayISO(-6),
+      week_end: todayISO(),
+      content: body.content,
+      created_at: todayISO(),
+      updated_at: todayISO(),
+    };
+    demoReflections = [reflection, ...demoReflections.filter((item) => item.week_start !== reflection.week_start)];
+    return delay(reflection);
+  }
+  return api.post("/profile/reflection", body).then((r) => r.data.data);
+};
+
+export const listReflections = (page = 1, page_size = 10) => {
+  if (isDemoMode()) {
+    return delay({ items: demoReflections, total: demoReflections.length, page, page_size });
+  }
+  return api.get(`/profile/reflection?page=${page}&page_size=${page_size}`).then((r) => r.data.data);
+};
+
+// ---- Onboarding ----
+export const getOnboardingStatus = () => {
+  if (isDemoMode()) return delay(buildDemoOnboardingStatus());
+  return api.get("/onboarding/status").then((r) => r.data.data);
+};
+
+export const sendOnboardingMessage = (message: string) => {
+  if (isDemoMode()) {
+    applyDemoOnboardingAnswer(message);
+    const status = buildDemoOnboardingStatus();
+    return delay<OnboardingChatResponse>({
+      reply: status.question,
+      step: status.current_step,
+      step_index: status.step_index,
+      total_steps: status.total_steps,
+      completed: status.completed,
+      profile_draft: status.profile_draft,
+    }, 520);
+  }
+  return api.post("/onboarding/chat", { message }).then((r) => r.data.data);
+};
+
+export const restartOnboarding = () => {
+  if (isDemoMode()) {
+    demoOnboardingIndex = 0;
+    demoOnboardingCompleted = false;
+    demoOnboardingDraft = {};
+    try {
+      localStorage.removeItem("zhiyao_onboarding_completed");
+    } catch {}
+    return delay(buildDemoOnboardingStatus());
+  }
+  return api.post("/onboarding/restart").then((r) => r.data.data);
+};
+
+// ---- Daily Check-in ----
+export const createCheckIn = (content: string) => {
+  if (isDemoMode()) {
+    const checkIn: CheckIn = {
+      id: `checkin-${Date.now()}`,
+      raw_content: content,
+      ai_summary: "我已经把今天的学习记录整理好了。你完成的内容会进入知识库，薄弱点会进入后续复习和 quiz 队列。",
+      parsed_updates: {
+        kps_created: [
+          { name: "今日课堂新知识", subject: "综合", mastery_status: "learning" },
+          { name: "待巩固薄弱点", subject: "综合", mastery_status: "reviewing" },
+        ],
+        kp_updates: [
+          { kp_id: "demo-kp-1", new_mastery: "reviewing", reason: "用户主动提到今天复习或完成相关内容" },
+        ],
+        tasks_created: [
+          { title: "根据今日内容生成 5 道小测", subject: "综合", estimated_minutes: 12 },
+          { title: "明天复盘今日薄弱点", subject: "综合", estimated_minutes: 18 },
+        ],
+      },
+      created_at: new Date().toISOString(),
+    };
+    demoCheckIns = [checkIn, ...demoCheckIns];
+    return delay(checkIn, 760);
+  }
+  return api.post("/checkin", { content }).then((r) => r.data.data);
+};
+
+export const getTodayCheckIn = () => {
+  if (isDemoMode()) return delay(demoCheckIns[0] ?? null);
+  return api.get("/checkin/today").then((r) => r.data.data);
+};
+
+export const listCheckIns = (page = 1, page_size = 20) => {
+  if (isDemoMode()) return delay({ items: demoCheckIns, total: demoCheckIns.length, page, page_size });
+  return api.get(`/checkin/history?page=${page}&page_size=${page_size}`).then((r) => r.data.data);
+};
+
+export async function streamAgentChat(
+  message: string,
+  session_id?: string | null,
+  handlers: AgentChatHandlers = {}
+) {
+  if (isDemoMode()) {
+    const reply = "我会根据你的知识点、任务和目标，帮你整理今天的学习进展并安排下一步。";
+    handlers.onDelta?.(reply);
+    const done = { done: true as const, session_id: session_id ?? `demo-agent-${Date.now()}`, tools_called: [] };
+    handlers.onDone?.(done);
+    return done;
+  }
+
+  const token = isBrowser() ? localStorage.getItem("access_token") : null;
+  const response = await fetch(`${API_BASE}/agent/chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ message, ...(session_id ? { session_id } : {}) }),
+  });
+
+  if (!response.ok || !response.body) {
+    throw new Error(`Agent request failed: ${response.status}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let doneEvent: Extract<AgentChatEvent, { done: true }> | null = null;
+
+  function consumeChunk(chunk: string) {
+    buffer += chunk;
+    const parts = buffer.split(/\r?\n\r?\n/);
+    buffer = parts.pop() ?? "";
+
+    for (const part of parts) {
+      const dataLines = part
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trim());
+
+      for (const raw of dataLines) {
+        if (!raw || raw === "[DONE]") continue;
+        const event = JSON.parse(raw) as AgentChatEvent;
+        if ("thinking" in event) handlers.onThinking?.(event.thinking);
+        if ("delta" in event) handlers.onDelta?.(event.delta);
+        if ("done" in event) {
+          doneEvent = event;
+          handlers.onDone?.(event);
+        }
+      }
+    }
+  }
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    consumeChunk(decoder.decode(value, { stream: true }));
+  }
+  consumeChunk(decoder.decode());
+
+  return doneEvent ?? { done: true as const, session_id: session_id ?? "", tools_called: [] };
+}
 
 // ---- Mistakes ----
 export const listMistakes = (params?: { subject?: string; page?: number; page_size?: number }) => {

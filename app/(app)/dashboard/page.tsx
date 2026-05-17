@@ -34,7 +34,7 @@ type Task = {
   estimated_minutes?: number;
   priority?: string;
   is_done: boolean;
-  ai_reason?: string;
+  ai_priority_reason?: string;
 };
 
 type PomodoroStats = {
@@ -252,9 +252,9 @@ export default function DashboardPage() {
                           )}
                         </div>
                         <p className="mt-1 text-sm font-semibold text-foreground">{task.title}</p>
-                        {task.ai_reason && (
+                        {task.ai_priority_reason && (
                           <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                            {task.ai_reason}
+                            {task.ai_priority_reason}
                           </p>
                         )}
                       </div>
