@@ -27,11 +27,11 @@ def _session_key(session_id: str) -> str:
 
 
 async def load_history(session_id: str) -> list[dict]:
-    redis = await get_redis()
-    raw = await redis.get(_session_key(session_id))
-    if not raw:
-        return []
     try:
+        redis = await get_redis()
+        raw = await redis.get(_session_key(session_id))
+        if not raw:
+            return []
         return json.loads(raw)
     except Exception:
         return []
@@ -67,7 +67,10 @@ async def run(
     # 1. 加载上下文 + 历史
     ctx = await load_user_context(db, user_id)
     system = build_system_prompt(ctx)
-    history = await load_history(session_id)
+    try:
+        history = await load_history(session_id)
+    except Exception:
+        history = []
     history.append({"role": "user", "content": message})
 
     tools_called: list[str] = []
@@ -110,8 +113,7 @@ async def run(
     try:
         async for token in llm_client.stream_response(messages=history, system=system):
             full_reply += token
-            escaped = token.replace('"', '\\"').replace('\n', '\\n')
-            yield f'data: {{"delta": "{escaped}"}}\n\n'
+            yield f'data: {json.dumps({"delta": token}, ensure_ascii=False)}\n\n'
     except Exception as e:
         logger.error(f"DeepSeek stream failed: {e}")
         error_msg = "抱歉，回复生成时遇到问题，请重试。"
