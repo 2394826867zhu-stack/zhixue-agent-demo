@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1 import auth, notes, knowledge_points, flashcards, training, mistakes, tasks, progress, guidance, path, profile, exams, onboarding, checkin
+from app.api.v1 import auth, notes, knowledge_points, flashcards, training, mistakes, tasks, progress, guidance, path, profile, exams, onboarding, checkin, agent
 
 router = APIRouter(prefix="/v1")
 router.include_router(auth.router)
@@ -16,3 +16,4 @@ router.include_router(profile.router)
 router.include_router(exams.router)
 router.include_router(onboarding.router)
 router.include_router(checkin.router)
+router.include_router(agent.router)
