@@ -27,10 +27,9 @@ def _fsrs_schedule(card: Flashcard, rating: int) -> dict:
     Falls back to a simplified formula if py-fsrs is unavailable.
     """
     try:
-        from fsrs import FSRS, Card, Rating, State
-        fsrs = FSRS()
+        from fsrs import Scheduler, Card, Rating, State
+        scheduler = Scheduler()
 
-        # Reconstruct py-fsrs Card from stored fields
         state_map = {"New": State.New, "Learning": State.Learning, "Review": State.Review, "Relearning": State.Relearning}
         rating_map = {1: Rating.Again, 2: Rating.Hard, 3: Rating.Good, 4: Rating.Easy}
 
@@ -41,8 +40,7 @@ def _fsrs_schedule(card: Flashcard, rating: int) -> dict:
         fsrs_card.reps = card.review_count
 
         now = datetime.now(timezone.utc)
-        scheduling = fsrs.repeat(fsrs_card, now)
-        result_card = scheduling[rating_map[rating]].card
+        result_card, _ = scheduler.review_card(fsrs_card, rating_map[rating])
 
         interval = (result_card.due.date() - date.today()).days
         return {
@@ -53,7 +51,7 @@ def _fsrs_schedule(card: Flashcard, rating: int) -> dict:
             "interval_days": max(interval, 1),
         }
 
-    except ImportError:
+    except (ImportError, Exception):
         # Fallback: simplified SM-2-style calculation
         stability = card.stability
         difficulty = card.difficulty

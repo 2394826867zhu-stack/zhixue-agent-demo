@@ -9,8 +9,13 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    # LLM
-    ANTHROPIC_API_KEY: str
+    # LLM — DeepSeek 主模型（OpenAI 兼容接口）
+    DEEPSEEK_API_KEY: str = ""
+    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
+    DEEPSEEK_MODEL: str = "deepseek-chat"
+
+    # 备用模型（可选）
+    ANTHROPIC_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
 
     # JWT
