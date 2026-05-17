@@ -13,8 +13,10 @@ interface User {
 interface AuthStore {
   user: User | null;
   token: string | null;
+  learningGoal: string | null;   // 用户学习目标，onboarding 时填写
   setAuth: (user: User, token: string) => void;
   clearAuth: () => void;
+  setLearningGoal: (goal: string) => void;
 }
 
 export const useAuthStore = create<AuthStore>()(
@@ -22,14 +24,24 @@ export const useAuthStore = create<AuthStore>()(
     (set) => ({
       user: null,
       token: null,
+      learningGoal: null,
       setAuth: (user, token) => {
-        localStorage.setItem("access_token", token);
+        try {
+          localStorage.setItem("access_token", token);
+        } catch {
+          // Some preview surfaces can restrict storage; Zustand state still keeps the session.
+        }
         set({ user, token });
       },
       clearAuth: () => {
-        localStorage.removeItem("access_token");
-        set({ user: null, token: null });
+        try {
+          localStorage.removeItem("access_token");
+        } catch {
+          // Ignore storage cleanup failures in restricted preview surfaces.
+        }
+        set({ user: null, token: null, learningGoal: null });
       },
+      setLearningGoal: (goal) => set({ learningGoal: goal }),
     }),
     { name: "zhiyao-auth" }
   )

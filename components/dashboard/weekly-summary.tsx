@@ -1,7 +1,9 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
+import { ArrowRight, Sparkles } from "lucide-react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Sparkles, Loader2 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getWeeklyReport } from "@/lib/api";
 
 interface WeeklyReport {
@@ -10,6 +12,7 @@ interface WeeklyReport {
   training_avg_score?: number;
   total_minutes?: number;
   ai_advice?: string;
+  weak_subjects?: string[];
 }
 
 function fmt(minutes?: number) {
@@ -20,7 +23,7 @@ function fmt(minutes?: number) {
 }
 
 const FALLBACK_ADVICE =
-  "本周整体表现良好，物理掌握率偏低（48%），建议下周优先攻克受力分析和动量守恒两个核心知识点。闪卡复习节奏不错，继续保持每日完成率。化学和语文刚开始录入，尽快生成第一批知识点，建立系统框架。";
+  "本周整体表现良好，建议下周根据薄弱学科做专项训练，闪卡复习节奏不错，继续保持每日完成率。";
 
 export function WeeklySummary() {
   const { data, isLoading } = useQuery<WeeklyReport>({
@@ -35,8 +38,10 @@ export function WeeklySummary() {
     { label: "学习时长", value: fmt(data?.total_minutes) },
   ];
 
+  const weakSubjects = data?.weak_subjects ?? [];
+
   return (
-    <Card className="border-border/60 bg-gradient-to-r from-primary/5 to-primary/0">
+    <Card className="animate-card-in border-border/60 bg-gradient-to-r from-primary/5 to-primary/0">
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
           <Sparkles size={15} className="text-primary" />
@@ -48,15 +53,26 @@ export function WeeklySummary() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-4">
           {stats.map((s) => (
             <div key={s.label} className="text-center">
-              <p className="text-xl font-bold text-foreground">{s.value}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
+              {isLoading ? (
+                <>
+                  <Skeleton className="mx-auto h-7 w-12" />
+                  <Skeleton className="mx-auto mt-2 h-3 w-16" />
+                </>
+              ) : (
+                <>
+                  <p className="text-xl font-bold text-foreground">{s.value}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
+                </>
+              )}
             </div>
           ))}
         </div>
         <div className="rounded-lg bg-primary/8 border border-primary/15 px-4 py-3 relative min-h-[56px]">
           {isLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 size={14} className="animate-spin" /> AI 建议生成中…
+            <div className="space-y-2 py-1">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-11/12" />
+              <Skeleton className="h-4 w-2/3" />
             </div>
           ) : (
             <p className="text-sm text-foreground leading-relaxed">
@@ -64,6 +80,21 @@ export function WeeklySummary() {
             </p>
           )}
         </div>
+
+        {!isLoading && weakSubjects.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {weakSubjects.map((subject) => (
+              <Link
+                key={subject}
+                href={`/training?subject=${encodeURIComponent(subject)}`}
+                className="inline-flex items-center gap-1.5 rounded-full border border-destructive/30 bg-destructive/8 px-3 py-1.5 text-xs font-medium text-destructive transition hover:bg-destructive/15"
+              >
+                → {subject}专项训练
+                <ArrowRight size={11} />
+              </Link>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
