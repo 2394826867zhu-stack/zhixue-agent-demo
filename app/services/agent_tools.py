@@ -30,7 +30,10 @@ async def dispatch_tool(
     except json.JSONDecodeError:
         args = {}
 
-    uid = uuid.UUID(user_id)
+    try:
+        uid = uuid.UUID(user_id)
+    except ValueError:
+        return {"error": f"无效的 user_id: {user_id}"}
     handlers = {
         "get_full_context": _get_full_context,
         "diagnose_learning": _diagnose_learning,
@@ -115,7 +118,8 @@ async def _diagnose_learning(db: AsyncSession, uid: uuid.UUID, subject: str | No
     for subj, mastery, cnt in rows.all():
         if subj not in dist:
             dist[subj] = {"mastered": 0, "reviewing": 0, "learning": 0, "new": 0}
-        dist[subj][mastery] = cnt
+        if mastery in dist[subj]:
+            dist[subj][mastery] = cnt
 
     train_rows = await db.execute(
         select(TrainingSession.subject, func.avg(TrainingSession.avg_score))
@@ -127,7 +131,7 @@ async def _diagnose_learning(db: AsyncSession, uid: uuid.UUID, subject: str | No
     mistake_rows = await db.execute(
         select(KnowledgePoint.subject, func.count(TrainingQuestion.id))
         .join(KnowledgePoint, TrainingQuestion.knowledge_point_id == KnowledgePoint.id)
-        .where(TrainingQuestion.user_id == uid, TrainingQuestion.is_wrong == True)
+        .where(TrainingQuestion.user_id == uid, TrainingQuestion.is_wrong.is_(True))
         .group_by(KnowledgePoint.subject)
     )
     mistake_cnt = {r[0]: r[1] for r in mistake_rows.all()}
