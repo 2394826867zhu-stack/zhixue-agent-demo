@@ -88,22 +88,23 @@ async def run(
             break
 
         if choice.finish_reason == "tool_calls" and choice.message.tool_calls:
-            tc = choice.message.tool_calls[0]
-            tool_name = tc.function.name
-            tools_called.append(tool_name)
-
-            yield f'data: {json.dumps({"thinking": f"正在执行：{tool_name}…"}, ensure_ascii=False)}\n\n'
-
-            result = await dispatch_tool(db, user_id, tool_name, tc.function.arguments)
-
-            # 追加 assistant 消息（含 tool_calls）
+            # 追加 assistant 消息（含所有 tool_calls）
             history.append(_serialize_message(choice.message))
-            # 追加 tool 结果消息
-            history.append({
-                "role": "tool",
-                "tool_call_id": tc.id,
-                "content": json.dumps(result, ensure_ascii=False),
-            })
+
+            # 对每个 tool_call 都 dispatch 并追加结果，保证 tool_call_id 一一对应
+            for tc in choice.message.tool_calls:
+                tool_name = tc.function.name
+                tools_called.append(tool_name)
+
+                yield f'data: {json.dumps({"thinking": f"正在执行：{tool_name}…"}, ensure_ascii=False)}\n\n'
+
+                result = await dispatch_tool(db, user_id, tool_name, tc.function.arguments)
+
+                history.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": json.dumps(result, ensure_ascii=False),
+                })
         else:
             # LLM 决定直接回答，退出工具循环
             break
@@ -115,7 +116,7 @@ async def run(
             full_reply += token
             yield f'data: {json.dumps({"delta": token}, ensure_ascii=False)}\n\n'
     except Exception as e:
-        logger.error(f"DeepSeek stream failed: {e}")
+        logger.error(f"DeepSeek stream failed: {type(e).__name__}: {e}")
         error_msg = "抱歉，回复生成时遇到问题，请重试。"
         full_reply = error_msg
         yield f'data: {json.dumps({"delta": error_msg}, ensure_ascii=False)}\n\n'
