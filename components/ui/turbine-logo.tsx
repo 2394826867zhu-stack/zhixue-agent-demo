@@ -1,39 +1,33 @@
 /**
- * 知曜涡轮标志
- * 直接使用品牌原图 /public/logo.png（zhiyaoui001.png）
- * filter + mix-blend-mode 适配深色/浅色背景，形状完全还原
+ * 知曜四叶涡轮标志 — 实心填充版
+ *
+ * 构造原理（对照 zhiyaoui001.png 线稿）：
+ *   每片叶片 = 大弧（外凸，顺时针）+ 小弧（内凹，逆时针）围成封闭实心区域
+ *   4 片叶片各旋转 90°，形成涡轮旋转感
+ *   fill="currentColor" → 自动继承父级主色，无需任何 filter
  */
-import React from "react";
-
-interface TurbineLogoProps {
-  className?: string;
-  /** dark=true 用于深色侧边栏（filter+screen混合），false 用于浅色背景 */
-  dark?: boolean;
-  /** 覆盖内联 style，用于精确控制滤镜颜色 */
-  style?: React.CSSProperties;
-}
-
-export function TurbineLogo({ className, dark = false, style }: TurbineLogoProps) {
-  const darkStyle: React.CSSProperties = {
-    // 深色背景：先 invert 让线条变白，再 sepia+hue-rotate 着色为主色，screen 混合让背景消失
-    filter: "invert(1) sepia(1) saturate(5) hue-rotate(215deg) brightness(0.9)",
-    mixBlendMode: "screen",
-    ...style,
-  };
-
-  const lightStyle: React.CSSProperties = {
-    // 浅色背景：直接显示黑色线条原图，无需处理
-    opacity: 0.85,
-    ...style,
-  };
+export function TurbineLogo({ className }: { className?: string }) {
+  /**
+   * 单片叶片路径（东北象限，12点→3点位置）：
+   *   M 12 2          从 12点位出发
+   *   A 12 12 0 0 1 22 12   外凸大弧顺时针扫到 3点位（r=12）
+   *   A 8  8  0 0 0 12 2    内凹小弧逆时针返回起点（r=8）
+   *   Z               闭合
+   */
+  const blade = "M12 2 A12 12 0 0 1 22 12 A8 8 0 0 0 12 2Z";
 
   return (
-    <img
-      src="/logo.png"
-      alt=""
-      aria-hidden="true"
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
       className={className}
-      style={dark ? darkStyle : lightStyle}
-    />
+      aria-hidden="true"
+    >
+      <path d={blade} />
+      <path d={blade} transform="rotate(90 12 12)" />
+      <path d={blade} transform="rotate(180 12 12)" />
+      <path d={blade} transform="rotate(270 12 12)" />
+    </svg>
   );
 }
