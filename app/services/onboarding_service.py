@@ -1,0 +1,278 @@
+"""
+引导对话服务：8步固定状态机。
+
+步骤顺序：grade → subjects → progress → performance → next_exam → goal → upload → confirm → completed
+"""
+import json
+import logging
+import uuid
+from datetime import datetime, date, timezone
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update
+
+from app.models.onboarding import OnboardingSession
+from app.models.knowledge_point import KnowledgePoint
+from app.models.exam import Exam
+from app.models.user import User
+from app.schemas.onboarding import (
+    STEPS, TOTAL_STEPS,
+    OnboardingChatResponse, OnboardingStatusOut,
+)
+from app.llm.client import llm_client
+from app.llm.prompts.onboarding import (
+    STEP_QUESTIONS, build_confirm_question, extract_prompt, CURRICULUM,
+)
+
+logger = logging.getLogger(__name__)
+
+# mastery_status 映射：基于自评成绩
+_PERF_TO_MASTERY: dict[str, str] = {
+    "优秀": "mastered",
+    "良好": "reviewing",
+    "中等": "reviewing",
+    "较差": "learning",
+    "差": "learning",
+}
+
+
+class OnboardingService:
+
+    # ── 公开接口 ──────────────────────────────────────────────
+
+    async def get_status(self, db: AsyncSession, user_id: str) -> OnboardingStatusOut:
+        session = await self._get_or_create(db, user_id)
+        step = session.current_step
+        if step == "completed":
+            return OnboardingStatusOut(
+                current_step="completed",
+                step_index=TOTAL_STEPS,
+                total_steps=TOTAL_STEPS,
+                completed=True,
+                question="引导已完成，欢迎开始学习！",
+                profile_draft=session.profile_draft or {},
+            )
+        question = (
+            build_confirm_question(session.profile_draft or {})
+            if step == "confirm"
+            else STEP_QUESTIONS[step]
+        )
+        return OnboardingStatusOut(
+            current_step=step,
+            step_index=STEPS.index(step),
+            total_steps=TOTAL_STEPS,
+            completed=False,
+            question=question,
+            profile_draft=session.profile_draft or {},
+        )
+
+    async def chat(
+        self, db: AsyncSession, user_id: str, message: str
+    ) -> OnboardingChatResponse:
+        session = await self._get_or_create(db, user_id)
+        step = session.current_step
+
+        if step == "completed":
+            return OnboardingChatResponse(
+                reply="你的学习档案已经建立完成了！可以去探索各个功能啦 🎉",
+                step="completed",
+                step_index=TOTAL_STEPS,
+                total_steps=TOTAL_STEPS,
+                completed=True,
+                profile_draft=session.profile_draft or {},
+            )
+
+        draft = dict(session.profile_draft or {})
+
+        # 提取当前步骤的结构化数据
+        extracted = await self._extract(step, message, draft)
+        draft.update(extracted)
+
+        # 推进到下一步
+        current_idx = STEPS.index(step)
+        if current_idx + 1 < len(STEPS):
+            next_step = STEPS[current_idx + 1]
+        else:
+            next_step = "completed"
+
+        session.profile_draft = draft
+        session.current_step = next_step
+
+        if next_step == "completed":
+            session.completed_at = datetime.now(timezone.utc)
+            reply = await self._finalize(db, user_id, draft)
+        elif next_step == "confirm":
+            reply = build_confirm_question(draft)
+        else:
+            reply = STEP_QUESTIONS[next_step]
+
+        await db.commit()
+
+        step_index = TOTAL_STEPS if next_step == "completed" else STEPS.index(next_step)
+        return OnboardingChatResponse(
+            reply=reply,
+            step=next_step,
+            step_index=step_index,
+            total_steps=TOTAL_STEPS,
+            completed=(next_step == "completed"),
+            profile_draft=draft,
+        )
+
+    async def restart(self, db: AsyncSession, user_id: str) -> OnboardingStatusOut:
+        uid = uuid.UUID(user_id)
+        result = await db.execute(
+            select(OnboardingSession).where(OnboardingSession.user_id == uid)
+        )
+        session = result.scalar_one_or_none()
+        if session:
+            session.current_step = "grade"
+            session.profile_draft = {}
+            session.completed_at = None
+            await db.commit()
+        return await self.get_status(db, user_id)
+
+    # ── 内部：会话管理 ────────────────────────────────────────
+
+    async def _get_or_create(self, db: AsyncSession, user_id: str) -> OnboardingSession:
+        uid = uuid.UUID(user_id)
+        result = await db.execute(
+            select(OnboardingSession).where(OnboardingSession.user_id == uid)
+        )
+        session = result.scalar_one_or_none()
+        if not session:
+            session = OnboardingSession(user_id=uid, current_step="grade", profile_draft={})
+            db.add(session)
+            await db.commit()
+            await db.refresh(session)
+        return session
+
+    # ── 内部：LLM 提取 ────────────────────────────────────────
+
+    async def _extract(self, step: str, message: str, draft: dict) -> dict[str, Any]:
+        if step in ("upload", "confirm"):
+            return {}
+        try:
+            sys_prompt, user_prompt = extract_prompt(step, message, draft)
+            raw = await llm_client.generate(user_prompt, system=sys_prompt)
+            # 清理 LLM 可能返回的 markdown 代码块
+            raw = raw.strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            return json.loads(raw)
+        except Exception as e:
+            logger.warning(f"onboarding extract failed at step={step}: {e}")
+            return {}
+
+    # ── 内部：完成引导 → 预填知识点 + 创建考试 ───────────────────
+
+    async def _finalize(self, db: AsyncSession, user_id: str, draft: dict) -> str:
+        uid = uuid.UUID(user_id)
+
+        # 1. 更新用户 onboarding_completed + learning_profile
+        await db.execute(
+            update(User)
+            .where(User.id == uid)
+            .values(onboarding_completed=True, learning_profile=draft)
+        )
+
+        # 2. 预填知识点
+        kp_count = await self._populate_kps(db, uid, draft)
+
+        # 3. 创建考试（如果有）
+        exam_created = await self._create_exam_if_any(db, uid, draft)
+
+        await db.commit()
+
+        lines = [
+            "🎉 太棒了！你的专属学习档案已经建立完成！",
+            "",
+            f"✅ 已为你预填了 **{kp_count}** 个知识点到知识库",
+        ]
+        if exam_created:
+            lines.append(f"📅 已添加考试倒计时：{draft.get('next_exam_name', '')}")
+        lines += [
+            "",
+            "现在你可以：",
+            "• 去「知识点」页面查看和补充你的知识库",
+            "• 去「闪卡」页面开始记忆复习",
+            "• 有什么学到的内容，随时回来和我说，我来帮你整理 📝",
+        ]
+        return "\n".join(lines)
+
+    async def _populate_kps(self, db: AsyncSession, uid: uuid.UUID, draft: dict) -> int:
+        grade_type = draft.get("grade_type", "senior")
+        if grade_type not in CURRICULUM:
+            grade_type = "senior"
+        curriculum = CURRICULUM[grade_type]
+
+        subjects: list[str] = draft.get("subjects", [])
+        progress: dict[str, str] = draft.get("progress", {})
+        performance: dict[str, str] = draft.get("performance", {})
+
+        created_count = 0
+        for subject in subjects:
+            chapters = curriculum.get(subject)
+            if not chapters:
+                continue
+
+            current_chapter = progress.get(subject, "")
+            perf = performance.get(subject, "中等")
+            past_mastery = _PERF_TO_MASTERY.get(perf, "reviewing")
+
+            # 找到当前章节的 index
+            current_idx = -1
+            for i, ch in enumerate(chapters):
+                if current_chapter and current_chapter in ch:
+                    current_idx = i
+                    break
+            if current_idx == -1:
+                # 没找到就把所有章节都设为 learning
+                current_idx = min(2, len(chapters) - 1)
+
+            for i, chapter_name in enumerate(chapters):
+                if i < current_idx:
+                    mastery = past_mastery
+                elif i == current_idx:
+                    mastery = "learning"
+                else:
+                    break  # 未学到的不创建
+
+                kp = KnowledgePoint(
+                    user_id=uid,
+                    name=chapter_name,
+                    subject=subject,
+                    mastery_status=mastery,
+                    bloom_level="remember",
+                    content=f"{subject}·{chapter_name}",
+                )
+                db.add(kp)
+                created_count += 1
+
+        return created_count
+
+    async def _create_exam_if_any(self, db: AsyncSession, uid: uuid.UUID, draft: dict) -> bool:
+        name = draft.get("next_exam_name")
+        date_str = draft.get("next_exam_date")
+        if not name or not date_str:
+            return False
+        try:
+            exam_date = date.fromisoformat(date_str)
+            if exam_date < date.today():
+                return False
+            exam = Exam(
+                user_id=uid,
+                name=name,
+                subject=draft.get("next_exam_subject"),
+                exam_date=exam_date,
+            )
+            db.add(exam)
+            return True
+        except Exception as e:
+            logger.warning(f"failed to create exam from onboarding: {e}")
+            return False
+
+
+onboarding_service = OnboardingService()

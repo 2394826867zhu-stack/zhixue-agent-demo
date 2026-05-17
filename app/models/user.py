@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, DateTime, JSON
+from sqlalchemy import String, DateTime, JSON, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.core.database import Base
 
 
@@ -22,6 +22,10 @@ class User(Base):
         String(20), nullable=True
     )  # 'junior_high' | 'senior_high' | 'college'
     subjects: Mapped[list] = mapped_column(JSON, default=list)
+
+    # 引导对话
+    onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    learning_profile: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # 套餐
     plan_type: Mapped[str] = mapped_column(String(20), default="free")
