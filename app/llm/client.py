@@ -108,5 +108,56 @@ class LLMClient:
         except (APIStatusError, RateLimitError) as e:
             raise RuntimeError(f"Anthropic API error: {e}") from e
 
+    async def call_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        system: str = "",
+    ):
+        """
+        带工具定义的非流式调用，仅走 DeepSeek。
+        返回 openai ChatCompletion choice 对象（含 finish_reason + message）。
+        """
+        if not self._deepseek:
+            raise RuntimeError("DeepSeek not configured; set DEEPSEEK_API_KEY")
+        full_messages = []
+        if system:
+            full_messages.append({"role": "system", "content": system})
+        full_messages.extend(messages)
+        resp = await self._deepseek.chat.completions.create(
+            model=settings.DEEPSEEK_MODEL,
+            messages=full_messages,
+            tools=tools,
+            tool_choice="auto",
+            max_tokens=4096,
+            stream=False,
+        )
+        return resp.choices[0]
+
+    async def stream_response(
+        self,
+        messages: list[dict],
+        system: str = "",
+    ):
+        """
+        流式文字回复（最终回答轮，无工具），yield token 字符串。
+        """
+        if not self._deepseek:
+            raise RuntimeError("DeepSeek not configured; set DEEPSEEK_API_KEY")
+        full_messages = []
+        if system:
+            full_messages.append({"role": "system", "content": system})
+        full_messages.extend(messages)
+        stream = await self._deepseek.chat.completions.create(
+            model=settings.DEEPSEEK_MODEL,
+            messages=full_messages,
+            max_tokens=4096,
+            stream=True,
+        )
+        async for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
+
 
 llm_client = LLMClient()
