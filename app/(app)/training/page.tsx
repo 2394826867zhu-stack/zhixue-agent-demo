@@ -2,77 +2,131 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
-  Target, ChevronRight, Loader2, CheckCircle2,
-  Brain, Star, RotateCcw, Sparkles
+  Target, Loader2, CheckCircle2, XCircle,
+  Brain, Star, RotateCcw, Sparkles, ChevronRight, AlertCircle
 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { startTraining, submitAnswer } from "@/lib/api";
 
 const SUBJECTS = ["数学", "物理", "化学", "生物", "英语", "语文"];
-const BLOOM_LEVELS = [
-  { value: 1, label: "记忆", desc: "识别和回忆事实" },
-  { value: 2, label: "理解", desc: "解释概念含义" },
-  { value: 3, label: "应用", desc: "用知识解决问题" },
-  { value: 4, label: "分析", desc: "拆解与推断关系" },
-];
+
+const BLOOM_LABELS: Record<string, string> = {
+  remember: "记忆", understand: "理解", apply: "应用",
+  analyze: "分析", evaluate: "评估", create: "创造",
+};
+
+interface Question {
+  id: string;
+  bloom_level: string;
+  question_type: string;
+  question: string;
+}
+
+interface AnswerRecord {
+  ai_score: number;
+  ai_feedback: string;
+  reference: string;
+  is_wrong: boolean;
+}
 
 type Phase = "config" | "answering" | "result";
-
-const MOCK_QUESTION = {
-  id: "q1",
-  bloom_level: 3,
-  question: "一列火车沿直线轨道匀加速运动，已知第3秒末的速度为 15 m/s，第5秒末的速度为 25 m/s。求：\n(1) 火车的加速度；\n(2) 火车运动的初速度；\n(3) 前5秒内的位移。",
-  reference: "加速度 a = (v₅ - v₃)/(t₅ - t₃) = (25-15)/2 = 5 m/s²\n初速度 v₀ = v₃ - a×t₃ = 15 - 5×3 = 0 m/s\n位移 s = v₀t + ½at² = 0×5 + ½×5×25 = 62.5 m",
-  knowledge_points: ["匀变速运动", "加速度计算", "运动学公式"],
-};
-
-const MOCK_RESULT = {
-  score: 85,
-  feedback: "解题思路清晰，加速度和初速度计算正确！位移计算有小失误：公式代入正确，但建议写出详细的单位换算步骤，在考试中能避免扣分。整体掌握程度良好，建议重点练习第(3)小题类型。",
-  strengths: ["正确识别了匀加速运动模型", "加速度公式运用准确"],
-  improvements: ["计算过程需更规范", "建议补充单位说明"],
-};
 
 export default function TrainingPage() {
   const [phase, setPhase] = useState<Phase>("config");
   const [subject, setSubject] = useState("物理");
-  const [bloomLevel, setBloomLevel] = useState(3);
   const [count, setCount] = useState(5);
-  const [answer, setAnswer] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<typeof MOCK_RESULT | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleStart() {
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [currentAnswer, setCurrentAnswer] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [records, setRecords] = useState<Record<string, AnswerRecord>>({});
+
+  async function handleStart() {
+    setError(null);
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const res = await startTraining({ mode: "subject", subject, question_count: count });
+      setSessionId(String(res.id));
+      setQuestions(res.questions ?? []);
+      setCurrentIdx(0);
+      setCurrentAnswer("");
+      setSubmitted(false);
+      setRecords({});
       setPhase("answering");
-    }, 1200);
+    } catch (e: unknown) {
+      const msg =
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+        "启动失败，请确认已有该学科知识点后重试";
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function handleSubmit() {
-    if (!answer.trim()) return;
+  async function handleSubmit() {
+    if (!currentAnswer.trim() || !sessionId) return;
+    const q = questions[currentIdx];
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const res = await submitAnswer(sessionId, String(q.id), { user_answer: currentAnswer });
+      setRecords((prev) => ({
+        ...prev,
+        [String(q.id)]: {
+          ai_score: res.ai_score,
+          ai_feedback: res.ai_feedback,
+          reference: res.reference,
+          is_wrong: res.is_wrong,
+        },
+      }));
+      setSubmitted(true);
+    } catch {
+      setError("提交失败，请稍后重试");
+    } finally {
       setLoading(false);
-      setResult(MOCK_RESULT);
+    }
+  }
+
+  function handleNext() {
+    if (currentIdx + 1 >= questions.length) {
       setPhase("result");
-    }, 1800);
+    } else {
+      setCurrentIdx((i) => i + 1);
+      setCurrentAnswer("");
+      setSubmitted(false);
+      setError(null);
+    }
   }
 
   function handleRestart() {
     setPhase("config");
-    setAnswer("");
-    setResult(null);
+    setSessionId(null);
+    setQuestions([]);
+    setCurrentIdx(0);
+    setCurrentAnswer("");
+    setSubmitted(false);
+    setRecords({});
+    setError(null);
   }
 
+  const answeredCount = Object.keys(records).length;
+  const avgScore =
+    answeredCount > 0
+      ? Math.round(Object.values(records).reduce((s, r) => s + r.ai_score, 0) / answeredCount)
+      : 0;
+
+  // ── Config ──────────────────────────────────────────────────────────────
   if (phase === "config") {
     return (
       <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-5 md:space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">训练</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">布鲁姆分层出题，精准提升各阶段能力</p>
+          <p className="text-sm text-muted-foreground mt-0.5">AI 按布鲁姆分层出题，精准提升各阶段能力</p>
         </div>
 
         <Card>
@@ -82,7 +136,6 @@ export default function TrainingPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
-            {/* Subject */}
             <div>
               <label className="text-sm font-medium text-foreground mb-2 block">学科</label>
               <div className="flex flex-wrap gap-2">
@@ -90,11 +143,12 @@ export default function TrainingPage() {
                   <button
                     key={s}
                     onClick={() => setSubject(s)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors",
                       subject === s
                         ? "bg-primary text-primary-foreground border-primary"
                         : "bg-background text-muted-foreground border-border hover:border-primary/50"
-                    }`}
+                    )}
                   >
                     {s}
                   </button>
@@ -102,37 +156,10 @@ export default function TrainingPage() {
               </div>
             </div>
 
-            {/* Bloom level */}
             <div>
-              <label className="text-sm font-medium text-foreground mb-2 block">认知层级（布鲁姆分类）</label>
-              <div className="grid grid-cols-2 gap-2">
-                {BLOOM_LEVELS.map(({ value, label, desc }) => (
-                  <button
-                    key={value}
-                    onClick={() => setBloomLevel(value)}
-                    className={`p-3 rounded-lg border text-left transition-all ${
-                      bloomLevel === value
-                        ? "border-primary bg-primary/5 ring-1 ring-primary/30"
-                        : "border-border bg-background hover:border-primary/40"
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <div className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center font-bold text-white ${
-                        bloomLevel === value ? "bg-primary" : "bg-muted-foreground"
-                      }`}>
-                        {value}
-                      </div>
-                      <span className="text-sm font-medium text-foreground">{label}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground ml-5.5">{desc}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Count */}
-            <div>
-              <label className="text-sm font-medium text-foreground mb-2 block">题目数量：{count} 题</label>
+              <label className="text-sm font-medium text-foreground mb-2 block">
+                题目数量：{count} 题
+              </label>
               <input
                 type="range" min={1} max={10} value={count}
                 onChange={(e) => setCount(Number(e.target.value))}
@@ -143,143 +170,240 @@ export default function TrainingPage() {
               </div>
             </div>
 
+            {error && (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+                <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
+            )}
+
             <Button onClick={handleStart} disabled={loading} size="lg" className="w-full gap-2">
-              {loading ? <><Loader2 size={16} className="animate-spin" /> AI 出题中…</> : <><Target size={16} /> 开始训练</>}
+              {loading
+                ? <><Loader2 size={16} className="animate-spin" /> AI 出题中…</>
+                : <><Target size={16} /> 开始训练</>}
             </Button>
+
+            <p className="text-xs text-muted-foreground text-center">
+              AI 将根据你在 <strong>{subject}</strong> 学科中已有的知识点出题
+            </p>
           </CardContent>
         </Card>
       </div>
     );
   }
 
+  // ── Answering ────────────────────────────────────────────────────────────
   if (phase === "answering") {
+    const q = questions[currentIdx];
+    if (!q) return null;
+    const record = records[String(q.id)];
+    const progress = Math.round((currentIdx / questions.length) * 100);
+
     return (
       <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-5 md:space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">训练中</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">{subject} · 第 1 / {count} 题</p>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {subject} · 第 {currentIdx + 1} / {questions.length} 题
+            </p>
           </div>
-          <Progress value={0} className="w-32 h-1.5" />
+          <Progress value={progress} className="w-32 h-1.5" />
         </div>
 
-        {/* Question */}
         <Card>
           <CardContent className="py-5 space-y-4">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
-                L{MOCK_QUESTION.bloom_level} 应用
+                {BLOOM_LABELS[q.bloom_level] ?? q.bloom_level}
               </span>
-              <div className="flex gap-1">
-                {MOCK_QUESTION.knowledge_points.map((kp) => (
-                  <span key={kp} className="text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                    {kp}
-                  </span>
-                ))}
-              </div>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                {q.question_type === "fill_blank" ? "填空" : q.question_type === "calculation" ? "计算" : "简答"}
+              </span>
             </div>
             <p className="text-sm text-foreground leading-relaxed whitespace-pre-line">
-              {MOCK_QUESTION.question}
+              {q.question}
             </p>
           </CardContent>
         </Card>
 
-        {/* Answer */}
-        <div>
-          <label className="text-sm font-medium text-foreground mb-2 block">你的解答</label>
-          <textarea
-            value={answer}
-            onChange={(e) => setAnswer(e.target.value)}
-            placeholder="写下你的解题过程和答案…"
-            className="w-full min-h-[180px] rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
-          />
-        </div>
+        {!submitted ? (
+          <>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-2 block">你的解答</label>
+              <textarea
+                value={currentAnswer}
+                onChange={(e) => setCurrentAnswer(e.target.value)}
+                placeholder="写下你的解题过程和答案…"
+                className="w-full min-h-[160px] rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+              />
+            </div>
 
-        <div className="flex gap-3">
-          <Button variant="outline" onClick={handleRestart} className="gap-2">
-            <RotateCcw size={14} /> 退出
-          </Button>
-          <Button onClick={handleSubmit} disabled={!answer.trim() || loading} className="flex-1 gap-2">
-            {loading ? <><Loader2 size={16} className="animate-spin" /> AI 评分中…</> : <><Sparkles size={16} /> 提交答案</>}
-          </Button>
-        </div>
+            {error && (
+              <div className="flex items-center gap-2 text-destructive text-sm">
+                <AlertCircle size={14} /> {error}
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={handleRestart} className="gap-2">
+                <RotateCcw size={14} /> 退出
+              </Button>
+              <Button
+                onClick={handleSubmit}
+                disabled={!currentAnswer.trim() || loading}
+                className="flex-1 gap-2"
+              >
+                {loading
+                  ? <><Loader2 size={16} className="animate-spin" /> AI 评分中…</>
+                  : <><Sparkles size={16} /> 提交答案</>}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Result for this question */}
+            <Card className={cn(
+              "border-2",
+              record.is_wrong ? "border-destructive/30 bg-destructive/5" : "border-green-200 bg-green-50/50"
+            )}>
+              <CardContent className="py-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "w-16 h-16 rounded-full border-4 flex items-center justify-center shrink-0",
+                    record.is_wrong ? "border-destructive" : "border-green-500"
+                  )}>
+                    <span className={cn(
+                      "text-xl font-bold",
+                      record.is_wrong ? "text-destructive" : "text-green-600"
+                    )}>{record.ai_score}</span>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1 mb-1">
+                      {[1,2,3,4,5].map((i) => (
+                        <Star key={i} size={13} className={cn(
+                          i <= Math.round(record.ai_score / 20)
+                            ? "text-amber-400 fill-amber-400"
+                            : "text-muted"
+                        )} />
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-1 text-sm">
+                      {record.is_wrong
+                        ? <><XCircle size={14} className="text-destructive" /><span className="text-destructive font-medium">已加入错题本</span></>
+                        : <><CheckCircle2 size={14} className="text-green-600" /><span className="text-green-700 font-medium">掌握良好</span></>}
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
+                    <Brain size={12} /> AI 点评
+                  </p>
+                  <p className="text-sm text-foreground leading-relaxed">{record.ai_feedback}</p>
+                </div>
+
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1">参考答案</p>
+                  <p className="text-sm text-foreground leading-relaxed whitespace-pre-line font-mono bg-background/80 rounded-lg p-3 border border-border">
+                    {record.reference}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={handleRestart} className="gap-2">
+                <RotateCcw size={14} /> 退出
+              </Button>
+              <Button onClick={handleNext} className="flex-1 gap-2">
+                {currentIdx + 1 >= questions.length
+                  ? <><CheckCircle2 size={14} /> 查看总结</>
+                  : <>下一题 <ChevronRight size={14} /></>}
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     );
   }
 
-  // Result phase
+  // ── Result summary ───────────────────────────────────────────────────────
+  const wrongCount = Object.values(records).filter((r) => r.is_wrong).length;
+
   return (
-    <div className="p-8 max-w-2xl mx-auto space-y-6">
+    <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-5 md:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">评分结果</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">{subject} · 第 1 / {count} 题</p>
+        <h1 className="text-2xl font-bold text-foreground">训练完成</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          {subject} · 共 {questions.length} 题
+        </p>
       </div>
 
-      {/* Score */}
       <Card>
         <CardContent className="py-6">
           <div className="flex items-center gap-6">
             <div className="w-20 h-20 rounded-full border-4 border-primary flex items-center justify-center shrink-0">
-              <span className="text-2xl font-bold text-primary">{result?.score}</span>
+              <span className="text-2xl font-bold text-primary">{avgScore}</span>
             </div>
             <div className="space-y-1">
-              <p className="font-semibold text-foreground">AI 综合评分</p>
+              <p className="font-semibold text-foreground">平均得分</p>
               <div className="flex items-center gap-1">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <Star
-                    key={i}
-                    size={14}
-                    className={i <= Math.round((result?.score || 0) / 20) ? "text-amber-400 fill-amber-400" : "text-muted"}
-                  />
+                {[1,2,3,4,5].map((i) => (
+                  <Star key={i} size={14} className={cn(
+                    i <= Math.round(avgScore / 20) ? "text-amber-400 fill-amber-400" : "text-muted"
+                  )} />
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">
-                {result!.score >= 90 ? "优秀" : result!.score >= 75 ? "良好" : result!.score >= 60 ? "合格" : "需要加强"}
+                {wrongCount > 0
+                  ? `${wrongCount} 题已加入错题本，建议重点复习`
+                  : "全部掌握，表现优秀！"}
               </p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Feedback */}
-      <Card>
-        <CardHeader><CardTitle className="text-sm flex items-center gap-2"><Brain size={14} className="text-primary" /> AI 点评</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-foreground leading-relaxed">{result?.feedback}</p>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 rounded-lg bg-green-50 border border-green-100">
-              <p className="text-xs font-medium text-green-700 mb-2 flex items-center gap-1"><CheckCircle2 size={12} /> 做得好</p>
-              {result?.strengths.map((s, i) => (
-                <p key={i} className="text-xs text-green-600 mt-1">· {s}</p>
-              ))}
-            </div>
-            <div className="p-3 rounded-lg bg-amber-50 border border-amber-100">
-              <p className="text-xs font-medium text-amber-700 mb-2 flex items-center gap-1"><Target size={12} /> 可以改进</p>
-              {result?.improvements.map((s, i) => (
-                <p key={i} className="text-xs text-amber-600 mt-1">· {s}</p>
-              ))}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Reference */}
-      <Card>
-        <CardHeader><CardTitle className="text-sm">参考答案</CardTitle></CardHeader>
-        <CardContent>
-          <p className="text-sm text-foreground leading-relaxed whitespace-pre-line font-mono bg-muted/50 rounded-lg p-3">
-            {MOCK_QUESTION.reference}
-          </p>
-        </CardContent>
-      </Card>
+      <div className="space-y-3">
+        {questions.map((q, idx) => {
+          const r = records[String(q.id)];
+          if (!r) return null;
+          return (
+            <Card key={String(q.id)} className={cn(
+              "border",
+              r.is_wrong ? "border-destructive/30" : "border-green-200"
+            )}>
+              <CardContent className="py-4 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs text-muted-foreground font-medium">#{idx + 1}</span>
+                    {r.is_wrong
+                      ? <XCircle size={15} className="text-destructive" />
+                      : <CheckCircle2 size={15} className="text-green-600" />}
+                    <span className={cn(
+                      "text-sm font-semibold",
+                      r.is_wrong ? "text-destructive" : "text-green-600"
+                    )}>{r.ai_score}分</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {BLOOM_LABELS[q.bloom_level] ?? q.bloom_level}
+                  </span>
+                </div>
+                <p className="text-sm text-foreground line-clamp-2">{q.question}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">{r.ai_feedback}</p>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
 
       <div className="flex gap-3">
-        <Button variant="outline" onClick={handleRestart} className="gap-2 flex-1">
+        <Button variant="outline" onClick={handleRestart} className="flex-1 gap-2">
           <RotateCcw size={14} /> 重新配置
         </Button>
-        <Button onClick={() => { setAnswer(""); setPhase("answering"); }} className="flex-1 gap-2">
-          下一题 <ChevronRight size={14} />
+        <Button onClick={() => { setPhase("answering"); setCurrentIdx(0); setSubmitted(false); setCurrentAnswer(""); setRecords({}); }} className="flex-1 gap-2">
+          <Target size={14} /> 重做本组
         </Button>
       </div>
     </div>

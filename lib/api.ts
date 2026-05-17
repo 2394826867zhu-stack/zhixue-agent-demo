@@ -291,6 +291,38 @@ export const getPomodoroStats = () => {
   return api.get("/tasks/pomodoro/stats").then((r) => r.data.data);
 };
 
+export const createTask = (body: object) => {
+  if (isDemoMode()) {
+    const t = { id: `task-${Date.now()}`, title: "新任务", task_type: "manual", is_done: false, priority: "normal", estimated_minutes: 25, ...body };
+    demoTasks = [t as typeof demoTasks[0], ...demoTasks];
+    return delay(t);
+  }
+  return api.post("/tasks", body).then((r) => r.data.data);
+};
+
+export const deleteTask = (id: string) => {
+  if (isDemoMode()) { demoTasks = demoTasks.filter((t) => t.id !== id); return delay({ success: true }); }
+  return api.delete(`/tasks/${id}`).then((r) => r.data.data);
+};
+
+export const aiSortTasks = () => {
+  if (isDemoMode()) return delay(demoTasks);
+  return api.post("/tasks/ai-sort").then((r) => r.data.data);
+};
+
+export const recordPomodoro = (body: { task_id?: string; duration_minutes: number; started_at: string; completed_at: string; note?: string }) => {
+  if (isDemoMode()) return delay({ id: `pomo-${Date.now()}`, duration_minutes: body.duration_minutes });
+  return api.post("/tasks/pomodoro", body).then((r) => r.data.data);
+};
+
+export const getWeeklyProgress = () => {
+  if (isDemoMode()) {
+    const days = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+    return delay(days.map((day, i) => ({ day, minutes: [45, 30, 60, 25, 75, 90, 50][i], cards: [12, 8, 18, 6, 22, 28, 14][i] })));
+  }
+  return api.get("/progress/weekly").then((r) => r.data.data);
+};
+
 // ---- Notes ----
 export const listNotes = (page = 1) => {
   if (isDemoMode()) return delay(page === 1 ? demoNotes : []);
@@ -329,17 +361,17 @@ export const reviewCard = (id: string, rating: number) => {
 export const listKPs = (params?: object) => {
   if (isDemoMode()) {
     return delay([
-      { id: "kp-1", title: "等差数列求和", subject: "数学", mastery: 0.82, status: "reviewing" },
-      { id: "kp-2", title: "受力分析", subject: "物理", mastery: 0.54, status: "weak" },
-      { id: "kp-3", title: "氧化还原判断", subject: "化学", mastery: 0.66, status: "learning" },
-      { id: "kp-4", title: "阅读主旨题", subject: "英语", mastery: 0.74, status: "reviewing" },
+      { id: "kp-1", name: "等差数列求和", subject: "数学", mastery_status: "reviewing", stability: 3.2, next_review_date: null, bloom_level: "apply", flashcard_count: 2 },
+      { id: "kp-2", name: "受力分析", subject: "物理", mastery_status: "learning", stability: null, next_review_date: null, bloom_level: "apply", flashcard_count: 1 },
+      { id: "kp-3", name: "氧化还原判断", subject: "化学", mastery_status: "learning", stability: 1.1, next_review_date: null, bloom_level: "understand", flashcard_count: 1 },
+      { id: "kp-4", name: "阅读主旨题", subject: "英语", mastery_status: "reviewing", stability: 4.5, next_review_date: null, bloom_level: "analyze", flashcard_count: 3 },
     ]);
   }
-  return api.get("/knowledge-points", { params }).then((r) => r.data.data);
+  return api.get("/knowledge-points", { params }).then((r) => r.data.data.items ?? r.data.data);
 };
 
 export const getKPStats = () => {
-  if (isDemoMode()) return delay({ total: 142, mastered: 68, reviewing: 51, weak: 23 });
+  if (isDemoMode()) return delay({ total: 4, new: 0, learning: 2, reviewing: 2, mastered: 0, by_subject: {} });
   return api.get("/knowledge-points/stats").then((r) => r.data.data);
 };
 
@@ -371,21 +403,56 @@ export const submitAnswer = (sessionId: string, questionId: string, body: object
 };
 
 // ---- Guidance ----
-export const startGuidance = (body: object) => {
-  if (isDemoMode()) return delay({ id: "demo-guidance-1", status: "active", context: body });
+export const startGuidance = (body: { question: string; subject?: string }) => {
+  if (isDemoMode()) {
+    return delay({
+      session_id: "demo-guid-1",
+      message: { id: "msg-1", role: "assistant", content: "好问题！在我解释之前，我想先了解一下你目前对这个概念的理解——你能用自己的话描述一下它大概是什么吗？" },
+    });
+  }
   return api.post("/guidance/sessions", body).then((r) => r.data.data);
 };
 
-export const chatGuidance = (sessionId: string, body: object) => {
+export const chatGuidance = (sessionId: string, message: string) => {
   if (isDemoMode()) {
     return delay({
       session_id: sessionId,
-      role: "assistant",
-      content: "我会先帮你把目标拆成今天能完成的一小步，然后根据完成情况继续调整节奏。",
-      input: body,
+      message: { id: Date.now().toString(), role: "assistant", content: "很好，你提到了关键点。那你觉得，如果把这个条件去掉，结果会发生什么变化呢？" },
     });
   }
-  return api.post(`/guidance/sessions/${sessionId}/chat`, body).then((r) => r.data.data);
+  return api.post(`/guidance/sessions/${sessionId}/chat`, { message }).then((r) => r.data.data);
+};
+
+export const listGuidanceSessions = (page = 1) => {
+  if (isDemoMode()) return delay({ items: [], total: 0 });
+  return api.get(`/guidance/sessions?page=${page}`).then((r) => r.data.data);
+};
+
+// ---- Mistakes ----
+export const listMistakes = (params?: { subject?: string; page?: number; page_size?: number }) => {
+  if (isDemoMode()) {
+    return delay([
+      { id: "m-1", question_text: "质量为 2kg 的物体在水平面做匀速运动，μ=0.3，g=10m/s²，求摩擦力。", user_answer: "6N", reference_answer: "f = μmg = 0.3×2×10 = 6N，匀速则合力为零。", ai_feedback: "公式选择正确，但注意说明匀速运动中合力为零的物理意义。", ai_score: 72, bloom_level: "apply", question_type: "calculation", created_at: new Date().toISOString() },
+      { id: "m-2", question_text: "f(x)=x³-3x 的单调递增区间。", user_answer: "(-∞,-1) 和 (1,+∞)", reference_answer: "f'(x)=3x²-3>0 → x<-1 或 x>1，单调递增区间为 (-∞,-1) 和 (1,+∞)。", ai_feedback: "结果正确，注意使用开区间表示。", ai_score: 88, bloom_level: "analyze", question_type: "calculation", created_at: new Date().toISOString() },
+      { id: "m-3", question_text: "下列属于电解质的是：A.NaCl B.蔗糖 C.酒精 D.铁", user_answer: "D", reference_answer: "A. NaCl。铁是单质，不属于电解质或非电解质范畴。", ai_feedback: "混淆了单质与电解质的概念，电解质必须是化合物。", ai_score: 30, bloom_level: "remember", question_type: "fill_blank", created_at: new Date().toISOString() },
+    ]);
+  }
+  return api.get("/mistakes", { params }).then((r) => r.data.data.items ?? r.data.data);
+};
+
+export const retryMistake = (id: string) => {
+  if (isDemoMode()) return delay({ retry_question_id: `retry-${id}`, original_question_id: id, question_type: "calculation", bloom_level: "apply", question_text: "变式题：同一知识点的新题目，请重新作答……" });
+  return api.post(`/mistakes/${id}/retry`).then((r) => r.data.data);
+};
+
+export const submitRetryAnswer = (questionId: string, retryQuestionId: string, userAnswer: string) => {
+  if (isDemoMode()) return delay({ retry_question_id: retryQuestionId, ai_score: 85, ai_feedback: "理解有明显进步！", reference_answer: "参考答案示例……", mistake_resolved: true });
+  return api.post(`/mistakes/${questionId}/retry/${retryQuestionId}/answer`, { user_answer: userAnswer }).then((r) => r.data.data);
+};
+
+export const removeMistake = (id: string) => {
+  if (isDemoMode()) return delay({ success: true });
+  return api.delete(`/mistakes/${id}`).then((r) => r.data.data);
 };
 
 // ---- Auth ----

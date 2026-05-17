@@ -1,78 +1,37 @@
 "use client";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { TrendingUp, Flame, Clock, Brain, Calendar } from "lucide-react";
+import { TrendingUp, Flame, Clock, Brain, Calendar, Loader2 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, LineChart, Line, CartesianGrid
+  ResponsiveContainer, CartesianGrid,
 } from "recharts";
+import { getOverview, getHeatmap, getSubjects, getWeeklyReport } from "@/lib/api";
 
-// Generate 365-day heatmap data
-function genHeatmap() {
-  const days: { date: string; count: number }[] = [];
-  const today = new Date();
-  for (let i = 364; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
-    // Mock: weekdays more active, random bursts
-    const isWeekday = d.getDay() !== 0 && d.getDay() !== 6;
-    const rand = Math.random();
-    let count = 0;
-    if (rand > 0.3) count = Math.floor(rand * (isWeekday ? 8 : 5));
-    days.push({ date: dateStr, count });
-  }
-  return days;
-}
+const SUBJECT_COLORS: Record<string, string> = {
+  数学: "#3b82f6", 物理: "#8b5cf6", 化学: "#10b981",
+  生物: "#14b8a6", 英语: "#f59e0b", 语文: "#ef4444",
+};
+const DAY_NAMES = ["日", "一", "二", "三", "四", "五", "六"];
 
-const HEATMAP = genHeatmap();
-
-function getIntensity(count: number) {
-  if (count === 0) return "bg-muted";
-  if (count <= 2) return "bg-primary/20";
-  if (count <= 4) return "bg-primary/45";
-  if (count <= 6) return "bg-primary/70";
+function getIntensity(minutes: number) {
+  if (minutes === 0) return "bg-muted";
+  if (minutes < 20) return "bg-primary/20";
+  if (minutes < 40) return "bg-primary/45";
+  if (minutes < 60) return "bg-primary/70";
   return "bg-primary";
 }
 
-const WEEKLY_DATA = [
-  { day: "周一", minutes: 45, cards: 12 },
-  { day: "周二", minutes: 30, cards: 8 },
-  { day: "周三", minutes: 60, cards: 18 },
-  { day: "周四", minutes: 25, cards: 6 },
-  { day: "周五", minutes: 75, cards: 22 },
-  { day: "周六", minutes: 90, cards: 28 },
-  { day: "周日", minutes: 50, cards: 14 },
-];
-
-const SUBJECT_STATS = [
-  { subject: "数学", total: 42, mastered: 28, reviewing: 10, learning: 4, color: "#3b82f6" },
-  { subject: "物理", total: 35, mastered: 18, reviewing: 12, learning: 5, color: "#8b5cf6" },
-  { subject: "化学", total: 28, mastered: 15, reviewing: 8, learning: 5, color: "#10b981" },
-  { subject: "生物", total: 22, mastered: 8, reviewing: 9, learning: 5, color: "#14b8a6" },
-  { subject: "英语", total: 38, mastered: 20, reviewing: 14, learning: 4, color: "#f59e0b" },
-  { subject: "语文", total: 18, mastered: 6, reviewing: 8, learning: 4, color: "#ef4444" },
-];
-
-const MONTH_TREND = [
-  { week: "第1周", minutes: 210 },
-  { week: "第2周", minutes: 280 },
-  { week: "第3周", minutes: 195 },
-  { week: "第4周", minutes: 340 },
-];
-
-// Group heatmap into weeks (columns)
-function groupHeatmapByWeek() {
-  const weeks: { date: string; count: number }[][] = [];
-  let week: { date: string; count: number }[] = [];
-  for (let i = 0; i < HEATMAP.length; i++) {
-    const d = new Date(HEATMAP[i].date);
+function groupHeatmapByWeek(days: { date: string; minutes: number }[]) {
+  const weeks: { date: string; minutes: number; empty?: boolean }[][] = [];
+  let week: { date: string; minutes: number; empty?: boolean }[] = [];
+  for (let i = 0; i < days.length; i++) {
+    const d = new Date(days[i].date);
     if (i === 0) {
-      // pad start of first week
-      for (let j = 0; j < d.getDay(); j++) week.push({ date: "", count: -1 });
+      for (let j = 0; j < d.getDay(); j++) week.push({ date: "", minutes: -1, empty: true });
     }
-    week.push(HEATMAP[i]);
-    if (d.getDay() === 6 || i === HEATMAP.length - 1) {
+    week.push(days[i]);
+    if (d.getDay() === 6 || i === days.length - 1) {
       weeks.push(week);
       week = [];
     }
@@ -80,13 +39,36 @@ function groupHeatmapByWeek() {
   return weeks;
 }
 
-const WEEKS = groupHeatmapByWeek();
-
 export default function ProgressPage() {
-  const totalMastered = SUBJECT_STATS.reduce((a, s) => a + s.mastered, 0);
-  const totalKPs = SUBJECT_STATS.reduce((a, s) => a + s.total, 0);
-  const masteryRate = Math.round((totalMastered / totalKPs) * 100);
-  const weekMinutes = WEEKLY_DATA.reduce((a, d) => a + d.minutes, 0);
+  const { data: overview } = useQuery({
+    queryKey: ["progress-overview"],
+    queryFn: () => getOverview(),
+  });
+
+  const { data: heatmapDays = [], isLoading: heatmapLoading } = useQuery({
+    queryKey: ["heatmap", 365],
+    queryFn: () => getHeatmap(365) as Promise<{ date: string; minutes: number }[]>,
+  });
+
+  const { data: subjects = [] } = useQuery({
+    queryKey: ["subjects"],
+    queryFn: () => getSubjects() as Promise<{ subject: string; kp_count: number; mastered_count: number; mastery: number; weekly_minutes: number }[]>,
+  });
+
+  const { data: weeklyReport } = useQuery({
+    queryKey: ["weekly-report", 0],
+    queryFn: () => getWeeklyReport(0),
+  });
+
+  // Last 7 days from heatmap for weekly bar chart
+  const weeklyData = heatmapDays.slice(-7).map((d) => ({
+    day: `周${DAY_NAMES[new Date(d.date).getDay()]}`,
+    minutes: d.minutes,
+  }));
+
+  const weeks = groupHeatmapByWeek(heatmapDays);
+
+  const weekMinutes = weeklyReport?.total_minutes ?? overview?.weekly_minutes ?? 0;
 
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-5 md:space-y-8">
@@ -98,12 +80,32 @@ export default function ProgressPage() {
       {/* Key stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
         {[
-          { label: "本周学习", value: `${weekMinutes}min`, sub: "较上周 +12%", icon: Clock, color: "text-primary" },
-          { label: "连续学习", value: "14天", sub: "保持纪录", icon: Flame, color: "text-orange-500" },
-          { label: "总掌握率", value: `${masteryRate}%`, sub: `${totalMastered}/${totalKPs} 知识点`, icon: Brain, color: "text-green-600" },
-          { label: "本周闪卡", value: "108张", sub: "较上周 +22张", icon: TrendingUp, color: "text-blue-600" },
+          {
+            label: "本周学习",
+            value: weekMinutes ? `${weekMinutes}min` : "—",
+            sub: `${weeklyReport?.pomodoro_count ?? 0} 个番茄钟`,
+            icon: Clock, color: "text-primary",
+          },
+          {
+            label: "连续学习",
+            value: "—",
+            sub: "暂无连续数据",
+            icon: Flame, color: "text-orange-500",
+          },
+          {
+            label: "知识点总数",
+            value: overview ? `${overview.total_kps}` : "—",
+            sub: overview ? `本周+${overview.kp_delta_week}` : "加载中",
+            icon: Brain, color: "text-green-600",
+          },
+          {
+            label: "待复习闪卡",
+            value: overview ? `${overview.due_cards}` : "—",
+            sub: overview ? `错题 ${overview.mistake_count} 道` : "加载中",
+            icon: TrendingUp, color: "text-blue-600",
+          },
         ].map(({ label, value, sub, icon: Icon, color }) => (
-          <Card key={label} size="sm">
+          <Card key={label}>
             <CardContent className="py-4">
               <div className="flex items-start justify-between">
                 <div>
@@ -126,113 +128,146 @@ export default function ProgressPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto pb-2">
-            <div className="flex gap-0.5 min-w-max">
-              {WEEKS.map((week, wi) => (
-                <div key={wi} className="flex flex-col gap-0.5">
-                  {Array.from({ length: 7 }).map((_, di) => {
-                    const cell = week[di];
-                    if (!cell || cell.count === -1) {
-                      return <div key={di} className="w-3 h-3 rounded-sm" />;
-                    }
-                    return (
-                      <div
-                        key={di}
-                        title={`${cell.date}: ${cell.count} 次学习`}
-                        className={`w-3 h-3 rounded-sm ${getIntensity(cell.count)} transition-opacity hover:opacity-80`}
-                      />
-                    );
-                  })}
-                </div>
-              ))}
+          {heatmapLoading ? (
+            <div className="flex items-center gap-2 text-muted-foreground py-6">
+              <Loader2 size={15} className="animate-spin" /> 加载中…
             </div>
-          </div>
-          <div className="flex items-center gap-1.5 mt-3 text-xs text-muted-foreground">
-            <span>少</span>
-            {["bg-muted", "bg-primary/20", "bg-primary/45", "bg-primary/70", "bg-primary"].map((c) => (
-              <div key={c} className={`w-3 h-3 rounded-sm ${c}`} />
-            ))}
-            <span>多</span>
-          </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto pb-2">
+                <div className="flex gap-0.5 min-w-max">
+                  {weeks.map((week, wi) => (
+                    <div key={wi} className="flex flex-col gap-0.5">
+                      {Array.from({ length: 7 }).map((_, di) => {
+                        const cell = week[di];
+                        if (!cell || cell.empty || cell.minutes === -1) {
+                          return <div key={di} className="w-3 h-3 rounded-sm" />;
+                        }
+                        return (
+                          <div
+                            key={di}
+                            title={`${cell.date}: ${cell.minutes} 分钟`}
+                            className={`w-3 h-3 rounded-sm ${getIntensity(cell.minutes)} transition-opacity hover:opacity-80 cursor-default`}
+                          />
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 mt-3 text-xs text-muted-foreground">
+                <span>少</span>
+                {["bg-muted", "bg-primary/20", "bg-primary/45", "bg-primary/70", "bg-primary"].map((c) => (
+                  <div key={c} className={`w-3 h-3 rounded-sm ${c}`} />
+                ))}
+                <span>多</span>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
+      {/* Weekly bar + AI advice */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-        {/* Weekly bar chart */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">本周每日学习时长</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={WEEKLY_DATA} barSize={20}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                <XAxis dataKey="day" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} unit="min" width={40} />
-                <Tooltip
-                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
-                  formatter={(v) => [`${v} 分钟`, "学习时长"]}
-                />
-                <Bar dataKey="minutes" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {weeklyData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={weeklyData} barSize={20}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                  <XAxis dataKey="day" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} unit="min" width={40} />
+                  <Tooltip
+                    contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                    formatter={(v) => [`${v} 分钟`, "学习时长"]}
+                  />
+                  <Bar dataKey="minutes" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-44 text-muted-foreground text-sm">
+                暂无数据
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Month trend */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">本月周趋势</CardTitle>
+            <CardTitle className="text-base">AI 本周建议</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={MONTH_TREND}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="week" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} unit="min" width={45} />
-                <Tooltip
-                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
-                  formatter={(v) => [`${v} 分钟`, "学习时长"]}
-                />
-                <Line type="monotone" dataKey="minutes" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={{ fill: "hsl(var(--primary))", r: 4 }} />
-              </LineChart>
-            </ResponsiveContainer>
+            {weeklyReport ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="p-2 rounded-lg bg-muted/60 space-y-0.5">
+                    <p className="text-muted-foreground">新增知识点</p>
+                    <p className="font-semibold text-foreground">{weeklyReport.new_kps} 个</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-muted/60 space-y-0.5">
+                    <p className="text-muted-foreground">训练均分</p>
+                    <p className="font-semibold text-foreground">
+                      {weeklyReport.training_avg_score != null ? `${Math.round(weeklyReport.training_avg_score)}分` : "—"}
+                    </p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-muted/60 space-y-0.5">
+                    <p className="text-muted-foreground">闪卡完成率</p>
+                    <p className="font-semibold text-foreground">{Math.round((weeklyReport.flashcard_completion_rate ?? 0) * 100)}%</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-muted/60 space-y-0.5">
+                    <p className="text-muted-foreground">新增错题</p>
+                    <p className="font-semibold text-foreground">{weeklyReport.wrong_count} 道</p>
+                  </div>
+                </div>
+                <p className="text-sm text-foreground leading-relaxed">{weeklyReport.ai_advice}</p>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-muted-foreground py-6">
+                <Loader2 size={15} className="animate-spin" /> 加载中…
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
 
       {/* Subject breakdown */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">各学科知识点掌握情况</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {SUBJECT_STATS.map((s) => {
-            const masteryPct = Math.round((s.mastered / s.total) * 100);
-            return (
-              <div key={s.subject} className="space-y-1.5">
-                <div className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ background: s.color }} />
-                    <span className="font-medium text-foreground">{s.subject}</span>
+      {subjects.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">各学科知识点掌握情况</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {subjects.map((s) => {
+              const color = SUBJECT_COLORS[s.subject] ?? "#6b7280";
+              const masteryPct = Math.round(s.mastery);
+              return (
+                <div key={s.subject} className="space-y-1.5">
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+                      <span className="font-medium text-foreground">{s.subject}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span className="text-green-600 font-medium">掌握 {s.mastered_count}</span>
+                      <span className="text-muted-foreground">共 {s.kp_count}</span>
+                      <span className="font-semibold text-foreground">{masteryPct}%</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    <span className="text-green-600 font-medium">掌握 {s.mastered}</span>
-                    <span className="text-primary">复习中 {s.reviewing}</span>
-                    <span className="text-amber-600">学习中 {s.learning}</span>
-                    <span className="font-semibold text-foreground">{masteryPct}%</span>
+                  <div className="h-2 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${masteryPct}%`, background: color }}
+                    />
                   </div>
                 </div>
-                <div className="h-2 rounded-full bg-muted overflow-hidden flex">
-                  <div className="bg-green-500 transition-all" style={{ width: `${(s.mastered / s.total) * 100}%` }} />
-                  <div className="bg-primary/70 transition-all" style={{ width: `${(s.reviewing / s.total) * 100}%` }} />
-                  <div className="bg-amber-400 transition-all" style={{ width: `${(s.learning / s.total) * 100}%` }} />
-                </div>
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

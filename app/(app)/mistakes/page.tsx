@@ -1,72 +1,97 @@
 "use client";
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, CheckCircle2, RotateCcw, ChevronDown, ChevronUp, Target } from "lucide-react";
+import {
+  AlertCircle, CheckCircle2, RotateCcw, ChevronDown, ChevronUp,
+  Target, Loader2, Sparkles, XCircle
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { listMistakes, retryMistake, submitRetryAnswer, removeMistake } from "@/lib/api";
 
-const MOCK_MISTAKES = [
-  {
-    id: "1",
-    subject: "物理",
-    question: "质量为 2 kg 的物体在水平面上做匀速运动，已知动摩擦因数 μ=0.3，g=10m/s²，求物体所受摩擦力大小。",
-    your_answer: "f = μmg = 0.3 × 2 × 10 = 6 N",
-    reference: "f = μN = μmg = 0.3 × 2 × 10 = 6 N\n\n注意：匀速运动时合力为零，摩擦力等于推力（如有），此题缺少推力信息，若纯匀速则摩擦力即为6N。",
-    knowledge_points: ["滑动摩擦力", "牛顿第一定律"],
-    error_count: 2,
-    last_error: "2026-05-15",
-    can_remove: false,
-  },
-  {
-    id: "2",
-    subject: "数学",
-    question: "已知 f(x) = x³ - 3x，求 f(x) 的单调递增区间。",
-    your_answer: "f'(x) = 3x² - 3 = 0，x = ±1。单调递增区间为 (-∞, -1) 和 (1, +∞)。",
-    reference: "f'(x) = 3x² - 3\n令 f'(x) > 0，得 x < -1 或 x > 1\n所以单调递增区间为 (-∞, -1) 和 (1, +∞)。\n\n✓ 答案正确，注意区间端点不包含（开区间）。",
-    knowledge_points: ["导数", "单调性"],
-    error_count: 1,
-    last_error: "2026-05-14",
-    can_remove: true,
-  },
-  {
-    id: "3",
-    subject: "化学",
-    question: "下列物质中，属于电解质的是：A. NaCl  B. 蔗糖  C. 酒精  D. 铁",
-    your_answer: "D. 铁",
-    reference: "A. NaCl（氯化钠）\n\nNaCl 溶于水或熔融状态下能导电，是强电解质。铁是单质，不是化合物，因此不属于电解质或非电解质范畴。",
-    knowledge_points: ["电解质", "强弱电解质判断"],
-    error_count: 3,
-    last_error: "2026-05-16",
-    can_remove: false,
-  },
-  {
-    id: "4",
-    subject: "英语",
-    question: "Fill in the blank: He insisted that she ______ (come) to the party.",
-    your_answer: "came",
-    reference: "come（原形）\n\n\"insist that\" 后接虚拟语气，从句用动词原形（或 should + 原形），不随主语变化。",
-    knowledge_points: ["虚拟语气", "情态动词"],
-    error_count: 2,
-    last_error: "2026-05-13",
-    can_remove: false,
-  },
-];
-
-const SUBJECT_COLORS: Record<string, string> = {
-  数学: "bg-blue-100 text-blue-700",
-  物理: "bg-purple-100 text-purple-700",
-  化学: "bg-green-100 text-green-700",
-  英语: "bg-amber-100 text-amber-700",
+const BLOOM_LABELS: Record<string, string> = {
+  remember: "记忆", understand: "理解", apply: "应用",
+  analyze: "分析", evaluate: "评估", create: "创造",
 };
 
+interface Mistake {
+  id: string;
+  question_text: string;
+  reference_answer: string;
+  user_answer: string | null;
+  ai_score: number | null;
+  ai_feedback: string | null;
+  bloom_level: string;
+  question_type: string;
+  created_at: string;
+}
+
+interface RetryState {
+  mistakeId: string;
+  retryQuestionId: string;
+  questionText: string;
+  answer: string;
+  submitted: boolean;
+  score?: number;
+  feedback?: string;
+  reference?: string;
+  resolved?: boolean;
+  loading: boolean;
+}
+
 export default function MistakesPage() {
+  const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [removed, setRemoved] = useState<string[]>([]);
-  const [practicing, setPracticing] = useState<string | null>(null);
+  const [retry, setRetry] = useState<RetryState | null>(null);
 
-  const visible = MOCK_MISTAKES.filter((m) => !removed.includes(m.id));
+  const { data: mistakes = [], isLoading } = useQuery<Mistake[]>({
+    queryKey: ["mistakes"],
+    queryFn: () => listMistakes() as Promise<Mistake[]>,
+  });
 
-  function toggle(id: string) {
-    setExpanded((prev) => (prev === id ? null : id));
+  const removeMut = useMutation({
+    mutationFn: (id: string) => removeMistake(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["mistakes"] }),
+  });
+
+  async function handleRetry(mistakeId: string) {
+    setRetry({ mistakeId, retryQuestionId: "", questionText: "", answer: "", submitted: false, loading: true });
+    try {
+      const res = await retryMistake(mistakeId);
+      setRetry({
+        mistakeId,
+        retryQuestionId: String(res.retry_question_id),
+        questionText: res.question_text,
+        answer: "",
+        submitted: false,
+        loading: false,
+      });
+    } catch {
+      setRetry(null);
+    }
+  }
+
+  async function handleSubmitRetry() {
+    if (!retry || !retry.answer.trim()) return;
+    setRetry((r) => r ? { ...r, loading: true } : null);
+    try {
+      const res = await submitRetryAnswer(retry.mistakeId, retry.retryQuestionId, retry.answer);
+      setRetry((r) => r ? {
+        ...r,
+        loading: false,
+        submitted: true,
+        score: res.ai_score,
+        feedback: res.ai_feedback,
+        reference: res.reference_answer,
+        resolved: res.mistake_resolved,
+      } : null);
+      if (res.mistake_resolved) {
+        queryClient.invalidateQueries({ queryKey: ["mistakes"] });
+      }
+    } catch {
+      setRetry((r) => r ? { ...r, loading: false } : null);
+    }
   }
 
   return (
@@ -74,104 +99,179 @@ export default function MistakesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">错题本</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">共 {visible.length} 道错题待攻克</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {isLoading ? "加载中…" : `共 ${mistakes.length} 道错题待攻克`}
+          </p>
         </div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <AlertCircle size={14} className="text-destructive" />
-          连续答对2次可自动移除
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <AlertCircle size={13} className="text-destructive" />
+          答对重练题自动移除
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-2 md:gap-3">
-        {[
-          { label: "待攻克", value: visible.length, color: "text-destructive" },
-          { label: "本周新增", value: 3, color: "text-amber-600" },
-          { label: "已攻克", value: removed.length + 5, color: "text-green-600" },
-        ].map(({ label, value, color }) => (
-          <Card key={label} size="sm">
-            <CardContent className="py-3.5 text-center">
-              <p className={`text-2xl font-bold ${color}`}>{value}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {isLoading && (
+        <div className="flex justify-center py-16 text-muted-foreground">
+          <Loader2 size={20} className="animate-spin mr-2" /> 加载中…
+        </div>
+      )}
 
-      {/* Mistake list */}
+      {/* Retry overlay */}
+      {retry && (
+        <Card className="border-2 border-primary/30 bg-primary/5">
+          <CardContent className="py-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-primary flex items-center gap-1.5">
+                <Sparkles size={14} /> AI 重练题
+              </p>
+              <button onClick={() => setRetry(null)} className="text-muted-foreground hover:text-foreground text-xs">取消</button>
+            </div>
+
+            {retry.loading && !retry.questionText && (
+              <div className="flex items-center gap-2 text-muted-foreground py-2">
+                <Loader2 size={15} className="animate-spin" /> AI 正在出题…
+              </div>
+            )}
+
+            {retry.questionText && !retry.submitted && (
+              <>
+                <p className="text-sm text-foreground leading-relaxed whitespace-pre-line">{retry.questionText}</p>
+                <textarea
+                  value={retry.answer}
+                  onChange={(e) => setRetry((r) => r ? { ...r, answer: e.target.value } : null)}
+                  placeholder="写下你的答案…"
+                  className="w-full min-h-[120px] rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+                />
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setRetry(null)}>取消</Button>
+                  <Button
+                    size="sm"
+                    onClick={handleSubmitRetry}
+                    disabled={!retry.answer.trim() || retry.loading}
+                    className="gap-1.5"
+                  >
+                    {retry.loading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                    提交答案
+                  </Button>
+                </div>
+              </>
+            )}
+
+            {retry.submitted && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "w-14 h-14 rounded-full border-4 flex items-center justify-center shrink-0",
+                    retry.resolved ? "border-green-500" : "border-amber-400"
+                  )}>
+                    <span className={cn("text-lg font-bold", retry.resolved ? "text-green-600" : "text-amber-600")}>
+                      {retry.score}
+                    </span>
+                  </div>
+                  <div>
+                    {retry.resolved
+                      ? <p className="text-sm font-semibold text-green-600 flex items-center gap-1"><CheckCircle2 size={14} /> 已掌握，移出错题本！</p>
+                      : <p className="text-sm font-semibold text-amber-600 flex items-center gap-1"><RotateCcw size={14} /> 继续加油，仍需复习</p>}
+                    <p className="text-xs text-muted-foreground mt-0.5">{retry.feedback}</p>
+                  </div>
+                </div>
+                {retry.reference && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">参考答案</p>
+                    <p className="text-sm text-foreground whitespace-pre-line bg-background/80 rounded-lg p-3 border border-border">
+                      {retry.reference}
+                    </p>
+                  </div>
+                )}
+                <Button size="sm" variant="outline" onClick={() => setRetry(null)}>关闭</Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <div className="space-y-3">
-        {visible.map((m) => {
+        {mistakes.map((m) => {
           const isExpanded = expanded === m.id;
-          const sc = SUBJECT_COLORS[m.subject] || "bg-muted text-muted-foreground";
           return (
-            <Card key={m.id} className={`transition-all ${isExpanded ? "ring-1 ring-primary/30" : ""}`}>
-              {/* Header row */}
+            <Card key={m.id} className={cn("transition-all", isExpanded && "ring-1 ring-primary/30")}>
               <CardContent className="py-4 space-y-3">
                 <div className="flex items-start gap-3">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${sc}`}>{m.subject}</span>
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <AlertCircle size={11} className="text-destructive" /> 错了 {m.error_count} 次
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
+                        {BLOOM_LABELS[m.bloom_level] ?? m.bloom_level}
                       </span>
-                      <span className="text-xs text-muted-foreground">· {m.last_error}</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                        {m.question_type === "fill_blank" ? "填空" : m.question_type === "calculation" ? "计算" : "简答"}
+                      </span>
+                      {m.ai_score !== null && (
+                        <span className={cn(
+                          "text-xs px-2 py-0.5 rounded-full font-medium",
+                          (m.ai_score ?? 0) < 60 ? "bg-destructive/10 text-destructive" : "bg-amber-100 text-amber-700"
+                        )}>
+                          得分 {m.ai_score}
+                        </span>
+                      )}
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(m.created_at).toLocaleDateString("zh-CN")}
+                      </span>
                     </div>
-                    <p className="text-sm text-foreground leading-relaxed line-clamp-2">{m.question}</p>
+                    <p className="text-sm text-foreground leading-relaxed line-clamp-2">{m.question_text}</p>
                   </div>
                   <button
-                    onClick={() => toggle(m.id)}
+                    onClick={() => setExpanded((prev) => prev === m.id ? null : m.id)}
                     className="shrink-0 text-muted-foreground hover:text-foreground transition-colors mt-0.5"
                   >
                     {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </button>
                 </div>
 
-                {/* Knowledge points */}
-                <div className="flex gap-1.5 flex-wrap">
-                  {m.knowledge_points.map((kp) => (
-                    <span key={kp} className="text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                      {kp}
-                    </span>
-                  ))}
-                </div>
-
-                {/* Expanded detail */}
                 {isExpanded && (
                   <div className="space-y-3 pt-1 border-t border-border">
+                    {m.user_answer && (
+                      <div>
+                        <p className="text-xs font-medium text-destructive mb-1.5 flex items-center gap-1">
+                          <XCircle size={11} /> 你的答案
+                        </p>
+                        <p className="text-sm text-foreground bg-destructive/5 rounded-lg px-3 py-2 leading-relaxed">
+                          {m.user_answer}
+                        </p>
+                      </div>
+                    )}
                     <div>
-                      <p className="text-xs font-medium text-destructive mb-1.5">你的答案</p>
-                      <p className="text-sm text-foreground bg-destructive/5 rounded-lg px-3 py-2 leading-relaxed">
-                        {m.your_answer}
+                      <p className="text-xs font-medium text-green-600 mb-1.5 flex items-center gap-1">
+                        <CheckCircle2 size={11} /> 正确解析
                       </p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-green-600 mb-1.5">正确解析</p>
                       <p className="text-sm text-foreground bg-green-50 border border-green-100 rounded-lg px-3 py-2 leading-relaxed whitespace-pre-line">
-                        {m.reference}
+                        {m.reference_answer}
                       </p>
                     </div>
+                    {m.ai_feedback && (
+                      <p className="text-xs text-muted-foreground leading-relaxed border-l-2 border-primary/30 pl-3">
+                        {m.ai_feedback}
+                      </p>
+                    )}
                   </div>
                 )}
 
-                {/* Actions */}
                 <div className="flex gap-2 pt-1">
                   <Button
                     size="sm"
                     className="gap-1.5"
-                    onClick={() => setPracticing(m.id)}
+                    onClick={() => handleRetry(m.id)}
+                    disabled={!!retry}
                   >
                     <Target size={13} /> 重新练习
                   </Button>
-                  {m.can_remove && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-1.5 text-green-600 border-green-200 hover:bg-green-50"
-                      onClick={() => setRemoved((prev) => [...prev, m.id])}
-                    >
-                      <CheckCircle2 size={13} /> 已掌握，移除
-                    </Button>
-                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 text-muted-foreground"
+                    onClick={() => removeMut.mutate(m.id)}
+                    disabled={removeMut.isPending}
+                  >
+                    <CheckCircle2 size={13} /> 移出
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -179,7 +279,7 @@ export default function MistakesPage() {
         })}
       </div>
 
-      {visible.length === 0 && (
+      {!isLoading && mistakes.length === 0 && (
         <div className="text-center py-20 space-y-3">
           <CheckCircle2 size={40} className="mx-auto text-green-500" />
           <p className="font-semibold text-foreground">错题本已清空！</p>
