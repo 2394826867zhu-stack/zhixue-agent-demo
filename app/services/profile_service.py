@@ -138,7 +138,7 @@ class ProfileService:
         flash_r = await db.execute(
             select(func.count()).where(
                 Flashcard.user_id == uid,
-                Flashcard.reps > 0,
+                Flashcard.review_count > 0,
             )
         )
         flashcard_reviews = flash_r.scalar() or 0
