@@ -26,7 +26,7 @@ async def load_user_context(db: AsyncSession, user_id: str) -> AgentContext:
     # 1. 用户基础信息
     user_row = await db.execute(select(User).where(User.id == uid))
     user = user_row.scalar_one_or_none()
-    username = user.username if user else "同学"
+    username = user.nickname if user else "同学"
     grade_raw = user.grade if user else ""
     grade = GRADE_DISPLAY.get(grade_raw, grade_raw)
     profile = user.learning_profile or {}
