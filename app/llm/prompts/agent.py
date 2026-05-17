@@ -1,7 +1,7 @@
 """
 知曜内置 Agent 的 System Prompt 构建器和工具定义。
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -17,6 +17,7 @@ class AgentContext:
     weakest_subject: str | None
     learning_count: int
     checkin_summary: str | None
+    agent_memory: dict = field(default_factory=dict)
 
 
 _IDENTITY = """你是「知曜」，专属学习管家。
@@ -25,11 +26,38 @@ _IDENTITY = """你是「知曜」，专属学习管家。
 始终使用中文回复。"""
 
 _RULES = """## 工作规则
-1. 需要实时数据时先调工具，不凭猜测回答
-2. 分析+规划类任务：先调 diagnose_learning，再调 plan_study_schedule
-3. 执行写操作后，用自然语言简洁告知用户做了什么
-4. 只处理学习相关请求，其他话题礼貌拒绝并引回学习
-5. 回复保持简洁，重点突出"""
+
+【判断模式，再行动】
+- 闲聊 / 情绪 / 思维整理（如"你好"、聊压力、梳理大纲、讨论学习方法、解释概念）→ 直接回复，无需调工具
+- 操作 / 查询 / 规划（如"帮我安排复习"、"看看我的错题"、"出题考我"、"记录考试"）→ 先调工具获取数据，再回复
+
+【执行规则】
+1. 写操作完成后用自然语言简洁告知，不列清单
+2. 只处理学习相关内容，其他话题礼貌引回
+3. 回复简洁有重点
+4. 发现值得记住的用户偏好 / 习惯 / 目标时，调用 save_memory 记录"""
+
+
+def _format_memory(memory: dict) -> str:
+    if not memory:
+        return "暂无记录"
+    labels = {
+        "preferences": "学习偏好",
+        "personality": "性格特点",
+        "goals": "目标",
+        "observations": "观察",
+    }
+    parts = []
+    for section, data in memory.items():
+        label = labels.get(section, section)
+        if isinstance(data, list):
+            parts.append(f"{label}：{'、'.join(str(x) for x in data)}")
+        elif isinstance(data, dict):
+            items = [f"{k}: {v}" for k, v in data.items()]
+            parts.append(f"{label}：{'; '.join(items)}")
+        else:
+            parts.append(f"{label}：{data}")
+    return "\n".join(parts)
 
 
 def build_system_prompt(ctx: AgentContext) -> str:
@@ -48,11 +76,14 @@ def build_system_prompt(ctx: AgentContext) -> str:
 {exam_line}
 最需关注：{ctx.weakest_subject or "暂无数据"}（{ctx.learning_count} 个知识点待掌握）"""
 
+    memory_block = f"""## 我对你的了解
+{_format_memory(ctx.agent_memory)}"""
+
     checkin_block = (
         f"\n## 今日签到\n{ctx.checkin_summary}" if ctx.checkin_summary else ""
     )
 
-    return "\n\n".join([_IDENTITY, profile, _RULES]) + checkin_block
+    return "\n\n".join([_IDENTITY, profile, memory_block, _RULES]) + checkin_block
 
 
 TOOL_DEFINITIONS = [
@@ -68,7 +99,7 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "diagnose_learning",
-            "description": "分析用户学科弱点，返回每科掌握情况、训练均分、错题数、最薄弱章节。制定计划前先调用此工具。",
+            "description": "分析用户学科弱点，返回每科掌握情况、训练均分、错题数量、最薄弱章节。制定计划前先调用此工具。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -220,6 +251,23 @@ TOOL_DEFINITIONS = [
                     "subject": {"type": "string", "description": "所属学科"},
                 },
                 "required": ["topic", "subject"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "save_memory",
+            "description": "记录关于用户的重要信息：学习偏好、习惯、性格特点、长期目标等。在对话中发现值得长期记住的内容时调用。不要频繁调用，只在获得明确的新信息时调用。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "updates": {
+                        "type": "object",
+                        "description": "要记录的内容。格式：{section: data}。section 可以是 preferences（学习偏好，如 {study_time: 晚上}）、personality（性格特点，如 {motivation: 成就感驱动}）、goals（目标，如 {short_term: 期末数学95分}）、observations（观察，字符串数组，如 [对错题比较敏感]）。",
+                    },
+                },
+                "required": ["updates"],
             },
         },
     },
