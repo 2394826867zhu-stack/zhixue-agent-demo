@@ -36,9 +36,7 @@ async def start_training(
     )
     questions = q_result.scalars().all()
 
-    resp = TrainingSessionDetail.model_validate(session)
-    # 开始训练时不暴露 reference（参考答案）
-    resp.questions = [
+    built_questions = [
         TrainingQuestionOut(
             id=q.id,
             knowledge_point_id=q.knowledge_point_id,
@@ -54,6 +52,10 @@ async def start_training(
         )
         for q in questions
     ]
+    resp = TrainingSessionDetail(
+        **TrainingSessionOut.model_validate(session).model_dump(),
+        questions=built_questions,
+    )
     return ok(resp)
 
 
@@ -94,6 +96,8 @@ async def get_session(
     )
     questions = q_result.scalars().all()
 
-    resp = TrainingSessionDetail.model_validate(session)
-    resp.questions = [TrainingQuestionOut.from_orm(q) for q in questions]
+    resp = TrainingSessionDetail(
+        **TrainingSessionOut.model_validate(session).model_dump(),
+        questions=[TrainingQuestionOut.from_orm(q) for q in questions],
+    )
     return ok(resp)

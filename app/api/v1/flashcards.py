@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.user import User
-from app.schemas.flashcard import FlashcardResponse, ReviewRequest, ReviewResponse
+from app.schemas.flashcard import FlashcardResponse, FlashcardCreateRequest, ReviewRequest, ReviewResponse
 from app.services.fsrs_service import fsrs_service
 
 router = APIRouter(prefix="/flashcards", tags=["闪卡复习"])
@@ -28,6 +28,19 @@ async def get_due_cards(
         for c in result["items"]
     ]
     return ok({"items": items, "total": result["total"], "page": result["page"], "page_size": result["page_size"]})
+
+
+@router.post("", summary="手动创建闪卡")
+async def create_card(
+    body: FlashcardCreateRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    card = await fsrs_service.create_card(
+        db, str(user.id), body.knowledge_point_id, body.front, body.back, body.card_type
+    )
+    resp = FlashcardResponse.model_validate(card)
+    return ok({**resp.model_dump(), "memory_state": card.memory_state})
 
 
 @router.get("", summary="全量闪卡列表")

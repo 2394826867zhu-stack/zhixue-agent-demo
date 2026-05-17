@@ -205,6 +205,19 @@ class FSRSService:
             "mastery_status_updated": mastery_updated,
         }
 
+    async def create_card(self, db: AsyncSession, user_id: str, knowledge_point_id: str, front: str, back: str, card_type: str) -> Flashcard:
+        card = Flashcard(
+            user_id=uuid.UUID(user_id),
+            knowledge_point_id=uuid.UUID(knowledge_point_id),
+            card_type=card_type,
+            front=front,
+            back=back,
+        )
+        db.add(card)
+        await db.commit()
+        await db.refresh(card)
+        return card
+
     async def delete_card(self, db: AsyncSession, card_id: str, user_id: str) -> None:
         card = await self._get_card(db, card_id, user_id)
         await db.delete(card)

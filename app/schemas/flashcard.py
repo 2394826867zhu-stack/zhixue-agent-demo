@@ -33,6 +33,20 @@ class ReviewRequest(BaseModel):
         return v
 
 
+class FlashcardCreateRequest(BaseModel):
+    knowledge_point_id: str
+    front: str
+    back: str
+    card_type: str = "concept"
+
+    @field_validator("card_type")
+    @classmethod
+    def valid_type(cls, v: str) -> str:
+        if v not in ("concept", "formula", "application"):
+            raise ValueError("card_type 必须为 concept/formula/application")
+        return v
+
+
 class ReviewResponse(BaseModel):
     flashcard_id: uuid.UUID
     next_due_date: date

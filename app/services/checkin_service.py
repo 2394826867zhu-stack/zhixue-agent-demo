@@ -112,7 +112,7 @@ class CheckInService:
 
     async def get_today(self, db: AsyncSession, user_id: str) -> CheckInOut | None:
         uid = uuid.UUID(user_id)
-        today_start = datetime.combine(date.today(), datetime.min.time()).replace(tzinfo=timezone.utc)
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         result = await db.execute(
             select(CheckIn)
             .where(CheckIn.user_id == uid, CheckIn.created_at >= today_start)
