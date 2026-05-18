@@ -185,9 +185,15 @@ class FSRSService:
         # Update linked knowledge_point mastery_status
         new_mastery = _stability_to_mastery(card.stability, card.review_count)
         kp_result = await db.execute(
-            select(KnowledgePoint).where(KnowledgePoint.id == card.knowledge_point_id)
+            select(KnowledgePoint).where(
+                KnowledgePoint.id == card.knowledge_point_id,
+                KnowledgePoint.user_id == uuid.UUID(user_id),
+            )
         )
         kp = kp_result.scalar_one_or_none()
+        if not kp:
+            raise PermissionDeniedError()
+
         mastery_updated = False
         if kp and kp.mastery_status != new_mastery:
             kp.mastery_status = new_mastery
@@ -206,8 +212,18 @@ class FSRSService:
         }
 
     async def create_card(self, db: AsyncSession, user_id: str, knowledge_point_id: str, front: str, back: str, card_type: str) -> Flashcard:
+        uid = uuid.UUID(user_id)
+        kp_result = await db.execute(
+            select(KnowledgePoint).where(
+                KnowledgePoint.id == uuid.UUID(knowledge_point_id),
+                KnowledgePoint.user_id == uid,
+            )
+        )
+        if not kp_result.scalar_one_or_none():
+            raise NotFoundError("知识点")
+
         card = Flashcard(
-            user_id=uuid.UUID(user_id),
+            user_id=uid,
             knowledge_point_id=uuid.UUID(knowledge_point_id),
             card_type=card_type,
             front=front,

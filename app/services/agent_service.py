@@ -22,14 +22,14 @@ MAX_HISTORY_MESSAGES = 20
 SESSION_TTL = 86400  # 24h
 
 
-def _session_key(session_id: str) -> str:
-    return f"agent_session:{session_id}"
+def _session_key(user_id: str, session_id: str) -> str:
+    return f"agent_session:{user_id}:{session_id}"
 
 
-async def load_history(session_id: str) -> list[dict]:
+async def load_history(user_id: str, session_id: str) -> list[dict]:
     try:
         redis = await get_redis()
-        raw = await redis.get(_session_key(session_id))
+        raw = await redis.get(_session_key(user_id, session_id))
         if not raw:
             return []
         return json.loads(raw)
@@ -37,19 +37,28 @@ async def load_history(session_id: str) -> list[dict]:
         return []
 
 
-async def save_history(session_id: str, messages: list[dict]) -> None:
+async def save_history(user_id: str, session_id: str, messages: list[dict]) -> None:
     if len(messages) > MAX_HISTORY_MESSAGES:
         messages = messages[-MAX_HISTORY_MESSAGES:]
     redis = await get_redis()
-    await redis.setex(_session_key(session_id), SESSION_TTL, json.dumps(messages, ensure_ascii=False))
+    await redis.setex(_session_key(user_id, session_id), SESSION_TTL, json.dumps(messages, ensure_ascii=False))
 
 
 def _serialize_message(msg) -> dict:
-    """把 openai SDK message 对象转为可 JSON 序列化的 dict。"""
-    if hasattr(msg, "model_dump"):
-        d = msg.model_dump()
-        return d
-    return msg  # 已经是 dict（tool result 消息）
+    """DeepSeek-compatible assistant message dict.
+    Strips SDK-only fields (refusal, audio, function_call) that DeepSeek rejects.
+    """
+    d: dict = {"role": "assistant", "content": msg.content}
+    if msg.tool_calls:
+        d["tool_calls"] = [
+            {
+                "id": tc.id,
+                "type": "function",
+                "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+            }
+            for tc in msg.tool_calls
+        ]
+    return d
 
 
 async def run(
@@ -68,7 +77,7 @@ async def run(
     ctx = await load_user_context(db, user_id)
     system = build_system_prompt(ctx)
     try:
-        history = await load_history(session_id)
+        history = await load_history(user_id, session_id)
     except Exception:
         history = []
     history.append({"role": "user", "content": message})
@@ -84,7 +93,8 @@ async def run(
                 system=system,
             )
         except Exception as e:
-            logger.error(f"DeepSeek tool call failed: {e}")
+            logger.error(f"DeepSeek tool call failed: {type(e).__name__}: {e}")
+            yield f'data: {json.dumps({"error": {"code": "tool_call_failed", "message": str(e), "recoverable": True}}, ensure_ascii=False)}\n\n'
             break
 
         if choice.finish_reason == "tool_calls" and choice.message.tool_calls:
@@ -127,6 +137,6 @@ async def run(
     # 5. 持久化对话历史
     history.append({"role": "assistant", "content": full_reply})
     try:
-        await save_history(session_id, history)
+        await save_history(user_id, session_id, history)
     except Exception as e:
         logger.warning(f"Failed to save history: {e}")

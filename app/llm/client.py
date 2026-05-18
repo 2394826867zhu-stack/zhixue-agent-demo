@@ -48,7 +48,7 @@ class LLMClient:
         if self._deepseek:
             try:
                 return await self._call_openai_compat(
-                    self._deepseek, settings.DEEPSEEK_MODEL, prompt, system
+                    self._deepseek, settings.DEEPSEEK_MODEL, prompt, system, image_b64=image_b64
                 )
             except Exception as e:
                 logger.warning(f"DeepSeek failed: {e}")
@@ -66,7 +66,7 @@ class LLMClient:
         if self._openai:
             try:
                 return await self._call_openai_compat(
-                    self._openai, "gpt-4o", prompt, system
+                    self._openai, "gpt-4o", prompt, system, image_b64=image_b64
                 )
             except Exception as e:
                 logger.warning(f"OpenAI failed: {e}")
@@ -80,11 +80,19 @@ class LLMClient:
         model: str,
         prompt: str,
         system: str,
+        image_b64: str | None = None,
     ) -> str:
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
+        if image_b64:
+            content = [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
+            ]
+        else:
+            content = prompt
+        messages.append({"role": "user", "content": content})
 
         resp = await client.chat.completions.create(
             model=model,

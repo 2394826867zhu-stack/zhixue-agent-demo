@@ -8,6 +8,10 @@ logger = logging.getLogger(__name__)
 @celery_app.task(name="app.tasks.task_tasks.generate_daily_tasks_all_users")
 def generate_daily_tasks_all_users():
     """Celery beat: generate today's tasks for all active users at 00:05."""
+    from app.core.database import engine
+    import app.core.redis as _redis_mod
+    engine.sync_engine.dispose()
+    _redis_mod._redis_pool = None
     asyncio.run(_generate_all())
 
 

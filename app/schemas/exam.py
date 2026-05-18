@@ -33,6 +33,18 @@ class ExamUpdate(BaseModel):
     exam_date: date | None = None
     notes: str | None = None
 
+    @field_validator("name")
+    @classmethod
+    def name_not_empty(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("考试名称不能为空")
+        if len(v) > 100:
+            raise ValueError("考试名称不能超过100字")
+        return v
+
     @field_validator("exam_date")
     @classmethod
     def date_not_past(cls, v: date | None) -> date | None:

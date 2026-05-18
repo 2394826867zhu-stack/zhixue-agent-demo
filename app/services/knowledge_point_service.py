@@ -5,6 +5,7 @@ from sqlalchemy import select, func, and_
 
 from app.models.knowledge_point import KnowledgePoint
 from app.models.flashcard import Flashcard
+from app.models.curriculum import CurriculumChapter
 from app.schemas.knowledge_point import KnowledgePointCreate, KnowledgePointUpdate
 from app.core.exceptions import NotFoundError, PermissionDeniedError
 
@@ -12,10 +13,12 @@ from app.core.exceptions import NotFoundError, PermissionDeniedError
 class KnowledgePointService:
 
     async def create(self, db: AsyncSession, user_id: str, data: KnowledgePointCreate) -> KnowledgePoint:
+        await self._ensure_chapter_exists(db, data.chapter_id)
         kp = KnowledgePoint(
             user_id=uuid.UUID(user_id),
             name=data.name,
             subject=data.subject,
+            chapter_id=data.chapter_id,
             content=data.content,
             key_formula=data.key_formula,
             bloom_level=data.bloom_level,
@@ -64,20 +67,22 @@ class KnowledgePointService:
 
         items = []
         for kp in kps:
-            fc_count = await self._flashcard_count(db, kp.id)
-            fc_info = await self._earliest_flashcard_info(db, kp.id)
+            fc_count = await self._flashcard_count(db, uuid.UUID(user_id), kp.id)
+            fc_info = await self._earliest_flashcard_info(db, uuid.UUID(user_id), kp.id)
             items.append({"kp": kp, "flashcard_count": fc_count, **fc_info})
 
         return {"items": items, "total": total, "page": page, "page_size": page_size}
 
     async def get_kp(self, db: AsyncSession, kp_id: str, user_id: str) -> tuple[KnowledgePoint, int]:
         kp = await self._get_kp(db, kp_id, user_id)
-        fc_count = await self._flashcard_count(db, kp.id)
+        fc_count = await self._flashcard_count(db, uuid.UUID(user_id), kp.id)
         return kp, fc_count
 
     async def update(self, db: AsyncSession, kp_id: str, user_id: str, data: KnowledgePointUpdate) -> KnowledgePoint:
         kp = await self._get_kp(db, kp_id, user_id)
         update_data = data.model_dump(exclude_none=True)
+        if "chapter_id" in update_data:
+            await self._ensure_chapter_exists(db, update_data["chapter_id"])
         for field, value in update_data.items():
             setattr(kp, field, value)
         kp.updated_at = datetime.now(timezone.utc)
@@ -128,16 +133,31 @@ class KnowledgePointService:
             raise PermissionDeniedError()
         return kp
 
-    async def _flashcard_count(self, db: AsyncSession, kp_id: uuid.UUID) -> int:
+    async def _ensure_chapter_exists(self, db: AsyncSession, chapter_id: uuid.UUID | None) -> None:
+        if chapter_id is None:
+            return
         result = await db.execute(
-            select(func.count()).where(Flashcard.knowledge_point_id == kp_id)
+            select(CurriculumChapter.id).where(CurriculumChapter.id == chapter_id)
+        )
+        if result.scalar_one_or_none() is None:
+            raise NotFoundError("课程章节")
+
+    async def _flashcard_count(self, db: AsyncSession, user_id: uuid.UUID, kp_id: uuid.UUID) -> int:
+        result = await db.execute(
+            select(func.count()).where(
+                Flashcard.user_id == user_id,
+                Flashcard.knowledge_point_id == kp_id,
+            )
         )
         return result.scalar() or 0
 
-    async def _earliest_flashcard_info(self, db: AsyncSession, kp_id: uuid.UUID) -> dict:
+    async def _earliest_flashcard_info(self, db: AsyncSession, user_id: uuid.UUID, kp_id: uuid.UUID) -> dict:
         result = await db.execute(
             select(Flashcard.due_date, Flashcard.stability)
-            .where(Flashcard.knowledge_point_id == kp_id)
+            .where(
+                Flashcard.user_id == user_id,
+                Flashcard.knowledge_point_id == kp_id,
+            )
             .order_by(Flashcard.due_date.asc())
             .limit(1)
         )

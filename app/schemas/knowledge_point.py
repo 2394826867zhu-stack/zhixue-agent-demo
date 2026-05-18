@@ -10,6 +10,7 @@ MASTERY_STATUSES = {"new", "learning", "reviewing", "mastered"}
 class KnowledgePointCreate(BaseModel):
     name: str
     subject: str | None = None
+    chapter_id: uuid.UUID | None = None
     content: str | None = None
     key_formula: str | None = None
     bloom_level: str = "remember"
@@ -35,6 +36,7 @@ class KnowledgePointCreate(BaseModel):
 class KnowledgePointUpdate(BaseModel):
     name: str | None = None
     subject: str | None = None
+    chapter_id: uuid.UUID | None = None
     content: str | None = None
     key_formula: str | None = None
     bloom_level: str | None = None
@@ -61,6 +63,7 @@ class KnowledgePointResponse(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
     note_id: uuid.UUID | None
+    chapter_id: uuid.UUID | None
     name: str
     subject: str | None
     content: str | None

@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 
 from app.models.note import Note
 from app.models.knowledge_point import KnowledgePoint
@@ -83,6 +84,9 @@ class NoteService:
         text_content = None
         if source_type == "pdf":
             text_content = _extract_pdf_text(file_path, max_pages=5)
+            if not text_content.strip():
+                from app.core.exceptions import ValidationError
+                raise ValidationError("未能从PDF中提取到文字，请上传可复制文字的PDF或改用图片/文本上传")
 
         note = Note(
             user_id=uuid.UUID(user_id),
@@ -105,15 +109,21 @@ class NoteService:
         redis = await get_redis()
         cached = await redis.hgetall(f"note_task:{note_id}")
 
+        default_progress = 100 if note.status in ("done", "failed") else 0
+        default_message = {
+            "done": "完成",
+            "failed": "处理失败，请重新上传或稍后重试",
+        }.get(note.status, "处理中...")
+
         return {
             "note_id": note_id,
             "status": note.status,
-            "progress": int(cached.get("progress", 100 if note.status == "done" else 0)),
-            "message": cached.get("message", "完成" if note.status == "done" else "处理中..."),
+            "progress": int(cached.get("progress", default_progress)),
+            "message": cached.get("message", default_message),
         }
 
     async def get_note(self, db: AsyncSession, note_id: str, user_id: str) -> Note:
-        return await self._get_note(db, note_id, user_id)
+        return await self._get_note(db, note_id, user_id, with_kps=True)
 
     async def list_notes(self, db: AsyncSession, user_id: str, subject: str | None, page: int, page_size: int) -> dict:
         query = select(Note).where(Note.user_id == uuid.UUID(user_id))
@@ -128,7 +138,10 @@ class NoteService:
         items = []
         for note in notes:
             count_result = await db.execute(
-                select(func.count()).where(KnowledgePoint.note_id == note.id)
+                select(func.count()).where(
+                    KnowledgePoint.user_id == uuid.UUID(user_id),
+                    KnowledgePoint.note_id == note.id,
+                )
             )
             kp_count = count_result.scalar() or 0
             items.append({"note": note, "kp_count": kp_count})
@@ -148,7 +161,10 @@ class NoteService:
             raise ValidationError("笔记还在处理中，请稍后再试")
 
         result = await db.execute(
-            select(KnowledgePoint).where(KnowledgePoint.note_id == note.id)
+            select(KnowledgePoint).where(
+                KnowledgePoint.user_id == uuid.UUID(user_id),
+                KnowledgePoint.note_id == note.id,
+            )
         )
         kps = result.scalars().all()
 
@@ -164,7 +180,10 @@ class NoteService:
         for kp in kps:
             # 跳过已有闪卡的知识点
             existing = await db.execute(
-                select(func.count()).where(Flashcard.knowledge_point_id == kp.id)
+                select(func.count()).where(
+                    Flashcard.user_id == uuid.UUID(user_id),
+                    Flashcard.knowledge_point_id == kp.id,
+                )
             )
             if (existing.scalar() or 0) > 0:
                 continue
@@ -198,8 +217,11 @@ class NoteService:
 
         return {"created": created_count, "knowledge_points": len(kps)}
 
-    async def _get_note(self, db: AsyncSession, note_id: str, user_id: str) -> Note:
-        result = await db.execute(select(Note).where(Note.id == uuid.UUID(note_id)))
+    async def _get_note(self, db: AsyncSession, note_id: str, user_id: str, *, with_kps: bool = False) -> Note:
+        query = select(Note).where(Note.id == uuid.UUID(note_id))
+        if with_kps:
+            query = query.options(selectinload(Note.knowledge_points))
+        result = await db.execute(query)
         note = result.scalar_one_or_none()
         if not note:
             raise NotFoundError("笔记")

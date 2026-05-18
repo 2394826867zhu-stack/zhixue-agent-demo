@@ -16,8 +16,8 @@ class TokenExpiredError(AppError):
 
 
 class PermissionDeniedError(AppError):
-    def __init__(self):
-        super().__init__(4002, "权限不足", 403)
+    def __init__(self, message: str = "权限不足"):
+        super().__init__(4002, message, 403)
 
 
 class ValidationError(AppError):

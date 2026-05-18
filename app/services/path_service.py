@@ -7,6 +7,7 @@ from sqlalchemy import select, func
 
 from app.models.path import PathStage, PathNode
 from app.models.knowledge_point import KnowledgePoint
+from app.models.note import Note
 from app.models.training import TrainingQuestion
 from app.models.task import PomodoroRecord
 from app.schemas.path import PathGenerateRequest, PathNodeCreate, PathStageCreate
@@ -221,6 +222,9 @@ class PathService:
     async def create_node(self, db: AsyncSession, user_id: str, body: PathNodeCreate) -> PathNode:
         uid = uuid.UUID(user_id)
         stage = await self._get_stage(db, body.stage_id, user_id)
+        note_id = await self._validate_note_id(db, uid, body.note_id)
+        kp_ids = await self._validate_kp_ids(db, uid, body.kp_ids)
+        prerequisite_ids = await self._validate_prerequisite_ids(db, uid, stage.id, body.prerequisite_ids)
         max_order = await db.execute(
             select(func.max(PathNode.sort_order)).where(PathNode.stage_id == stage.id)
         )
@@ -233,9 +237,9 @@ class PathService:
             subject=body.subject,
             estimated_minutes=body.estimated_minutes,
             reward=body.reward,
-            note_id=uuid.UUID(body.note_id) if body.note_id else None,
-            kp_ids=[uuid.UUID(k) for k in body.kp_ids],
-            prerequisite_ids=[uuid.UUID(p) for p in body.prerequisite_ids],
+            note_id=note_id,
+            kp_ids=kp_ids,
+            prerequisite_ids=prerequisite_ids,
             sort_order=(max_order.scalar() or 0) + 1,
         )
         db.add(node)
@@ -251,6 +255,7 @@ class PathService:
     ) -> None:
         siblings = await db.execute(
             select(PathNode).where(
+                PathNode.user_id == uid,
                 PathNode.stage_id == stage_id,
                 PathNode.status == "locked",
             )
@@ -262,10 +267,61 @@ class PathService:
             elif completed_node_id in node.prerequisite_ids:
                 # check all prerequisites are done
                 prereqs = await db.execute(
-                    select(PathNode.status).where(PathNode.id.in_(node.prerequisite_ids))
+                    select(PathNode.status).where(
+                        PathNode.user_id == uid,
+                        PathNode.id.in_(node.prerequisite_ids),
+                    )
                 )
                 if all(r[0] == "done" for r in prereqs):
                     node.status = "current"
+
+    async def _validate_note_id(
+        self, db: AsyncSession, uid: uuid.UUID, note_id: str | None
+    ) -> uuid.UUID | None:
+        if not note_id:
+            return None
+        parsed = uuid.UUID(note_id)
+        result = await db.execute(
+            select(Note.id).where(Note.id == parsed, Note.user_id == uid)
+        )
+        if result.scalar_one_or_none() is None:
+            raise NotFoundError("笔记")
+        return parsed
+
+    async def _validate_kp_ids(
+        self, db: AsyncSession, uid: uuid.UUID, kp_ids: list[str]
+    ) -> list[uuid.UUID]:
+        parsed = [uuid.UUID(k) for k in kp_ids]
+        if not parsed:
+            return []
+        result = await db.execute(
+            select(KnowledgePoint.id).where(
+                KnowledgePoint.id.in_(parsed),
+                KnowledgePoint.user_id == uid,
+            )
+        )
+        owned = set(result.scalars().all())
+        if owned != set(parsed):
+            raise NotFoundError("知识点")
+        return parsed
+
+    async def _validate_prerequisite_ids(
+        self, db: AsyncSession, uid: uuid.UUID, stage_id: uuid.UUID, prerequisite_ids: list[str]
+    ) -> list[uuid.UUID]:
+        parsed = [uuid.UUID(p) for p in prerequisite_ids]
+        if not parsed:
+            return []
+        result = await db.execute(
+            select(PathNode.id).where(
+                PathNode.id.in_(parsed),
+                PathNode.user_id == uid,
+                PathNode.stage_id == stage_id,
+            )
+        )
+        owned = set(result.scalars().all())
+        if owned != set(parsed):
+            raise NotFoundError("前置路径节点")
+        return parsed
 
     async def _get_stage(self, db: AsyncSession, stage_id: str, user_id: str) -> PathStage:
         result = await db.execute(select(PathStage).where(PathStage.id == uuid.UUID(stage_id)))

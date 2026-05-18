@@ -5,6 +5,7 @@
 """
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, date, timezone
 from typing import Any
@@ -164,7 +165,7 @@ class OnboardingService:
             return json.loads(raw)
         except Exception as e:
             logger.warning(f"onboarding extract failed at step={step}: {e}")
-            return {}
+            return _fallback_extract(step, message, draft)
 
     # ── 内部：完成引导 → 预填知识点 + 创建考试 ───────────────────
 
@@ -186,6 +187,20 @@ class OnboardingService:
 
         await db.commit()
 
+        # 4. 自动生成学习路径（不阻塞 onboarding 完成）
+        path_generated = False
+        try:
+            from app.services.path_service import path_service
+            from app.schemas.path import PathGenerateRequest
+            subjects = draft.get("subjects", [])
+            await path_service.ai_generate(
+                db, user_id,
+                PathGenerateRequest(subjects=subjects, goal=draft.get("goal", "")),
+            )
+            path_generated = True
+        except Exception as e:
+            logger.warning(f"auto path generation failed after onboarding: {e}")
+
         lines = [
             "🎉 太棒了！你的专属学习档案已经建立完成！",
             "",
@@ -193,11 +208,13 @@ class OnboardingService:
         ]
         if exam_created:
             lines.append(f"📅 已添加考试倒计时：{draft.get('next_exam_name', '')}")
+        if path_generated:
+            lines.append("🗺️ 已为你生成专属学习路径，可在「路径」页面查看")
         lines += [
             "",
             "现在你可以：",
+            "• 去「路径」页面查看你的专属学习计划",
             "• 去「知识点」页面查看和补充你的知识库",
-            "• 去「闪卡」页面开始记忆复习",
             "• 有什么学到的内容，随时回来和我说，我来帮你整理 📝",
         ]
         return "\n".join(lines)
@@ -276,3 +293,72 @@ class OnboardingService:
 
 
 onboarding_service = OnboardingService()
+
+
+_SUBJECTS = ["数学", "语文", "英语", "物理", "化学", "生物", "历史", "地理", "政治"]
+_GRADE_TYPES = {
+    "初一": "junior", "初二": "junior", "初三": "junior", "初中": "junior",
+    "高一": "senior", "高二": "senior", "高三": "senior", "高中": "senior",
+    "大一": "university", "大二": "university", "大三": "university",
+    "大四": "university", "大学": "university",
+}
+_PERFORMANCE_WORDS = [
+    ("优秀", "优秀"), ("很好", "优秀"),
+    ("不错", "良好"), ("良好", "良好"), ("还行", "中等"),
+    ("中等", "中等"), ("一般", "中等"),
+    ("较差", "较差"), ("比较差", "较差"), ("很差", "较差"), ("差", "较差"),
+]
+
+
+def _fallback_extract(step: str, message: str, draft: dict) -> dict[str, Any]:
+    text = message.strip()
+    if step == "grade":
+        for grade, grade_type in _GRADE_TYPES.items():
+            if grade in text:
+                grade_name = grade
+                if grade == "初中":
+                    grade_name = "初一"
+                elif grade == "高中":
+                    grade_name = "高一"
+                elif grade == "大学":
+                    grade_name = "大一"
+                return {"grade": grade_name, "grade_type": grade_type}
+        return {}
+
+    if step == "subjects":
+        subjects = [subject for subject in _SUBJECTS if subject in text]
+        return {"subjects": subjects} if subjects else {}
+
+    if step == "progress":
+        progress = {}
+        for subject in draft.get("subjects", []):
+            pattern = rf"{re.escape(subject)}(?:学到|在学|刚开始|进度是|到了)?([^，。,；;、]+)"
+            match = re.search(pattern, text)
+            if match:
+                value = match.group(1).strip()
+                if value:
+                    progress[subject] = value
+        return {"progress": progress} if progress else {}
+
+    if step == "performance":
+        performance = {}
+        for subject in draft.get("subjects", []):
+            start = text.find(subject)
+            if start == -1:
+                continue
+            window = text[start:start + 20]
+            for word, normalized in _PERFORMANCE_WORDS:
+                if word in window:
+                    performance[subject] = normalized
+                    break
+        return {"performance": performance} if performance else {}
+
+    if step == "goal":
+        return {"goal": text[:120]} if text else {}
+
+    if step == "next_exam":
+        if any(word in text for word in ("没有", "暂无", "暂时没有", "跳过")):
+            return {"next_exam_name": None, "next_exam_date": None, "next_exam_subject": None}
+        return {}
+
+    return {}

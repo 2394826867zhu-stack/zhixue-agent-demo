@@ -10,8 +10,15 @@ logger = logging.getLogger(__name__)
 
 
 def _run(coro):
-    """在 Celery 同步上下文中运行异步函数"""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    """在 Celery 同步上下文中运行异步函数。
+    每次调用前清理全局连接池（asyncpg + aioredis），
+    避免跨 event loop 复用旧连接时报错。
+    """
+    from app.core.database import engine
+    import app.core.redis as _redis_mod
+    engine.sync_engine.dispose()
+    _redis_mod._redis_pool = None  # 强制下次 get_redis() 创建新连接
+    return asyncio.run(coro)
 
 
 @celery_app.task(bind=True, max_retries=2, default_retry_delay=30)
@@ -38,10 +45,15 @@ async def _process_note_async(task, note_id: str, user_id: str):
     from sqlalchemy import select
 
     async with AsyncSessionLocal() as db:
-        result = await db.execute(select(Note).where(Note.id == uuid.UUID(note_id)))
+        result = await db.execute(
+            select(Note).where(
+                Note.id == uuid.UUID(note_id),
+                Note.user_id == uuid.UUID(user_id),
+            )
+        )
         note = result.scalar_one_or_none()
         if not note:
-            logger.error(f"Note {note_id} not found")
+            logger.error(f"Note {note_id} not found for user {user_id}")
             return
 
         await _update_task_progress(note_id, 10, "正在理解内容...")
@@ -110,7 +122,8 @@ async def _process_note_async(task, note_id: str, user_id: str):
 async def _update_task_progress(note_id: str, progress: int, message: str):
     from app.core.redis import get_redis
     redis = await get_redis()
-    await redis.hset(f"note_task:{note_id}", mapping={"progress": progress, "message": message})
+    await redis.hset(f"note_task:{note_id}", "progress", progress)
+    await redis.hset(f"note_task:{note_id}", "message", message)
     await redis.expire(f"note_task:{note_id}", 3600)
 
 
@@ -162,6 +175,37 @@ def _clean_mermaid(text: str) -> str:
     elif "```" in text:
         text = text.split("```")[1].split("```")[0].strip()
     return text
+
+
+@celery_app.task(name="app.tasks.note_tasks.recover_stuck_notes")
+def recover_stuck_notes():
+    """Celery Beat: 每30分钟扫描卡住超过30分钟的processing笔记并重新入队。"""
+    _run(_recover_stuck_async())
+
+
+async def _recover_stuck_async():
+    from sqlalchemy import select, and_
+    from app.core.database import AsyncSessionLocal
+    from app.models.note import Note
+    from datetime import timedelta
+
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(Note.id, Note.user_id).where(
+                and_(Note.status == "processing", Note.created_at < cutoff)
+            )
+        )
+        stuck = result.all()
+
+    if not stuck:
+        logger.info("recover_stuck_notes: no stuck notes")
+        return
+
+    logger.warning(f"recover_stuck_notes: re-queuing {len(stuck)} stuck note(s)")
+    for note_id, user_id in stuck:
+        process_note.delay(str(note_id), str(user_id))
+        logger.info(f"  re-queued note {note_id}")
 
 
 @celery_app.task

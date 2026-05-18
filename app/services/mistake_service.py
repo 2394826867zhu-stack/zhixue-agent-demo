@@ -7,7 +7,7 @@ from sqlalchemy import select, func, and_
 
 from app.models.training import TrainingQuestion
 from app.models.knowledge_point import KnowledgePoint
-from app.core.exceptions import NotFoundError, PermissionDeniedError, ValidationError
+from app.core.exceptions import NotFoundError, PermissionDeniedError, ValidationError, LLMError
 
 logger = logging.getLogger(__name__)
 
@@ -98,9 +98,13 @@ class MistakeService:
 
     async def create_retry(self, db: AsyncSession, question_id: str, user_id: str) -> TrainingQuestion:
         original = await self._get_mistake(db, question_id, user_id)
+        uid = uuid.UUID(user_id)
 
         kp_result = await db.execute(
-            select(KnowledgePoint).where(KnowledgePoint.id == original.knowledge_point_id)
+            select(KnowledgePoint).where(
+                KnowledgePoint.id == original.knowledge_point_id,
+                KnowledgePoint.user_id == uid,
+            )
         )
         kp = kp_result.scalar_one_or_none()
         if not kp:
@@ -119,16 +123,20 @@ class MistakeService:
         from app.llm.client import llm_client
         from app.llm.prompts.training_prompts import QUESTION_GENERATE_PROMPT, SYSTEM_TRAINING
 
-        raw = await llm_client.generate(
-            QUESTION_GENERATE_PROMPT.format(
-                name=kp.name,
-                content=kp.content or "（无详细内容）",
-                key_formula=kp.key_formula or "无",
-                bloom_level=kp.bloom_level,
-                count=1,
-            ),
-            system=SYSTEM_TRAINING,
-        )
+        try:
+            raw = await llm_client.generate(
+                QUESTION_GENERATE_PROMPT.format(
+                    name=kp.name,
+                    content=kp.content or "（无详细内容）",
+                    key_formula=kp.key_formula or "无",
+                    bloom_level=kp.bloom_level,
+                    count=1,
+                ),
+                system=SYSTEM_TRAINING,
+            )
+        except Exception as e:
+            logger.warning(f"Retry question generation failed: {e}")
+            raise LLMError() from e
         items = _parse_json_safe(raw)
         if not items:
             raise ValidationError("题目生成失败，请稍后重试")

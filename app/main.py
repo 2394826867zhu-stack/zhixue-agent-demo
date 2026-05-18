@@ -12,9 +12,10 @@ from app.api.v1 import router as v1_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动
+    from app.data.seed_curriculum import seed_curriculum
+
+    await seed_curriculum()
     yield
-    # 关闭
     await engine.dispose()
     await close_redis()
 
@@ -26,11 +27,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
+allowed_origins = settings.origins_list
+allow_all_origins = "*" in allowed_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.origins_list,
-    allow_credentials=True,
+    allow_origins=["*"] if allow_all_origins else allowed_origins,
+    allow_origin_regex=settings.ALLOWED_ORIGIN_REGEX,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

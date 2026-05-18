@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.schedules import crontab
 from app.config import settings
 
 celery_app = Celery(
@@ -6,6 +7,13 @@ celery_app = Celery(
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
     include=["app.tasks.note_tasks", "app.tasks.task_tasks"],
+)
+
+# dev: every 5 min (so daily-task logic runs during demos); prod: once at 00:05
+_daily_task_schedule = (
+    300.0
+    if settings.APP_ENV == "development"
+    else crontab(hour=0, minute=5)
 )
 
 celery_app.conf.update(
@@ -16,10 +24,13 @@ celery_app.conf.update(
     enable_utc=True,
     task_track_started=True,
     beat_schedule={
-        # 每天凌晨0:05生成每日任务
         "generate-daily-tasks": {
             "task": "app.tasks.task_tasks.generate_daily_tasks_all_users",
-            "schedule": 300.0,  # dev: every 5min; prod: crontab(hour=0, minute=5)
+            "schedule": _daily_task_schedule,
+        },
+        "recover-stuck-notes": {
+            "task": "app.tasks.note_tasks.recover_stuck_notes",
+            "schedule": 1800.0,
         },
     },
 )

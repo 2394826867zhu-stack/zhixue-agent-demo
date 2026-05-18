@@ -3,10 +3,11 @@ import logging
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 
 from app.models.guidance import GuidanceSession, GuidanceMessage
 from app.models.knowledge_point import KnowledgePoint
-from app.core.exceptions import NotFoundError, PermissionDeniedError, ValidationError
+from app.core.exceptions import LLMError, NotFoundError, PermissionDeniedError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -144,11 +145,16 @@ class GuidanceService:
     async def get_session_detail(
         self, db: AsyncSession, session_id: str, user_id: str
     ) -> GuidanceSession:
-        session = await self._get_session(db, session_id, user_id)
-        # eagerly load messages
-        await db.execute(
-            select(GuidanceMessage).where(GuidanceMessage.session_id == session.id)
+        result = await db.execute(
+            select(GuidanceSession)
+            .options(selectinload(GuidanceSession.messages))
+            .where(GuidanceSession.id == uuid.UUID(session_id))
         )
+        session = result.scalar_one_or_none()
+        if not session:
+            raise NotFoundError("引导会话")
+        if str(session.user_id) != user_id:
+            raise PermissionDeniedError()
         return session
 
     async def _fetch_kp_context(
@@ -207,7 +213,7 @@ class GuidanceService:
             return await llm_client.generate(prompt, system=SYSTEM_GUIDANCE)
         except Exception as e:
             logger.warning(f"Guidance LLM call failed: {e}")
-            return "这是一个很好的问题。你能先告诉我，你对这个概念目前的理解是什么吗？"
+            raise LLMError() from e
 
     async def _get_session(
         self, db: AsyncSession, session_id: str, user_id: str

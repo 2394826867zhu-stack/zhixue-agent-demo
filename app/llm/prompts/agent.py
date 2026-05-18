@@ -249,6 +249,7 @@ TOOL_DEFINITIONS = [
                 "properties": {
                     "topic": {"type": "string", "description": "笔记主题，如'导数的定义与计算'"},
                     "subject": {"type": "string", "description": "所属学科"},
+                    "content": {"type": "string", "description": "可选。用户粘贴的课堂原文、教材内容或长文本。若提供，将按原文生成笔记。"},
                 },
                 "required": ["topic", "subject"],
             },

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, date
-from pydantic import BaseModel, computed_field, field_validator
+from pydantic import BaseModel, computed_field, field_validator, model_validator
 
 
 class DailyTaskCreate(BaseModel):
@@ -35,6 +35,30 @@ class DailyTaskUpdate(BaseModel):
     def valid_status(cls, v: str | None) -> str | None:
         if v is not None and v not in ("pending", "in_progress", "done", "skipped"):
             raise ValueError("status 必须为 pending/in_progress/done/skipped")
+        return v
+
+    @field_validator("title")
+    @classmethod
+    def title_not_empty(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("任务名称不能为空")
+        return v
+
+    @field_validator("estimated_minutes")
+    @classmethod
+    def valid_minutes(cls, v: int | None) -> int | None:
+        if v is not None and not 1 <= v <= 480:
+            raise ValueError("预估时间必须在 1-480 分钟之间")
+        return v
+
+    @field_validator("sort_order")
+    @classmethod
+    def valid_sort_order(cls, v: int | None) -> int | None:
+        if v is not None and v < 0:
+            raise ValueError("排序值不能小于0")
         return v
 
 
@@ -79,6 +103,12 @@ class PomodoroCreate(BaseModel):
         if not 1 <= v <= 120:
             raise ValueError("番茄钟时长必须在 1-120 分钟之间")
         return v
+
+    @model_validator(mode="after")
+    def valid_time_range(self) -> "PomodoroCreate":
+        if self.completed_at < self.started_at:
+            raise ValueError("结束时间不能早于开始时间")
+        return self
 
 
 class PomodoroOut(BaseModel):

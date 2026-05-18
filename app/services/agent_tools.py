@@ -193,7 +193,8 @@ async def _plan_study_schedule(
             estimated_minutes=45,
             status="pending",
             priority="high",
-            ai_reason=f"根据{goal or '学习计划'}自动安排，{subj}有 {len(kp_names)} 个知识点待强化",
+            ai_priority_score=80.0,
+            ai_priority_reason=f"根据{goal or '学习计划'}自动安排，{subj}有 {len(kp_names)} 个知识点待强化",
         )
         db.add(task)
         created.append({"title": title, "subject": subj, "date": str(task_date), "estimated_minutes": 45})
@@ -448,17 +449,24 @@ async def _generate_note(
     uid: uuid.UUID,
     topic: str,
     subject: str,
+    content: str | None = None,
     **_,
 ) -> dict:
-    from app.schemas.note import NoteGenerateRequest
+    from app.schemas.note import NoteGenerateRequest, NoteUploadRequest
     from app.services.note_service import note_service
 
-    data = NoteGenerateRequest(topic=topic, subject=subject)
-    result = await note_service.create_from_ai(db, str(uid), data)
+    clean_content = (content or "").strip()
+    if clean_content:
+        data = NoteUploadRequest(content=clean_content, title=topic[:80], subject=subject)
+        result = await note_service.create_from_text(db, str(uid), data)
+    else:
+        data = NoteGenerateRequest(topic=topic[:200], subject=subject)
+        result = await note_service.create_from_ai(db, str(uid), data)
+
     return {
         "note_id": result["note_id"],
         "status": "generating",
-        "message": f"「{topic}」的笔记正在生成中，大约需要 30 秒，请稍后在笔记页查看。",
+        "message": f"「{topic[:40]}」的笔记正在生成中，大约需要 30 秒，请稍后在笔记页查看。",
     }
 
 

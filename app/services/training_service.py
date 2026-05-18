@@ -8,7 +8,7 @@ from sqlalchemy import select, func, and_
 from app.models.training import TrainingSession, TrainingQuestion
 from app.models.knowledge_point import KnowledgePoint
 from app.schemas.training import TrainingStartRequest, AnswerRequest
-from app.core.exceptions import NotFoundError, PermissionDeniedError, ValidationError
+from app.core.exceptions import LLMError, NotFoundError, PermissionDeniedError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,10 @@ class TrainingService:
         await db.flush()
 
         questions = await self._generate_questions(db, session, kps, data)
+        if not questions:
+            await db.rollback()
+            raise LLMError()
+
         session.question_count = len(questions)
         await db.commit()
         await db.refresh(session)
@@ -236,7 +240,7 @@ class TrainingService:
             return score, feedback, is_wrong
         except Exception as e:
             logger.warning(f"Grading failed for question {question.id}: {e}")
-            return 50, "评分服务暂时不可用，请稍后重试", False
+            raise LLMError() from e
 
     async def _get_session(self, db: AsyncSession, session_id: str, user_id: str) -> TrainingSession:
         result = await db.execute(

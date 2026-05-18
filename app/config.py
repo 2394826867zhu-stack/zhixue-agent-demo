@@ -36,10 +36,11 @@ class Settings(BaseSettings):
     APP_ENV: Literal["development", "production"] = "development"
     LOG_LEVEL: str = "INFO"
     ALLOWED_ORIGINS: str = "http://localhost:3000"
+    ALLOWED_ORIGIN_REGEX: str | None = None
 
     @property
     def origins_list(self) -> list[str]:
-        return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
+        return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
 
     class Config:
         env_file = ".env"

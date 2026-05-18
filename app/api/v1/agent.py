@@ -7,6 +7,7 @@ from app.api.deps import get_current_user
 from app.models.user import User
 from app.schemas.agent import AgentChatRequest
 from app.services.agent_service import run
+from app.services.agent_tools import dispatch_tool
 
 router = APIRouter(prefix="/agent", tags=["AI 管家 Agent"])
 
@@ -29,3 +30,26 @@ async def agent_chat(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post("/generate-note", summary="通过 Agent 工具生成笔记")
+async def agent_generate_note(
+    body: dict,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    import json
+
+    topic = str(body.get("topic") or "").strip()
+    content = str(body.get("content") or "").strip()
+    subject = str(body.get("subject") or "综合").strip()
+    if not topic:
+        topic = content[:40] or "AI 整理学习笔记"
+
+    result = await dispatch_tool(
+        db,
+        str(user.id),
+        "generate_note",
+        json.dumps({"topic": topic, "subject": subject, "content": content}, ensure_ascii=False),
+    )
+    return {"code": 200, "message": "success", "data": result}
