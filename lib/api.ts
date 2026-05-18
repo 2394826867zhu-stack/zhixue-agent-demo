@@ -148,12 +148,14 @@ export type CheckIn = {
 export type AgentChatEvent =
   | { thinking: string }
   | { delta: string }
-  | { done: true; session_id: string; tools_called?: string[] };
+  | { done: true; session_id: string; tools_called?: string[] }
+  | { error: { code: string; message: string; recoverable: boolean } };
 
 export type AgentChatHandlers = {
   onThinking?: (thinking: string) => void;
   onDelta?: (delta: string) => void;
   onDone?: (event: Extract<AgentChatEvent, { done: true }>) => void;
+  onError?: (error: { code: string; message: string; recoverable: boolean }) => void;
 };
 
 export type UploadNoteFileResponse = {
@@ -717,7 +719,7 @@ export const generateNote = (body: { topic?: string; subject?: string; [key: str
   if (isDemoMode()) {
     const topic = body.topic?.trim() || "AI 整理学习笔记";
     const note = {
-      id: `note-${Date.now()}`,
+      id: crypto.randomUUID(),
       title: topic.length > 24 ? `${topic.slice(0, 24)}...` : topic,
       subject: body.subject || "综合",
       summary: "已根据输入内容提炼出核心概念、易错点和下一步复习建议，可继续生成闪卡和任务。",
@@ -734,7 +736,7 @@ export const generateNoteWithAgent = (body: { topic: string; subject?: string; c
   if (isDemoMode()) {
     const source = body.content?.trim() || body.topic;
     const note = {
-      id: `note-agent-${Date.now()}`,
+      id: crypto.randomUUID(),
       title: source.length > 24 ? `${source.slice(0, 24)}...` : source,
       subject: body.subject || "综合",
       summary: "Agent 已接收生成任务，正在整理精读版、应考速览和知识框架。",
@@ -753,7 +755,7 @@ export const generateNoteWithAgent = (body: { topic: string; subject?: string; c
 export const uploadNoteText = (body: { title?: string; subject?: string; content: string }): Promise<UploadNoteFileResponse> => {
   if (isDemoMode()) {
     const note = {
-      id: `note-text-${Date.now()}`,
+      id: crypto.randomUUID(),
       title: body.title || body.content.slice(0, 24) || "粘贴内容生成笔记",
       subject: body.subject || "综合",
       summary: "文本资料已进入处理队列，稍后会自动整理为笔记、知识点与闪卡。",
@@ -769,7 +771,7 @@ export const uploadNoteText = (body: { title?: string; subject?: string; content
 export const uploadNoteFile = (file: File, subject?: string): Promise<UploadNoteFileResponse> => {
   if (isDemoMode()) {
     const note = {
-      id: `note-file-${Date.now()}`,
+      id: crypto.randomUUID(),
       title: file.name.replace(/\.[^.]+$/, "") || "上传资料生成笔记",
       subject: subject || "综合",
       summary: "资料已进入处理队列，稍后会自动整理为笔记、知识点与闪卡。",
@@ -965,7 +967,7 @@ export const linkKPToChapter = (chapterId: string, kpId: string) => {
 export const generateNoteFromChapter = (chapterId: string) => {
   if (isDemoMode()) {
     const note = {
-      id: `note-chapter-${Date.now()}`,
+      id: crypto.randomUUID(),
       title: "课程课时生成笔记",
       subject: "数学",
       summary: "已根据课程目录创建生成任务，稍后可在笔记库查看。",
@@ -1338,6 +1340,7 @@ export async function streamAgentChat(
         const event = JSON.parse(raw) as AgentChatEvent;
         if ("thinking" in event) handlers.onThinking?.(event.thinking);
         if ("delta" in event) handlers.onDelta?.(event.delta);
+        if ("error" in event) handlers.onError?.(event.error);
         if ("done" in event) {
           doneEvent = event;
           handlers.onDone?.(event);

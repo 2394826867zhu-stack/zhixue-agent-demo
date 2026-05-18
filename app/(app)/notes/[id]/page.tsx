@@ -63,12 +63,15 @@ function MermaidView({ code }: { code: string }) {
 
   useEffect(() => {
     if (!code) return;
+    let cancelled = false;
     import("mermaid").then((m) => {
+      if (cancelled) return;
       m.default.initialize({ startOnLoad: false, theme: "neutral" });
       m.default.render("mermaid-diagram", code)
-        .then((r) => setSvg(r.svg))
-        .catch(() => setError(true));
+        .then((r) => { if (!cancelled) setSvg(r.svg); })
+        .catch(() => { if (!cancelled) setError(true); });
     });
+    return () => { cancelled = true; };
   }, [code]);
 
   if (error) return (
@@ -112,6 +115,8 @@ export default function NoteDetailPage() {
     queryKey: ["note", id],
     queryFn: () => getNote(id) as Promise<NoteDetail>,
     enabled: !!id,
+    refetchInterval: (query) =>
+      (query.state.data as NoteDetail | undefined)?.status === "processing" ? 3000 : false,
   });
 
   const deleteMut = useMutation({

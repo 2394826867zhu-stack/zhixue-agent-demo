@@ -59,12 +59,22 @@ export default function FlashcardsPage() {
     ? MOCK_CARDS
     : (apiCards ?? []);
 
+  const [ratingError, setRatingError] = useState<string | null>(null);
+
   const reviewMutation = useMutation({
     mutationFn: ({ id, rating }: { id: string; rating: number }) =>
       usingFallback ? Promise.resolve() : reviewCard(id, rating),
     onSuccess: () => {
+      setRatingError(null);
       queryClient.invalidateQueries({ queryKey: ["due-cards"] });
       queryClient.invalidateQueries({ queryKey: ["overview"] });
+    },
+    onError: (_, { id }) => {
+      // Revert optimistic advance: remove id from done list and step back
+      setDoneIds((prev) => prev.filter((d) => d !== id));
+      setCurrentIndex((prev) => Math.max(0, prev - 1));
+      setFlipped(false);
+      setRatingError("评分保存失败，请重试");
     },
   });
 
@@ -73,8 +83,8 @@ export default function FlashcardsPage() {
   const progress = total > 0 ? (doneIds.length / total) * 100 : 0;
 
   function handleRate(rating: number) {
-    if (!card) return;
-    reviewMutation.mutate({ id: card.id, rating });
+    if (!card || reviewMutation.isPending) return;
+    setRatingError(null);
     const newDone = [...doneIds, card.id];
     setDoneIds(newDone);
     if (currentIndex + 1 >= total) {
@@ -83,6 +93,7 @@ export default function FlashcardsPage() {
       setCurrentIndex((i) => i + 1);
       setFlipped(false);
     }
+    reviewMutation.mutate({ id: card.id, rating });
   }
 
   function handleRestart() {
@@ -168,6 +179,13 @@ export default function FlashcardsPage() {
 
       {/* Progress */}
       <Progress value={progress} className="h-1.5" />
+
+      {/* Rating error banner */}
+      {ratingError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600">
+          {ratingError}
+        </div>
+      )}
 
       {/* Card */}
       <div className="relative" style={{ perspective: "1000px" }}>

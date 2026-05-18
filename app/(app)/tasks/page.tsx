@@ -52,6 +52,9 @@ function PomodoroTimer({ onSessionComplete }: { onSessionComplete?: (mins: numbe
   const [sessions, setSessions] = useState(0);
   const startedAtRef = useRef<Date | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Keep callback in a ref so changing it never recreates the interval
+  const onSessionCompleteRef = useRef(onSessionComplete);
+  useEffect(() => { onSessionCompleteRef.current = onSessionComplete; });
 
   const total = mode === "work" ? WORK_SECONDS : BREAK_SECONDS;
   const progress = ((total - seconds) / total) * 100;
@@ -70,7 +73,7 @@ function PomodoroTimer({ onSessionComplete }: { onSessionComplete?: (mins: numbe
             if (mode === "work") {
               const durationMins = 25;
               setSessions((n) => n + 1);
-              onSessionComplete?.(durationMins);
+              onSessionCompleteRef.current?.(durationMins);
               startedAtRef.current = null;
               setMode("break");
               return BREAK_SECONDS;
@@ -87,7 +90,7 @@ function PomodoroTimer({ onSessionComplete }: { onSessionComplete?: (mins: numbe
       if (intervalRef.current) clearInterval(intervalRef.current);
     }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [running, mode, onSessionComplete]);
+  }, [running, mode]); // onSessionComplete intentionally excluded — accessed via ref
 
   function reset() {
     setRunning(false);
@@ -184,6 +187,7 @@ export default function TasksPage() {
     mutationFn: ({ id, is_done }: { id: string; is_done: boolean }) =>
       updateTask(id, { status: is_done ? "pending" : "done" }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["today-tasks"] }),
+    onError: () => queryClient.invalidateQueries({ queryKey: ["today-tasks"] }),
   });
 
   const generateMut = useMutation({
@@ -196,6 +200,7 @@ export default function TasksPage() {
         setGenerateNotice("已生成今日任务");
       }
     },
+    onError: () => setGenerateNotice("生成失败，请稍后重试"),
   });
 
   const createMut = useMutation({
@@ -205,6 +210,7 @@ export default function TasksPage() {
       setNewTitle("");
       setShowAdd(false);
     },
+    onError: () => queryClient.invalidateQueries({ queryKey: ["today-tasks"] }),
   });
 
   function handlePomodoroComplete(durationMins: number) {
