@@ -9,6 +9,7 @@ from app.core.database import engine
 from app.core.redis import close_redis
 from app.core.exceptions import AppError, app_error_handler
 from app.api.v1 import router as v1_router
+from app.api.admin import router as admin_router
 
 # (method, path) -> (max_requests, window_seconds)
 _RATE_LIMITS: dict[tuple[str, str], tuple[int, int]] = {
@@ -87,6 +88,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 # 注册路由
 app.include_router(v1_router)
+app.include_router(admin_router)
 
 
 @app.get("/health", tags=["健康检查"])

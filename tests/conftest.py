@@ -31,11 +31,13 @@ async def db():
 
 
 @pytest_asyncio.fixture(scope="function")
-async def client(db: AsyncSession):
+async def client(db: AsyncSession, request: pytest.FixtureRequest):
     async def override_get_db():
         yield db
 
     app.dependency_overrides[get_db] = override_get_db
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+    client_octet = abs(hash(request.node.nodeid)) % 250 + 1
+    transport = ASGITransport(app=app, client=(f"203.0.113.{client_octet}", 123))
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()

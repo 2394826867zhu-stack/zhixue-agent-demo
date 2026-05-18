@@ -162,7 +162,13 @@ class OnboardingService:
                 raw = raw.split("```")[1]
                 if raw.startswith("json"):
                     raw = raw[4:]
-            return json.loads(raw)
+            parsed = json.loads(raw)
+            fallback = _fallback_extract(step, message, draft)
+            if _is_empty_extraction(step, parsed):
+                return fallback
+            if fallback:
+                return _merge_extraction(parsed, fallback)
+            return parsed
         except Exception as e:
             logger.warning(f"onboarding extract failed at step={step}: {e}")
             return _fallback_extract(step, message, draft)
@@ -303,11 +309,42 @@ _GRADE_TYPES = {
     "大四": "university", "大学": "university",
 }
 _PERFORMANCE_WORDS = [
+    ("班级前 20%", "优秀"), ("前 20%", "优秀"), ("前20%", "优秀"),
     ("优秀", "优秀"), ("很好", "优秀"),
-    ("不错", "良好"), ("良好", "良好"), ("还行", "中等"),
+    ("中等偏上", "良好"), ("不错", "良好"), ("良好", "良好"), ("还行", "中等"),
     ("中等", "中等"), ("一般", "中等"),
-    ("较差", "较差"), ("比较差", "较差"), ("很差", "较差"), ("差", "较差"),
+    ("比较吃力", "较差"), ("较差", "较差"), ("比较差", "较差"), ("很差", "较差"), ("差", "较差"),
 ]
+
+
+def _is_empty_extraction(step: str, extracted: Any) -> bool:
+    if not isinstance(extracted, dict) or not extracted:
+        return True
+    if step == "grade":
+        return not extracted.get("grade")
+    if step == "subjects":
+        return not extracted.get("subjects")
+    if step in ("progress", "performance"):
+        value = extracted.get(step)
+        return not isinstance(value, dict) or not value
+    if step == "goal":
+        return not extracted.get("goal")
+    if step == "next_exam":
+        return False
+    return False
+
+
+def _merge_extraction(extracted: dict[str, Any], fallback: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(extracted)
+    for key, value in fallback.items():
+        current = merged.get(key)
+        if isinstance(current, dict) and isinstance(value, dict):
+            combined = dict(value)
+            combined.update(current)
+            merged[key] = combined
+        elif not current:
+            merged[key] = value
+    return merged
 
 
 def _fallback_extract(step: str, message: str, draft: dict) -> dict[str, Any]:
@@ -342,6 +379,11 @@ def _fallback_extract(step: str, message: str, draft: dict) -> dict[str, Any]:
 
     if step == "performance":
         performance = {}
+        global_perf = None
+        for word, normalized in _PERFORMANCE_WORDS:
+            if word in text:
+                global_perf = normalized
+                break
         for subject in draft.get("subjects", []):
             start = text.find(subject)
             if start == -1:
@@ -351,6 +393,8 @@ def _fallback_extract(step: str, message: str, draft: dict) -> dict[str, Any]:
                 if word in window:
                     performance[subject] = normalized
                     break
+        if not performance and global_perf:
+            performance = {subject: global_perf for subject in draft.get("subjects", [])}
         return {"performance": performance} if performance else {}
 
     if step == "goal":

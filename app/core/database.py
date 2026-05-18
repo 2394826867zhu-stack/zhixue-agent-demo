@@ -15,6 +15,9 @@ AsyncSessionLocal = async_sessionmaker(
     expire_on_commit=False,
 )
 
+# alias for use in background tasks / non-request contexts
+async_session_factory = AsyncSessionLocal
+
 
 class Base(DeclarativeBase):
     pass

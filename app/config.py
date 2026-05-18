@@ -18,11 +18,18 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
 
-    # JWT
+    # JWT (用户)
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 120
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+
+    # JWT (管理后台，独立密钥)
+    ADMIN_JWT_SECRET: str = ""
+    ADMIN_TOKEN_EXPIRE_HOURS: int = 12
+
+    # 默认每日 Token 配额（所有用户）
+    DEFAULT_DAILY_TOKEN_LIMIT: int = 200_000
 
     # 文件存储
     STORAGE_TYPE: Literal["local", "oss"] = "local"
