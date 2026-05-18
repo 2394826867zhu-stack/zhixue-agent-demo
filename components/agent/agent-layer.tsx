@@ -41,7 +41,9 @@ type SpeechRecognitionLike = {
   interimResults: boolean;
   onresult: ((event: SpeechRecognitionResultEventLike) => void) | null;
   onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
   start: () => void;
+  stop: () => void;
 };
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
@@ -65,11 +67,14 @@ function AgentCommandPanel({ open, onClose }: { open: boolean; onClose: () => vo
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [notice, setNotice] = useState<AgentNotice | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isListening, setIsListening] = useState(false);
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messageSeqRef = useRef(0);
   const noticeTimerRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const voiceTimeoutRef = useRef<number | null>(null);
   const hasMessages = messages.length > 0;
 
   function refreshAgentSideEffects() {
@@ -166,7 +171,15 @@ function AgentCommandPanel({ open, onClose }: { open: boolean; onClose: () => vo
     uploadMutation.mutate(file);
   }
 
+  function stopVoice() {
+    if (voiceTimeoutRef.current) { window.clearTimeout(voiceTimeoutRef.current); voiceTimeoutRef.current = null; }
+    if (recognitionRef.current) { recognitionRef.current.stop(); recognitionRef.current = null; }
+    setIsListening(false);
+  }
+
   function handleVoiceInput() {
+    if (isListening) { stopVoice(); showNotice("已停止语音输入"); return; }
+
     const speechWindow = window as Window & {
       SpeechRecognition?: SpeechRecognitionConstructor;
       webkitSpeechRecognition?: SpeechRecognitionConstructor;
@@ -186,10 +199,15 @@ function AgentCommandPanel({ open, onClose }: { open: boolean; onClose: () => vo
       if (transcript) setInput((prev) => `${prev}${prev ? " " : ""}${transcript}`);
     };
     recognition.onerror = (event) => {
-      showNotice(event.error ? `语音输入失败：${event.error}` : "语音输入失败", "error");
+      showNotice(event.error === "no-speech" ? "没有检测到声音，已取消" : event.error ? `语音输入失败：${event.error}` : "语音输入失败", "error");
+      stopVoice();
     };
+    recognition.onend = () => { stopVoice(); };
     recognition.start();
-    showNotice("正在听，请说出你的问题");
+    recognitionRef.current = recognition;
+    setIsListening(true);
+    showNotice("正在听，请说话（8 秒后自动停止）");
+    voiceTimeoutRef.current = window.setTimeout(() => { stopVoice(); showNotice("语音超时，已自动停止"); }, 8000);
   }
 
   useEffect(() => {
@@ -202,6 +220,8 @@ function AgentCommandPanel({ open, onClose }: { open: boolean; onClose: () => vo
   useEffect(() => {
     return () => {
       if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current);
+      if (voiceTimeoutRef.current) window.clearTimeout(voiceTimeoutRef.current);
+      if (recognitionRef.current) { recognitionRef.current.stop(); recognitionRef.current = null; }
     };
   }, []);
 
@@ -235,7 +255,11 @@ function AgentCommandPanel({ open, onClose }: { open: boolean; onClose: () => vo
                   : undefined
               }
             >
-              {isUploadAction && uploadMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Icon size={16} />}
+              {isUploadAction && uploadMutation.isPending
+                ? <Loader2 size={16} className="animate-spin" />
+                : label === "语音" && isListening
+                ? <Mic size={16} className="text-red-500 animate-pulse" />
+                : <Icon size={16} />}
             </button>
           )})}
           <input

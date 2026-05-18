@@ -685,7 +685,7 @@ export const getWeeklyProgress = () => {
 // ---- Notes ----
 export const listNotes = (page = 1) => {
   if (isDemoMode()) return delay(page === 1 ? demoNotes : []);
-  return api.get(`/notes?page=${page}`).then((r) => r.data.data);
+  return api.get(`/notes?page=${page}`).then((r) => r.data.data.items ?? r.data.data);
 };
 
 export const generateNote = (body: { topic?: string; subject?: string; [key: string]: unknown }) => {

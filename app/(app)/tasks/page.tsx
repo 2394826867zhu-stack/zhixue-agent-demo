@@ -227,6 +227,11 @@ export default function TasksPage() {
             : <><Sparkles size={15} /> AI 生成任务</>}
         </Button>
       </div>
+      {generateMut.isError && (
+        <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/8 border border-destructive/20 rounded-lg px-3 py-2.5">
+          <AlertCircle size={14} /> 任务生成失败，请稍后重试
+        </div>
+      )}
 
       {total > 0 && (
         <div className="space-y-1.5">

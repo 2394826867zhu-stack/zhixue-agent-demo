@@ -84,7 +84,7 @@ export default function KnowledgePage() {
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-5 md:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">知识点</h1>
+        <h1 className="text-2xl font-bold text-foreground">知识库</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
           共 {displayStats.total} 个知识点
         </p>
@@ -123,7 +123,7 @@ export default function KnowledgePage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索知识点…"
+            placeholder="搜索知识库…"
             className="w-full pl-8 pr-3 py-2 rounded-lg border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
           />
         </div>
@@ -217,7 +217,7 @@ export default function KnowledgePage() {
           <CardContent className="flex flex-col items-center py-14 text-center">
             <BookOpen size={34} className="text-primary/55" />
             <p className="mt-3 font-semibold text-foreground">
-              {kps.length === 0 ? "还没有知识点" : "没有匹配的知识点"}
+              {kps.length === 0 ? "还没有知识点" : "没有匹配的结果"}
             </p>
             <p className="mt-1 max-w-sm text-sm text-muted-foreground">
               {kps.length === 0

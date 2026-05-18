@@ -23,7 +23,7 @@ const NAV_GROUPS = [
     label: "学习",
     items: [
       { href: "/notes", label: "笔记", icon: BookOpen },
-      { href: "/knowledge", label: "知识点", icon: Brain },
+      { href: "/knowledge", label: "知识库", icon: Brain },
       { href: "/flashcards", label: "闪卡复习", icon: Layers },
       { href: "/training", label: "训练", icon: Target },
       { href: "/mistakes", label: "错题本", icon: AlertCircle },
