@@ -1,9 +1,10 @@
+import hashlib
 import uuid
 import json
 import logging
 from datetime import datetime, date, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, text
 
 from app.models.task import DailyTask, PomodoroRecord
 from app.models.flashcard import Flashcard
@@ -22,7 +23,12 @@ class TaskService:
         uid = uuid.UUID(user_id)
         today = date.today()
 
-        # avoid duplicate generation for same day
+        # PostgreSQL advisory lock — prevents concurrent generation for same user-day.
+        # Hash (user_id, date) into a 32-bit int for pg_advisory_xact_lock.
+        lock_key = int(hashlib.md5(f"{user_id}:{today}".encode()).hexdigest()[:8], 16) % (2**31)
+        await db.execute(text(f"SELECT pg_advisory_xact_lock({lock_key})"))
+
+        # Re-check after acquiring lock (double-checked locking)
         existing = await db.execute(
             select(func.count()).where(
                 DailyTask.user_id == uid,

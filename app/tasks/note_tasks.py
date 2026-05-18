@@ -30,7 +30,10 @@ def process_note(self, note_id: str, user_id: str):
         _run(_process_note_async(self, note_id, user_id))
     except Exception as exc:
         logger.error(f"Note task failed for {note_id}: {exc}")
-        _run(_mark_note_failed(note_id, str(exc)))
+        try:
+            _run(_mark_note_failed(note_id, str(exc)))
+        except Exception as mark_err:
+            logger.error(f"Failed to mark note {note_id} as failed: {mark_err}")
         raise self.retry(exc=exc)
 
 
@@ -99,8 +102,15 @@ async def _process_note_async(task, note_id: str, user_id: str):
         note.status = "done"
         note.updated_at = datetime.now(timezone.utc)
 
-        # Step 4: 写入知识点
+        # Step 4: 写入知识点（先删旧数据保证 retry 幂等）
         from app.models.knowledge_point import KnowledgePoint
+        from sqlalchemy import delete as sa_delete
+        await db.execute(
+            sa_delete(KnowledgePoint).where(
+                KnowledgePoint.note_id == uuid.UUID(note_id),
+                KnowledgePoint.user_id == uuid.UUID(user_id),
+            )
+        )
         for kp_data in extracted.get("knowledge_points", []):
             kp = KnowledgePoint(
                 user_id=uuid.UUID(user_id),

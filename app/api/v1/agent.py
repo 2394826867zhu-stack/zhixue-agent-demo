@@ -18,9 +18,17 @@ async def agent_chat(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    import json
+    import logging
+    _logger = logging.getLogger(__name__)
+
     async def event_stream():
-        async for chunk in run(db, str(user.id), body.message, body.session_id):
-            yield chunk
+        try:
+            async for chunk in run(db, str(user.id), body.message, body.session_id):
+                yield chunk
+        except Exception as e:
+            _logger.error(f"Agent SSE generator crashed: {type(e).__name__}: {e}")
+            yield f'data: {json.dumps({"error": {"code": "stream_failed", "message": "AI 管家遇到问题，请重试", "recoverable": True}}, ensure_ascii=False)}\n\n'
 
     return StreamingResponse(
         event_stream(),

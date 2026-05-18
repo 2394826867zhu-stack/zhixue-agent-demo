@@ -155,21 +155,32 @@ class NoteService:
 
     async def generate_flashcards(self, db: AsyncSession, note_id: str, user_id: str) -> dict:
         """用户触发：为该笔记的所有知识点生成闪卡（联动入口）"""
-        note = await self._get_note(db, note_id, user_id)
+        from app.core.exceptions import ValidationError
+
+        # SELECT FOR UPDATE 锁定 note 行，防止并发重复生成
+        uid = uuid.UUID(user_id)
+        locked = await db.execute(
+            select(Note)
+            .where(Note.id == uuid.UUID(note_id), Note.user_id == uid)
+            .with_for_update()
+        )
+        note = locked.scalar_one_or_none()
+        if not note:
+            raise NotFoundError("笔记")
         if note.status != "done":
-            from app.core.exceptions import ValidationError
             raise ValidationError("笔记还在处理中，请稍后再试")
+        if note.flashcards_generated:
+            return {"created": 0, "knowledge_points": 0, "skipped": True}
 
         result = await db.execute(
             select(KnowledgePoint).where(
-                KnowledgePoint.user_id == uuid.UUID(user_id),
+                KnowledgePoint.user_id == uid,
                 KnowledgePoint.note_id == note.id,
             )
         )
         kps = result.scalars().all()
 
         if not kps:
-            from app.core.exceptions import ValidationError
             raise ValidationError("该笔记暂无可用知识点")
 
         from app.llm.client import llm_client
@@ -178,15 +189,6 @@ class NoteService:
 
         created_count = 0
         for kp in kps:
-            # 跳过已有闪卡的知识点
-            existing = await db.execute(
-                select(func.count()).where(
-                    Flashcard.user_id == uuid.UUID(user_id),
-                    Flashcard.knowledge_point_id == kp.id,
-                )
-            )
-            if (existing.scalar() or 0) > 0:
-                continue
 
             try:
                 raw = await llm_client.generate(
