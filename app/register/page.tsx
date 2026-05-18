@@ -3,12 +3,25 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/lib/store";
-import { register, login } from "@/lib/api";
+import { getMe, register, login } from "@/lib/api";
+import { normalizeLoginIdentity } from "@/lib/auth-identity";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, Eye, EyeOff, AlertCircle, CheckCircle2 } from "lucide-react";
 
 const GRADES = ["初一", "初二", "初三", "高一", "高二", "高三", "大一", "大二", "大三", "大四", "其他"];
+const GRADE_TYPE: Record<string, "junior_high" | "senior_high" | "college" | undefined> = {
+  初一: "junior_high",
+  初二: "junior_high",
+  初三: "junior_high",
+  高一: "senior_high",
+  高二: "senior_high",
+  高三: "senior_high",
+  大一: "college",
+  大二: "college",
+  大三: "college",
+  大四: "college",
+};
 
 function PasswordStrength({ pwd }: { pwd: string }) {
   const checks = [pwd.length >= 8, /[A-Z]/.test(pwd), /[0-9]/.test(pwd)];
@@ -46,7 +59,7 @@ export default function RegisterPage() {
   const passwordMatch = form.password === form.confirm;
   const canSubmit =
     form.username.trim().length >= 3 &&
-    form.password.length >= 6 &&
+    form.password.length >= 8 &&
     passwordMatch &&
     !loading;
 
@@ -56,24 +69,44 @@ export default function RegisterPage() {
     setLoading(true);
     setError("");
     try {
+      const email = normalizeLoginIdentity(form.username);
+      try {
+        localStorage.removeItem("zhiyao_demo_mode");
+        localStorage.removeItem("zhiyao-auth");
+      } catch {
+        // Ignore storage failures in restricted preview surfaces.
+      }
       await register({
-        username: form.username.trim(),
+        email,
         nickname: form.nickname.trim() || form.username.trim(),
         password: form.password,
-        grade: form.grade || undefined,
+        grade: GRADE_TYPE[form.grade],
       });
       // Auto-login after register
-      const loginData = await login({ username: form.username.trim(), password: form.password });
+      const loginData = await login({ email, password: form.password });
       const token = loginData.access_token ?? loginData.token;
-      const user = loginData.user ?? {
+      try {
+        localStorage.setItem("access_token", token);
+      } catch {
+        // Zustand state still keeps the token when storage is restricted.
+      }
+      const user = loginData.user ?? await getMe().catch(() => ({
         id: "", username: form.username.trim(), nickname: form.nickname.trim() || form.username.trim(),
-      };
+      }));
+      try {
+        localStorage.removeItem("zhiyao_onboarding_completed");
+        localStorage.setItem("zhiyao_needs_onboarding", "true");
+      } catch {
+        // Ignore storage failures in restricted preview surfaces.
+      }
       setAuth(user, token);
-      router.replace("/dashboard");
+      router.replace("/onboarding");
     } catch (err: unknown) {
+      const errData = (err as { response?: { data?: { detail?: string; message?: string } } })?.response?.data;
       const msg =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-        "注册失败，请稍后重试";
+        errData?.detail ||
+        errData?.message ||
+        "注册失败，请检查网络后重试";
       setError(msg);
     } finally {
       setLoading(false);
@@ -161,7 +194,7 @@ export default function RegisterPage() {
                     autoComplete="new-password"
                     value={form.password}
                     onChange={(e) => update("password", e.target.value)}
-                    placeholder="至少6位"
+                    placeholder="至少8位"
                     className="w-full rounded-lg border border-border bg-background px-3.5 py-2.5 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                   />
                   <button

@@ -762,12 +762,22 @@ export const getKPStats = () => {
 // ---- Training ----
 export const startTraining = (body: object) => {
   if (isDemoMode()) {
+    const subject = (body as { subject?: string }).subject ?? "物理";
     return delay({
-      session_id: "demo-training-1",
-      subject: "物理",
-      bloom_level: 3,
-      question_count: 5,
-      config: body,
+      id: "demo-session-1",
+      mode: "subject",
+      subject,
+      status: "active",
+      question_count: 3,
+      answered_count: 0,
+      avg_score: null,
+      created_at: new Date().toISOString(),
+      completed_at: null,
+      questions: [
+        { id: "demo-q1", knowledge_point_id: "demo-kp1", bloom_level: "remember", question_type: "fill_blank", question: `${subject}：请简要说明你对该学科最基础概念的理解。`, reference: null, user_answer: null, ai_score: null, ai_feedback: null, is_wrong: false, answered_at: null },
+        { id: "demo-q2", knowledge_point_id: "demo-kp1", bloom_level: "understand", question_type: "fill_blank", question: `${subject}：举一个你学过的例子，解释其中用到的原理。`, reference: null, user_answer: null, ai_score: null, ai_feedback: null, is_wrong: false, answered_at: null },
+        { id: "demo-q3", knowledge_point_id: "demo-kp2", bloom_level: "apply", question_type: "essay", question: `${subject}：综合运用所学知识，分析一个实际问题。`, reference: null, user_answer: null, ai_score: null, ai_feedback: null, is_wrong: false, answered_at: null },
+      ],
     });
   }
   return api.post("/training/start", body).then((r) => r.data.data);
@@ -775,12 +785,15 @@ export const startTraining = (body: object) => {
 
 export const submitAnswer = (sessionId: string, questionId: string, body: object) => {
   if (isDemoMode()) {
+    const score = 72 + Math.floor(Math.random() * 28);
     return delay({
-      session_id: sessionId,
       question_id: questionId,
-      answer: body,
-      score: 84,
-      feedback: "思路清晰，关键公式选择正确。建议补充单位和中间步骤，方便后续复盘。",
+      ai_score: score,
+      ai_feedback: "思路清晰，关键公式选择正确。建议补充单位和中间步骤，方便后续复盘。",
+      is_wrong: score < 60,
+      reference: "参考答案：（这是 Demo 模式，真实训练会由 AI 生成详细参考答案）",
+      session_completed: questionId === "demo-q3",
+      session_avg_score: null,
     });
   }
   return api.post(`/training/${sessionId}/answer/${questionId}`, body).then((r) => r.data.data);
