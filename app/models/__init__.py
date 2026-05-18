@@ -9,6 +9,9 @@ from app.models.curriculum import CurriculumChapter
 from app.models.token_usage import TokenUsage
 from app.models.user_quota import UserQuota
 from app.models.admin_user import AdminUser
+from app.models.studyspace import StudySpaceSession
+from app.models.notification import Notification
+from app.models.star import StarLedger, UserCosmetic
 
 __all__ = [
     "User", "Note", "KnowledgePoint", "Flashcard",
@@ -17,4 +20,7 @@ __all__ = [
     "GuidanceSession", "GuidanceMessage",
     "CurriculumChapter",
     "TokenUsage", "UserQuota", "AdminUser",
+    "StudySpaceSession",
+    "Notification",
+    "StarLedger", "UserCosmetic",
 ]

@@ -32,6 +32,12 @@ class DailyTask(Base):
 
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
+    # v2: task origin
+    source: Mapped[str] = mapped_column(String(20), default="user", nullable=False)
+    # 'system' | 'user' — system tasks are auto-completed, cannot be manually marked done
+    auto_complete_trigger: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # 'flashcard_session' | 'lesson_complete' | 'training_session' | None
+
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     # 'pending' | 'in_progress' | 'done' | 'skipped'
 

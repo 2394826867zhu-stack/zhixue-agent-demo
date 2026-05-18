@@ -6,7 +6,7 @@ celery_app = Celery(
     "zhiyao",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.tasks.note_tasks", "app.tasks.task_tasks"],
+    include=["app.tasks.note_tasks", "app.tasks.task_tasks", "app.tasks.notification_tasks"],
 )
 
 # dev: every 5 min (so daily-task logic runs during demos); prod: once at 00:05
@@ -31,6 +31,15 @@ celery_app.conf.update(
         "recover-stuck-notes": {
             "task": "app.tasks.note_tasks.recover_stuck_notes",
             "schedule": 1800.0,
+        },
+        # organic push: 08:00 and 20:00 daily
+        "push-organic-notifications-morning": {
+            "task": "app.tasks.notification_tasks.push_organic_notifications",
+            "schedule": crontab(hour=8, minute=0) if settings.APP_ENV != "development" else 3600.0,
+        },
+        "push-organic-notifications-evening": {
+            "task": "app.tasks.notification_tasks.push_organic_notifications",
+            "schedule": crontab(hour=20, minute=0) if settings.APP_ENV != "development" else 7200.0,
         },
     },
 )
