@@ -1,12 +1,13 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
   CheckSquare, Timer, Play, Pause, RotateCcw,
-  Sparkles, CheckCircle2, Circle, Coffee, Plus, Loader2,
+  Sparkles, CheckCircle2, Coffee, Plus, Loader2,
   Layers, AlertCircle, Target, BookOpen, ClipboardList, Lightbulb
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -31,6 +32,13 @@ const TYPE_ICONS: Record<string, LucideIcon> = {
   training: Target,
   manual: BookOpen,
 };
+
+function taskHref(task: Task) {
+  if (task.task_type === "flashcard_review") return "/flashcards";
+  if (task.task_type === "mistake_review") return "/mistakes";
+  if (task.task_type === "training") return task.subject ? `/training?subject=${encodeURIComponent(task.subject)}` : "/training";
+  return task.subject ? `/knowledge?subject=${encodeURIComponent(task.subject)}` : "/knowledge";
+}
 
 const WORK_SECONDS = 25 * 60;
 const BREAK_SECONDS = 5 * 60;
@@ -165,6 +173,7 @@ export default function TasksPage() {
   const queryClient = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
   const [newTitle, setNewTitle] = useState("");
+  const [generateNotice, setGenerateNotice] = useState<string | null>(null);
 
   const { data: tasks = [], isLoading } = useQuery<Task[]>({
     queryKey: ["today-tasks"],
@@ -179,7 +188,14 @@ export default function TasksPage() {
 
   const generateMut = useMutation({
     mutationFn: () => generateTasks(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["today-tasks"] }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["today-tasks"] });
+      if (!data || (Array.isArray(data) && data.length === 0)) {
+        setGenerateNotice("暂无可生成任务，先添加笔记或知识点");
+      } else {
+        setGenerateNotice("已生成今日任务");
+      }
+    },
   });
 
   const createMut = useMutation({
@@ -232,6 +248,11 @@ export default function TasksPage() {
           <AlertCircle size={14} /> 任务生成失败，请稍后重试
         </div>
       )}
+      {generateNotice && !generateMut.isError && (
+        <div className="flex items-center gap-2 rounded-lg border border-primary/15 bg-primary/6 px-3 py-2.5 text-sm text-muted-foreground">
+          <Lightbulb size={14} className="text-primary" /> {generateNotice}
+        </div>
+      )}
 
       {total > 0 && (
         <div className="space-y-1.5">
@@ -266,25 +287,16 @@ export default function TasksPage() {
           )}
 
           {pendingTasks.length > 0 && (
-            <div className="space-y-2">
-              {pendingTasks.map((task) => {
+            <div className="space-y-3">
+              {pendingTasks.map((task, index) => {
                 const TypeIcon = TYPE_ICONS[task.task_type] ?? ClipboardList;
                 return (
                 <div
                   key={task.id}
-                  role="button"
-                  tabIndex={0}
-                  className="flex items-start gap-3 p-3.5 rounded-xl border border-border bg-card hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 transition-colors cursor-pointer group"
-                  onClick={() => toggleMut.mutate({ id: task.id, is_done: task.is_done })}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      toggleMut.mutate({ id: task.id, is_done: task.is_done });
-                    }
-                  }}
+                  className="grid gap-3 rounded-2xl border border-border bg-card p-4 transition-colors hover:border-primary/30 md:grid-cols-[auto_minmax(0,1fr)_auto]"
                 >
-                  <span className="mt-0.5 shrink-0 text-muted-foreground group-hover:text-primary transition-colors" aria-hidden="true">
-                    <Circle size={18} />
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold tabular-nums text-primary" aria-hidden="true">
+                    {String(index + 1).padStart(2, "0")}
                   </span>
                   <div className="flex-1 min-w-0 space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -306,6 +318,23 @@ export default function TasksPage() {
                         <span>{task.ai_priority_reason}</span>
                       </p>
                     )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2 md:flex-col md:items-stretch">
+                    <Link
+                      href={taskHref(task)}
+                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-primary px-3 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                    >
+                      <Play size={13} /> 去完成
+                    </Link>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-9 gap-1.5 px-3 text-xs"
+                      onClick={() => toggleMut.mutate({ id: task.id, is_done: task.is_done })}
+                      disabled={toggleMut.isPending}
+                    >
+                      <CheckCircle2 size={13} /> 完成
+                    </Button>
                   </div>
                 </div>
                 );
@@ -353,19 +382,20 @@ export default function TasksPage() {
               {doneTasks.map((task) => (
                 <div
                   key={task.id}
-                  role="button"
-                  tabIndex={0}
-                  className="flex items-start gap-3 p-3.5 rounded-xl border border-border bg-muted/30 cursor-pointer opacity-60 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 transition-opacity"
-                  onClick={() => toggleMut.mutate({ id: task.id, is_done: task.is_done })}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      toggleMut.mutate({ id: task.id, is_done: task.is_done });
-                    }
-                  }}
+                  className="flex items-start justify-between gap-3 rounded-xl border border-border bg-muted/30 p-3.5 opacity-70"
                 >
-                  <CheckCircle2 size={18} className="text-green-500 mt-0.5 shrink-0" />
-                  <p className="text-sm text-muted-foreground line-through">{task.title}</p>
+                  <div className="flex min-w-0 items-start gap-3">
+                    <CheckCircle2 size={18} className="text-green-500 mt-0.5 shrink-0" />
+                    <p className="text-sm text-muted-foreground line-through">{task.title}</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 shrink-0 text-xs"
+                    onClick={() => toggleMut.mutate({ id: task.id, is_done: task.is_done })}
+                  >
+                    恢复
+                  </Button>
                 </div>
               ))}
             </div>

@@ -1,6 +1,7 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { getHeatmap } from "@/lib/api";
 
@@ -37,7 +38,7 @@ function generateMockHeatmap(): HeatDay[] {
 }
 
 export function HeatmapChart() {
-  const { data: apiData, isError } = useQuery<HeatDay[]>({
+  const { data: apiData, isError, isLoading } = useQuery<HeatDay[]>({
     queryKey: ["heatmap", 90],
     queryFn: () => getHeatmap(90),
   });
@@ -53,7 +54,7 @@ export function HeatmapChart() {
   const totalHours = Math.floor(totalMinutes / 60);
 
   return (
-    <Card className="border-border/60">
+    <Card className="animate-card-in border-border/60">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-semibold">学习热力图</CardTitle>
@@ -61,23 +62,35 @@ export function HeatmapChart() {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="flex gap-1">
-          {weeks.map((week, wi) => (
-            <div key={wi} className="flex flex-col gap-1">
-              {week.map((day, di) => (
-                <div
-                  key={di}
-                  className={cn("w-3 h-3 rounded-sm transition-colors", INTENSITY_CLASS[getIntensity(day.minutes)])}
-                  title={`${day.date}: ${day.minutes}分钟`}
-                />
-              ))}
-            </div>
-          ))}
-        </div>
+        {isLoading ? (
+          <div className="flex gap-1">
+            {Array.from({ length: 13 }).map((_, week) => (
+              <div key={week} className="flex flex-col gap-1">
+                {Array.from({ length: 7 }).map((__, day) => (
+                  <Skeleton key={day} className="h-3 w-3 rounded-sm" />
+                ))}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex gap-1">
+            {weeks.map((week, wi) => (
+              <div key={wi} className="flex flex-col gap-1">
+                {week.map((day, di) => (
+                  <div
+                    key={di}
+                    className={cn("w-3 h-3 rounded-sm transition-colors duration-200", INTENSITY_CLASS[getIntensity(day.minutes)])}
+                    title={`${day.date}: ${day.minutes}分钟`}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
         <div className="flex items-center gap-1.5 mt-3">
           <span className="text-[10px] text-muted-foreground">少</span>
           {INTENSITY_CLASS.map((cls, i) => (
-            <div key={i} className={cn("w-2.5 h-2.5 rounded-sm", cls)} />
+            <div key={i} className={cn("w-2.5 h-2.5 rounded-sm", isLoading ? "bg-muted" : cls)} />
           ))}
           <span className="text-[10px] text-muted-foreground">多</span>
         </div>

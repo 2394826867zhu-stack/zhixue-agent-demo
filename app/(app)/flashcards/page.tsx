@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -135,12 +136,12 @@ export default function FlashcardsPage() {
           )}
           <div className="flex flex-col gap-2 sm:flex-row">
             {total === 0 && (
-              <a
+              <Link
                 href="/notes"
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-[0.95rem] font-semibold text-primary-foreground shadow-[0_8px_22px_oklch(0.70_0.16_170_/_22%)] transition-all hover:bg-primary/90"
               >
                 <BookOpen size={16} /> 生成笔记
-              </a>
+              </Link>
             )}
             <Button onClick={handleRestart} variant="outline" size="lg" className="gap-2">
               <RotateCcw size={16} /> {total === 0 ? "刷新队列" : "再练一遍"}

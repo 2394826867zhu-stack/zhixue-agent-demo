@@ -35,7 +35,10 @@ export function MasteryRing() {
                 ))}
               </Pie>
               <Tooltip
-                formatter={(v: number) => [`${v} 个 (${Math.round(v / TOTAL * 100)}%)`, ""]}
+                formatter={(value) => {
+                  const count = Number(value ?? 0);
+                  return [`${count} 个 (${Math.round(count / TOTAL * 100)}%)`, ""];
+                }}
                 contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid var(--border)" }}
               />
             </PieChart>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
@@ -18,7 +19,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { generateNote, listNotes } from "@/lib/api";
+import Link from "next/link";
+import { generateNoteWithAgent, listNotes } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const SUBJECTS = ["数学", "物理", "化学", "生物", "语文", "英语", "历史", "地理", "政治"];
@@ -80,18 +82,36 @@ const MOCK_NOTES: Note[] = [
 ];
 
 function GeneratePanel({ onSuccess }: { onSuccess: () => void }) {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [topic, setTopic] = useState("");
   const [subject, setSubject] = useState(SUBJECTS[0]);
 
   const generateMutation = useMutation({
-    mutationFn: () => generateNote({ topic, subject }),
-    onSuccess: () => {
+    mutationFn: () => {
+      const raw = topic.trim();
+      const isLongContent = raw.length > 120 || raw.includes("\n");
+      return generateNoteWithAgent({
+        topic: isLongContent ? raw.slice(0, 60) : raw,
+        subject,
+        content: isLongContent ? raw : undefined,
+      });
+    },
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["notes"] });
       setTopic("");
+      if (data.note_id) {
+        router.push(`/notes/${data.note_id}`);
+        return;
+      }
       onSuccess();
     },
   });
+
+  const errorMessage =
+    generateMutation.error instanceof Error
+      ? generateMutation.error.message
+      : "生成失败，请检查网络后重试。";
 
   return (
     <Card className="border-primary/15 bg-gradient-to-br from-card via-card to-primary/5">
@@ -167,7 +187,7 @@ function GeneratePanel({ onSuccess }: { onSuccess: () => void }) {
           ) : (
             <>
               <Sparkles size={16} />
-              生成笔记与复习入口
+              让 Agent 生成笔记
             </>
           )}
         </Button>
@@ -175,13 +195,13 @@ function GeneratePanel({ onSuccess }: { onSuccess: () => void }) {
         {generateMutation.isSuccess && (
           <div className="flex items-center gap-2.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3.5 text-sm font-medium text-emerald-700">
             <CheckCircle2 size={16} />
-            笔记已生成，知识点和闪卡已同步创建。
+            Agent 已开始生成笔记，正在跳转到详情页。
           </div>
         )}
 
         {generateMutation.isError && (
           <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-3.5 text-sm text-destructive">
-            生成失败，请检查网络后重试。
+            {errorMessage}
           </div>
         )}
       </CardContent>
@@ -191,6 +211,7 @@ function GeneratePanel({ onSuccess }: { onSuccess: () => void }) {
 
 function NoteCard({ note }: { note: Note }) {
   return (
+    <Link href={`/notes/${note.id}`} className="block group/card">
     <Card size="sm" className="cursor-pointer hover:border-primary/35 hover:shadow-[var(--shadow-card-hover)]">
       <CardContent className="space-y-4 py-1">
         <div className="flex items-start justify-between gap-3">
@@ -224,6 +245,7 @@ function NoteCard({ note }: { note: Note }) {
         </div>
       </CardContent>
     </Card>
+    </Link>
   );
 }
 

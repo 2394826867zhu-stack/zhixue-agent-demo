@@ -1,7 +1,8 @@
 import axios from "axios";
+import curriculumSeed from "@/lib/curriculum-seed.json";
 
 const DEFAULT_API_BASE = "http://localhost:8000/v1";
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_BASE;
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_BASE).trim().replace(/\/+$/, "");
 
 type DemoTask = {
   id: string;
@@ -158,6 +159,25 @@ export type AgentChatHandlers = {
 export type UploadNoteFileResponse = {
   note_id: string;
   status: "pending" | "processing" | "done" | "failed";
+};
+
+export type GeneratedNoteResponse = {
+  note_id: string;
+  status: string;
+  message?: string;
+};
+
+type CurriculumSeedLesson = {
+  subject: string;
+  grade_type: string;
+  grade_year: number;
+  semester: number;
+  chapter_index: number;
+  chapter_title: string;
+  lesson_index: number;
+  lesson_title: string;
+  textbook_version: string;
+  is_key: boolean;
 };
 
 const isBrowser = () => typeof window !== "undefined";
@@ -639,7 +659,12 @@ export const generateTasks = () => {
 
 export const updateTask = (id: string, body: object) => {
   if (isDemoMode()) {
-    demoTasks = demoTasks.map((task) => (task.id === id ? { ...task, ...body } : task));
+    const nextBody = body as { status?: string; is_done?: boolean };
+    demoTasks = demoTasks.map((task) =>
+      task.id === id
+        ? { ...task, ...body, is_done: nextBody.is_done ?? (nextBody.status ? nextBody.status === "done" : task.is_done) }
+        : task
+    );
     return delay(demoTasks.find((task) => task.id === id) ?? { id, ...body });
   }
   return api.patch(`/tasks/${id}`, body).then((r) => r.data.data);
@@ -705,6 +730,42 @@ export const generateNote = (body: { topic?: string; subject?: string; [key: str
   return api.post("/notes/generate", body).then((r) => r.data.data);
 };
 
+export const generateNoteWithAgent = (body: { topic: string; subject?: string; content?: string }): Promise<GeneratedNoteResponse> => {
+  if (isDemoMode()) {
+    const source = body.content?.trim() || body.topic;
+    const note = {
+      id: `note-agent-${Date.now()}`,
+      title: source.length > 24 ? `${source.slice(0, 24)}...` : source,
+      subject: body.subject || "综合",
+      summary: "Agent 已接收生成任务，正在整理精读版、应考速览和知识框架。",
+      kp_count: 0,
+      created_at: todayISO(),
+    };
+    demoNotes = [note, ...demoNotes];
+    return delay({ note_id: note.id, status: "generating", message: "Agent 已开始生成笔记" }, 600);
+  }
+  return api.post("/agent/generate-note", body).then((r) => r.data.data).catch((err) => {
+    const detail = err?.response?.data?.message || err?.response?.data?.detail || err?.message;
+    throw new Error(detail || "Agent 笔记生成失败");
+  });
+};
+
+export const uploadNoteText = (body: { title?: string; subject?: string; content: string }): Promise<UploadNoteFileResponse> => {
+  if (isDemoMode()) {
+    const note = {
+      id: `note-text-${Date.now()}`,
+      title: body.title || body.content.slice(0, 24) || "粘贴内容生成笔记",
+      subject: body.subject || "综合",
+      summary: "文本资料已进入处理队列，稍后会自动整理为笔记、知识点与闪卡。",
+      kp_count: 0,
+      created_at: todayISO(),
+    };
+    demoNotes = [note, ...demoNotes];
+    return delay({ note_id: note.id, status: "processing" }, 600);
+  }
+  return api.post("/notes/upload/text", body).then((r) => r.data.data);
+};
+
 export const uploadNoteFile = (file: File, subject?: string): Promise<UploadNoteFileResponse> => {
   if (isDemoMode()) {
     const note = {
@@ -728,6 +789,29 @@ export const uploadNoteFile = (file: File, subject?: string): Promise<UploadNote
       headers: { "Content-Type": "multipart/form-data" },
     })
     .then((r) => r.data.data);
+};
+
+export const getNote = (id: string) => {
+  if (isDemoMode()) {
+    const note = demoNotes.find((n) => n.id === id) ?? demoNotes[0];
+    return delay({
+      ...note,
+      source_type: "ai_generated",
+      status: note.id.includes("agent") || note.id.includes("text") || note.id.includes("file") ? "processing" : "done",
+      full_version: `## ${note.title}\n\n${note.summary || "这是 Agent 生成的示例精读内容。"}\n\n- 核心概念\n- 关键公式\n- 典型例题`,
+      exam_version: `## 应考速览\n\n围绕「${note.title}」优先掌握定义、公式和常见题型。`,
+      graph_mermaid: "graph TD\nA[核心概念] --> B[公式]\nA --> C[例题]\nC --> D[复习任务]",
+      difficulty_points: [],
+      flashcards_generated: false,
+      knowledge_points: [],
+    });
+  }
+  return api.get(`/notes/${id}`).then((r) => r.data.data);
+};
+
+export const deleteNote = (id: string) => {
+  if (isDemoMode()) { demoNotes = demoNotes.filter((n) => n.id !== id); return delay({ success: true }); }
+  return api.delete(`/notes/${id}`).then((r) => r.data.data);
 };
 
 // ---- Flashcards ----
@@ -754,9 +838,152 @@ export const listKPs = (params?: object) => {
   return api.get("/knowledge-points", { params }).then((r) => r.data.data.items ?? r.data.data);
 };
 
+export const getKP = (id: string) => {
+  if (isDemoMode()) {
+    const demo = [
+      { id: "kp-1", name: "等差数列求和", subject: "数学", mastery_status: "reviewing", bloom_level: "apply", flashcard_count: 2, content: "## 等差数列求和公式\n\n设等差数列首项为 $a_1$，公差为 $d$，共 $n$ 项，则：\n\n$$S_n = \\frac{n(a_1 + a_n)}{2} = na_1 + \\frac{n(n-1)}{2}d$$\n\n**适用条件**：数列必须是等差数列，即相邻项之差恒定。\n\n**例题**：求 1+2+3+…+100 = $\\frac{100×101}{2}$ = 5050", key_formula: "$$S_n = \\frac{n(a_1+a_n)}{2}$$", note_id: null },
+      { id: "kp-2", name: "受力分析", subject: "物理", mastery_status: "learning", bloom_level: "apply", flashcard_count: 1, content: "## 受力分析方法\n\n1. **确定研究对象**：明确要分析哪个物体\n2. **找重力**：任何有质量的物体都受重力 $G=mg$\n3. **找支持力**：与接触面垂直\n4. **找摩擦力**：与接触面平行，阻碍相对运动\n5. **找其他力**：弹力、电磁力等", key_formula: "$G = mg$，$g ≈ 9.8 m/s^2$", note_id: null },
+    ];
+    return delay(demo.find((k) => k.id === id) ?? demo[0]);
+  }
+  return api.get(`/knowledge-points/${id}`).then((r) => r.data.data);
+};
+
+export const updateKP = (id: string, data: object) => {
+  if (isDemoMode()) return delay({ id, ...data });
+  return api.patch(`/knowledge-points/${id}`, data).then((r) => r.data.data);
+};
+
+export const deleteKP = (id: string) => {
+  if (isDemoMode()) return delay({ success: true });
+  return api.delete(`/knowledge-points/${id}`).then((r) => r.data.data);
+};
+
+export const createKP = (data: object) => {
+  if (isDemoMode()) return delay({ id: `kp-${Date.now()}`, mastery_status: "new", bloom_level: "remember", flashcard_count: 0, ...data });
+  return api.post("/knowledge-points", data).then((r) => r.data.data);
+};
+
 export const getKPStats = () => {
   if (isDemoMode()) return delay({ total: 4, new: 0, learning: 2, reviewing: 2, mastered: 0, by_subject: {} });
   return api.get("/knowledge-points/stats").then((r) => r.data.data);
+};
+
+// ---- Curriculum ----
+const demoCurriculumKP = {
+  id: "kp-1",
+  name: "空间向量及其线性运算",
+  subject: "数学",
+  mastery_status: "learning",
+  bloom_level: "apply",
+  flashcard_count: 2,
+  content: "## 空间向量\n\n空间向量用于描述三维空间中的方向和长度，线性运算包括加法、减法和数乘。它是立体几何坐标化的基础。",
+  key_formula: "$$\\vec{a}+\\vec{b}=(x_1+x_2,y_1+y_2,z_1+z_2)$$",
+  chapter_id: "cur-1",
+};
+
+const localCurriculum = curriculumSeed as CurriculumSeedLesson[];
+
+function localLessonId(item: CurriculumSeedLesson) {
+  return [
+    item.grade_type,
+    item.grade_year,
+    item.semester,
+    item.subject,
+    item.chapter_index,
+    item.lesson_index,
+  ].join("-");
+}
+
+function findLocalLesson(id: string) {
+  return localCurriculum.find((item) => localLessonId(item) === id);
+}
+
+function isUuidLike(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function buildLocalCurriculum(params: { grade_type?: string; grade_year?: number; subject?: string; semester?: number } = {}) {
+  const filtered = localCurriculum.filter((item) => {
+    if (params.grade_type && item.grade_type !== params.grade_type) return false;
+    if (params.grade_year && item.grade_year !== params.grade_year) return false;
+    if (params.subject && item.subject !== params.subject) return false;
+    if (params.semester && item.semester !== params.semester) return false;
+    return true;
+  });
+
+  const groups = new Map<string, {
+    chapter_index: number;
+    chapter_title: string;
+    subject: string;
+    semester: number;
+    lessons: Array<CurriculumSeedLesson & { id: string; kp_count: number; created_at: string }>;
+  }>();
+
+  for (const item of filtered) {
+    const key = `${item.subject}-${item.semester}-${item.chapter_index}-${item.chapter_title}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        chapter_index: item.chapter_index,
+        chapter_title: item.chapter_title,
+        subject: item.subject,
+        semester: item.semester,
+        lessons: [],
+      });
+    }
+    groups.get(key)!.lessons.push({
+      ...item,
+      id: localLessonId(item),
+      kp_count: item.subject === "数学" && item.grade_year === 2 && item.chapter_index === 1 && item.lesson_index === 1 ? 1 : 0,
+      created_at: todayISO(-7),
+    });
+  }
+
+  return Array.from(groups.values()).sort((a, b) =>
+    a.subject.localeCompare(b.subject, "zh-CN") ||
+    a.semester - b.semester ||
+    a.chapter_index - b.chapter_index
+  );
+}
+
+export const getCurriculumChapters = (params: { grade_type?: string; grade_year?: number; subject?: string; semester?: number } = {}) => {
+  if (isDemoMode()) return delay(buildLocalCurriculum(params));
+  return api.get("/curriculum/chapters", { params }).then((r) => r.data.data).catch(() => buildLocalCurriculum(params));
+};
+
+export const getChapterKPs = (chapterId: string) => {
+  if (isDemoMode()) return delay(chapterId.endsWith("数学-1-1") ? [demoCurriculumKP] : []);
+  if (!isUuidLike(chapterId)) return delay(chapterId.endsWith("数学-1-1") ? [demoCurriculumKP] : []);
+  return api.get(`/curriculum/chapters/${chapterId}/my-kps`).then((r) => r.data.data);
+};
+
+export const linkKPToChapter = (chapterId: string, kpId: string) => {
+  if (isDemoMode()) return delay({ id: kpId, chapter_id: chapterId });
+  return api.post(`/curriculum/chapters/${chapterId}/link-kp`, { kp_id: kpId }).then((r) => r.data.data);
+};
+
+export const generateNoteFromChapter = (chapterId: string) => {
+  if (isDemoMode()) {
+    const note = {
+      id: `note-chapter-${Date.now()}`,
+      title: "课程课时生成笔记",
+      subject: "数学",
+      summary: "已根据课程目录创建生成任务，稍后可在笔记库查看。",
+      kp_count: 0,
+      created_at: todayISO(),
+    };
+    demoNotes = [note, ...demoNotes];
+    return delay({ note_id: note.id, status: "processing", chapter_id: chapterId }, 600);
+  }
+  if (!isUuidLike(chapterId)) {
+    const lesson = findLocalLesson(chapterId);
+    const topic = lesson ? `${lesson.lesson_title}｜${lesson.chapter_title}` : "课程课时生成笔记";
+    const content = lesson
+      ? `请围绕${lesson.grade_year}年级${lesson.subject}《${lesson.chapter_title}》中的“${lesson.lesson_title}”整理学习笔记，输出适合学生复习的定义、公式、例题、易错点和知识框架。`
+      : topic;
+    return generateNoteWithAgent({ topic, subject: lesson?.subject || "综合", content });
+  }
+  return api.post(`/curriculum/chapters/${chapterId}/generate-note`).then((r) => r.data.data);
 };
 
 // ---- Training ----
@@ -821,8 +1048,8 @@ const demoGuidanceChatResponse = (sessionId: string, message: string) =>
   });
 
 const shouldUseGuidanceFallback = (err: unknown) => {
-  const status = (err as { response?: { status?: number } })?.response?.status;
-  return isDemoMode() || (apiBaseIsLocal() && (status === 401 || status === 403 || status == null));
+  void err;
+  return isDemoMode();
 };
 
 export const startGuidance = (body: { question: string; subject?: string }) => {

@@ -1,6 +1,7 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Brain, Layers, Clock, AlertCircle } from "lucide-react";
 import { getOverview } from "@/lib/api";
 
@@ -20,7 +21,7 @@ function fmt(minutes: number) {
 }
 
 export function StatsRow() {
-  const { data: overview } = useQuery<Overview>({
+  const { data: overview, isLoading } = useQuery<Overview>({
     queryKey: ["overview"],
     queryFn: getOverview,
   });
@@ -58,16 +59,29 @@ export function StatsRow() {
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-      {stats.map((s) => (
-        <Card key={s.label} className="border-border/60">
+      {stats.map((s, index) => (
+        <Card
+          key={s.label}
+          className="animate-card-in border-border/60"
+          style={{ animationDelay: `${index * 35}ms` }}
+        >
           <CardContent className="p-5">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-xs text-muted-foreground font-medium">{s.label}</p>
-                <p className="text-2xl font-bold mt-1 text-foreground">{s.value}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{s.sub}</p>
+                {isLoading ? (
+                  <>
+                    <Skeleton className="mt-2 h-8 w-14" />
+                    <Skeleton className="mt-2 h-3 w-20" />
+                  </>
+                ) : (
+                  <>
+                    <p className="text-2xl font-bold mt-1 text-foreground">{s.value}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{s.sub}</p>
+                  </>
+                )}
               </div>
-              <div className={`p-2 rounded-lg bg-current/8 ${s.color}`}>
+              <div className={`p-2 rounded-lg bg-current/8 transition-transform duration-200 ease-out hover:scale-105 ${s.color}`}>
                 <s.icon size={18} className={s.color} strokeWidth={1.8} />
               </div>
             </div>

@@ -1,7 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card } from "@/components/ui/card";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { MessageCircle, Send, Loader2, Plus, Brain, Lightbulb, History } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -74,7 +73,7 @@ export default function GuidancePage() {
     } catch {
       setMessages((prev) => [
         ...prev.filter((m) => m.id !== "thinking"),
-        { id: "err", role: "assistant", content: "连接出现问题，请稍后再试。" },
+        { id: `err-${Date.now()}`, role: "assistant", content: "连接出现问题，请稍后再试。" },
       ]);
     } finally {
       setLoading(false);
@@ -153,7 +152,7 @@ export default function GuidancePage() {
               <Lightbulb size={12} /> 使用技巧
             </p>
             <ul className="text-[11px] text-muted-foreground space-y-0.5">
-              <li>· 描述你的困惑点，而非问"是什么"</li>
+              <li>· 描述你的困惑点，而非问&quot;是什么&quot;</li>
               <li>· 回答 AI 的反问，触发更深引导</li>
               <li>· 用自己的话解释概念</li>
             </ul>

@@ -1,8 +1,8 @@
 "use client";
-import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { CheckCircle2, Circle, Layers, AlertCircle, PenLine, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getTodayTasks, updateTask, generateTasks } from "@/lib/api";
@@ -14,6 +14,7 @@ interface Task {
   subject?: string;
   estimated_minutes?: number;
   priority?: string;
+  status?: string;
   is_done: boolean;
 }
 
@@ -50,12 +51,12 @@ export function TodayTasks() {
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, isDone }: { id: string; isDone: boolean }) =>
-      updateTask(id, { is_done: isDone }),
+      updateTask(id, { status: isDone ? "done" : "pending" }),
     onMutate: async ({ id, isDone }) => {
       // Optimistic update
       await queryClient.cancelQueries({ queryKey: ["today-tasks"] });
       queryClient.setQueryData<Task[]>(["today-tasks"], (old) =>
-        old?.map((t) => (t.id === id ? { ...t, is_done: isDone } : t)) ?? []
+        old?.map((t) => (t.id === id ? { ...t, is_done: isDone, status: isDone ? "done" : "pending" } : t)) ?? []
       );
     },
     onError: () => {
@@ -74,7 +75,7 @@ export function TodayTasks() {
   const total = tasks.length;
 
   return (
-    <Card className="border-border/60">
+    <Card className="animate-card-in border-border/60">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-semibold">今日任务</CardTitle>
@@ -107,24 +108,37 @@ export function TodayTasks() {
         </div>
       </CardHeader>
       <CardContent className="space-y-1">
-        {tasks.map((task) => {
+        {isLoading && tasks.length === 0 && (
+          <div className="space-y-2">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="flex items-center gap-3 rounded-lg px-3 py-2.5">
+                <Skeleton className="h-4 w-4 rounded-full" />
+                <Skeleton className="h-4 flex-1" />
+                <Skeleton className="h-5 w-10 rounded-full" />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!isLoading && tasks.map((task, index) => {
           const Icon = TYPE_ICON[task.task_type] || PenLine;
           const priority = task.priority ?? "normal";
           return (
             <div
               key={task.id}
               className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer group transition-colors",
-                task.is_done ? "opacity-50" : "hover:bg-muted/60"
+                "tap-feedback flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer group",
+                task.is_done ? "opacity-55" : "hover:bg-muted/60"
               )}
+              style={{ animationDelay: `${index * 35}ms` }}
               onClick={() =>
                 toggleMutation.mutate({ id: task.id, isDone: !task.is_done })
               }
             >
               {task.is_done ? (
-                <CheckCircle2 size={16} className="text-primary shrink-0" />
+                <CheckCircle2 size={16} className="text-primary shrink-0 transition-transform duration-200 group-active:scale-90" />
               ) : (
-                <Circle size={16} className="text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+                <Circle size={16} className="text-muted-foreground group-hover:text-primary transition-colors shrink-0 group-active:scale-90" />
               )}
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <Icon size={13} className={cn("shrink-0", PRIORITY_COLOR[priority])} />

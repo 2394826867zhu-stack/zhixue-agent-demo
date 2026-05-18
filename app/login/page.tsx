@@ -3,7 +3,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/lib/store";
-import { login } from "@/lib/api";
+import { getMe, login, register } from "@/lib/api";
+import { normalizeLoginIdentity } from "@/lib/auth-identity";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, Eye, EyeOff, AlertCircle } from "lucide-react";
@@ -28,20 +29,61 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
-    // 1. Dev bypass：无需后端
+    // 1. Dev bypass：优先尝试真实后端，获取真实 JWT
     if (username === DEV_USER && password === DEV_PASS) {
-      await new Promise((r) => setTimeout(r, 600));
-      setAuth({ id: "dev-001", username: DEV_USER, nickname: "Demo用户" }, "dev-token");
-      router.replace("/dashboard");
+      await new Promise((r) => setTimeout(r, 400));
+      const DEV_EMAIL = "devtest@example.com";
+      const DEV_PASSWORD = "ZhiYao2025Dev!";
+      try {
+        // 清除旧 demo 状态，确保 isDemoMode() 返回 false，login/register 才能真正访问后端
+        try {
+          localStorage.removeItem("access_token");
+          localStorage.removeItem("zhiyao_demo_mode");
+          localStorage.removeItem("zhiyao-auth");
+        } catch { /* restricted surface */ }
+        let loginData;
+        try {
+          loginData = await login({ email: DEV_EMAIL, password: DEV_PASSWORD });
+        } catch {
+          await register({ email: DEV_EMAIL, nickname: "知曜测试账号", password: DEV_PASSWORD });
+          loginData = await login({ email: DEV_EMAIL, password: DEV_PASSWORD });
+        }
+        const token = loginData.access_token ?? loginData.token;
+        try {
+          localStorage.setItem("access_token", token);
+          localStorage.removeItem("zhiyao_demo_mode");
+        } catch { /* restricted surface */ }
+        const user = loginData.user ?? await getMe().catch(() => ({ id: "", username: DEV_USER, nickname: "知曜测试账号" }));
+        setAuth(user, token);
+        router.replace("/dashboard");
+      } catch {
+        // 后端不可用时降级为纯 demo 模式
+        try {
+          localStorage.setItem("zhiyao_demo_mode", "true");
+        } catch { /* restricted surface */ }
+        setAuth({ id: "dev-001", username: DEV_USER, nickname: "Demo用户" }, "dev-token");
+        router.replace("/dashboard");
+      }
       setLoading(false);
       return;
     }
 
     // 2. 正式登录：调用真实后端
     try {
-      const data = await login({ username, password });
+      try {
+        localStorage.removeItem("zhiyao_demo_mode");
+        localStorage.removeItem("zhiyao-auth");
+      } catch {
+        // Ignore storage failures in restricted preview surfaces.
+      }
+      const data = await login({ email: normalizeLoginIdentity(username), password });
       const token = data.access_token ?? data.token;
-      const user = data.user ?? { id: "", username, nickname: username };
+      try {
+        localStorage.setItem("access_token", token);
+      } catch {
+        // Zustand state still keeps the token when storage is restricted.
+      }
+      const user = data.user ?? await getMe().catch(() => ({ id: "", username, nickname: username }));
       setAuth(user, token);
       router.replace("/dashboard");
     } catch (err: unknown) {

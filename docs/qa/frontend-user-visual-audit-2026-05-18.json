@@ -1,0 +1,221 @@
+{
+  "startedAt": "2026-05-18T00:38:17.279Z",
+  "baseUrl": "http://127.0.0.1:3000",
+  "passes": [
+    {
+      "area": "Onboarding",
+      "action": "选择年级",
+      "evidence": "clicked role=button name=高二; url=http://127.0.0.1:3000/onboarding"
+    },
+    {
+      "area": "Notes",
+      "action": "切换 AI 生成 tab",
+      "evidence": "clicked role=button name=AI 生成; url=http://127.0.0.1:3000/notes"
+    },
+    {
+      "area": "Training",
+      "action": "切换训练学科",
+      "evidence": "clicked role=button name=数学; url=http://127.0.0.1:3000/training"
+    },
+    {
+      "area": "Training",
+      "action": "启动训练",
+      "evidence": "clicked role=button name=开始训练; url=http://127.0.0.1:3000/training"
+    }
+  ],
+  "issues": [
+    {
+      "id": "VIS-01",
+      "severity": "P2",
+      "area": "Dashboard",
+      "symptom": "开始今日计划跳转任务 点击失败或不可用",
+      "initialJudgement": "定位/状态问题：count=0",
+      "evidence": "url=http://127.0.0.1:3000/dashboard"
+    },
+    {
+      "id": "VIS-02",
+      "severity": "P2",
+      "area": "Dashboard",
+      "symptom": "AI 重排今日任务 点击失败或不可用",
+      "initialJudgement": "定位/状态问题：count=0",
+      "evidence": "url=http://127.0.0.1:3000/dashboard"
+    },
+    {
+      "id": "VIS-03",
+      "severity": "P2",
+      "area": "Notes",
+      "symptom": "填写生成内容 输入失败",
+      "initialJudgement": "输入控件定位或键盘事件问题：count=0",
+      "evidence": "url=http://127.0.0.1:3000/notes"
+    },
+    {
+      "id": "VIS-04",
+      "severity": "P2",
+      "area": "Notes",
+      "symptom": "提交生成笔记 点击失败或不可用",
+      "initialJudgement": "定位/状态问题：count=0",
+      "evidence": "url=http://127.0.0.1:3000/notes"
+    },
+    {
+      "id": "VIS-05",
+      "severity": "P2",
+      "area": "Notes",
+      "symptom": "搜索空状态 输入失败",
+      "initialJudgement": "输入控件定位或键盘事件问题：count=0",
+      "evidence": "url=http://127.0.0.1:3000/notes"
+    },
+    {
+      "id": "VIS-06",
+      "severity": "P2",
+      "area": "Knowledge",
+      "symptom": "掌握度筛选 点击失败或不可用",
+      "initialJudgement": "定位/状态问题：count=0",
+      "evidence": "url=http://127.0.0.1:3000/knowledge"
+    },
+    {
+      "id": "VIS-07",
+      "severity": "P3",
+      "area": "Knowledge",
+      "symptom": "学科筛选按钮 点击失败或不可用",
+      "initialJudgement": "定位/状态问题：count=0",
+      "evidence": "url=http://127.0.0.1:3000/knowledge"
+    },
+    {
+      "id": "VIS-08",
+      "severity": "P2",
+      "area": "Knowledge",
+      "symptom": "搜索空状态 输入失败",
+      "initialJudgement": "输入控件定位或键盘事件问题：count=0",
+      "evidence": "url=http://127.0.0.1:3000/knowledge"
+    },
+    {
+      "id": "VIS-09",
+      "severity": "P2",
+      "area": "Flashcards",
+      "symptom": "翻转闪卡 点击失败",
+      "initialJudgement": "定位/交互问题：count=0",
+      "evidence": "url=http://127.0.0.1:3000/flashcards"
+    },
+    {
+      "id": "VIS-10",
+      "severity": "P2",
+      "area": "Flashcards",
+      "symptom": "提交复习评分 点击失败或不可用",
+      "initialJudgement": "定位/状态问题：count=0",
+      "evidence": "url=http://127.0.0.1:3000/flashcards"
+    },
+    {
+      "id": "VIS-11",
+      "severity": "P1",
+      "area": "Training",
+      "symptom": "导航到 /training 超时",
+      "initialJudgement": "页面加载或 dev server 编译过程中卡住；用户会看到等待过久。需要确认训练页首屏依赖和后端请求是否阻塞渲染。",
+      "evidence": "url=http://127.0.0.1:3000/training"
+    },
+    {
+      "id": "VIS-12",
+      "severity": "P1",
+      "area": "Training",
+      "symptom": "开始训练后没有进入答题流",
+      "initialJudgement": "后端训练生成或 demo/真实模式分支可能异常；页面有错误文案但无法完成核心链路。",
+      "evidence": "  - link \"闪卡复习\":\n      - /url: /flashcards\n      - text: 闪卡复习\n    - link \"训练\":\n      - /url: /training\n      - text: 训练\n    - link \"错题本\":\n      - /url: /mistakes\n      - text: 错题本\n    - link \"每日任务\":\n      - /url: /tasks\n      - text: 每日任务\n    - link \"AI 助手\":\n      - /url: /guidance\n      - text: AI 助手\n    - link \"进度\":\n      - /url: /progress\n      - text: 进度\n    - link \"个人中心\":\n      - /url: /profile\n      - text: 个人中心\n  - generic: D\n  - paragraph: Demo用户\n  - button \"退出登录\":\n- button \"打开知曜 AI 工作流，整理今天的学习记录\":\n- main:\n  - heading \"训练\" [level=1]\n  - paragraph: AI 按布鲁姆分层出题，精准提升各阶段能力\n  - text: 配置本次训练\n  - generic: 学科\n  - button \"数学\"\n  - button \"物理\"\n  - button \"化学\"\n  - button \"生物\"\n  - button \"英语\"\n  - button \"语文\"\n  - generic: 题目数量：5 题\n  - slider: \"5\"\n  - generic: 1 题\n  - generic: 10 题\n  - generic: 还没有可训练题目。先在笔记页生成笔记或知识点，再回来开始训练。\n  - button \"开始训练\":\n    - text: 开始训练\n  - paragraph:\n    - text: AI 将根据你在\n    - strong: 数学\n    - text: 学科中已有的知识点出题\n- button \"Open Next.js Dev Tools\":\n- alert: 知曜 · 智学Agent"
+    },
+    {
+      "id": "VIS-13",
+      "severity": "P2",
+      "area": "Mistakes",
+      "symptom": "错题页首屏状态不明确",
+      "initialJudgement": "未看到错题列表或空状态关键词。",
+      "evidence": ""
+    },
+    {
+      "id": "VIS-14",
+      "severity": "P3",
+      "area": "Tasks",
+      "symptom": "番茄钟开始按钮首屏不可见",
+      "initialJudgement": "用户需要滚动或布局位置不明显；作为高频功能建议更靠前。",
+      "evidence": "- button \"Open Next.js Dev Tools\":\n- button \"Open issues overlay\":\n  - generic: \"0\"\n  - generic: \"1\"\n  - generic: Issue\n- button \"Collapse issues badge\":\n- alert"
+    },
+    {
+      "id": "VIS-15",
+      "severity": "P2",
+      "area": "Path",
+      "symptom": "学习路径页面缺少明显生成/重排 CTA",
+      "initialJudgement": "首屏未识别到明确按钮，可能对新用户不够直接。",
+      "evidence": ""
+    },
+    {
+      "id": "VIS-16",
+      "severity": "P2",
+      "area": "Progress/Dashboard Charts",
+      "symptom": "图表容器出现 Recharts width(-1)/height(-1) warning",
+      "initialJudgement": "图表初次布局时容器尺寸为负，可能导致首屏图表空白或抖动；需要给 ResponsiveContainer 父级稳定 min-height/min-width。",
+      "evidence": "[{\"level\":\"warn\",\"message\":\"The width(-1) and height(-1) of chart should be greater than 0,\\n       please check the style of container, or the props width(100%) and height(100%),\\n       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the\\n       height and width.\",\"timestamp\":\"2026-05-18T00:25:03.198Z\",\"url\":\"http://127.0.0.1:3001/_next/static/chunks/0yyr-ctor9~1q.js\"}]"
+    },
+    {
+      "id": "VIS-17",
+      "severity": "P1",
+      "area": "Agent",
+      "symptom": "全局 AI 浮标无法打开",
+      "initialJudgement": "定位/点击失败：Timed out after 3000ms waiting for selector internal:role=button[name=\"打开知曜 AI 工作流，今天已经整理过学习记录\"s]: Browser Use encountered an error interacting with this webpage: Error: No element matched selector\n    at <anonymous>:202",
+      "evidence": "url=http://127.0.0.1:3000/dashboard"
+    }
+  ],
+  "suggestions": [
+    {
+      "area": "Registration",
+      "suggestion": "注册失败文案显示后端 detail，并在 UI 字段上明确 email/username 规则。",
+      "reason": "当前用户只看到“请稍后重试”，无法自救。后端契约可能需要 email，而 UI 是用户名。"
+    },
+    {
+      "area": "Agent",
+      "suggestion": "给“生成 quiz / 成绩分析”补行为：自动填入 prompt 或跳转对应页面。",
+      "reason": "视觉上是可点击按钮，用户预期会有动作。"
+    },
+    {
+      "area": "Charts",
+      "suggestion": "图表容器统一加 min-h/min-w 和 loading skeleton。",
+      "reason": "避免 Recharts width(-1) warning 与首屏闪烁。"
+    },
+    {
+      "area": "QA",
+      "suggestion": "加入 Playwright/Browser smoke 清单：注册、登录、onboarding、核心页 CTA、全局浮标。",
+      "reason": "当前问题多属于交互回归，适合固定成每日冒烟。"
+    }
+  ],
+  "screenshots": [
+    "C:/zhiyao/docs/visual-audit-2026-05-18/01-dashboard.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/02-dashboard-start-plan-to-tasks.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/03-dashboard-return.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/04-dashboard-ai-resort.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/05-onboarding.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/06-onboarding-grade.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/07-notes.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/08-notes-generate.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/09-notes-list.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/10-notes-empty-filter.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/11-knowledge.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/12-knowledge-empty-filter.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/13-flashcards.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/14-flashcards-flipped.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/15-flashcards-rated.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/16-training-config-after-timeout.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/17-training-started.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/19-mistakes.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/21-tasks.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/22-tasks-actions.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/23-tasks-pomodoro.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/24-path.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/25-path-resort.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/26-guidance.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/27-guidance-visible.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/28-progress.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/29-progress-visible.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/30-profile.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/31-profile-visible.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/32-agent-base.png"
+  ],
+  "interruptedAt": "2026-05-18T00:39:32.811Z",
+  "interruption": "navigation timeout at /training",
+  "finishedAt": "2026-05-18T00:41:34.873Z"
+}

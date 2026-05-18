@@ -36,6 +36,9 @@ export const useAuthStore = create<AuthStore>()(
       clearAuth: () => {
         try {
           localStorage.removeItem("access_token");
+          localStorage.removeItem("zhiyao_demo_mode");
+          localStorage.removeItem("zhiyao_needs_onboarding");
+          localStorage.removeItem("zhiyao_onboarding_completed");
         } catch {
           // Ignore storage cleanup failures in restricted preview surfaces.
         }

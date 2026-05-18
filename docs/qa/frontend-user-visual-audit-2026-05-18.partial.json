@@ -1,0 +1,126 @@
+{
+  "startedAt": "2026-05-18T00:38:17.279Z",
+  "baseUrl": "http://127.0.0.1:3000",
+  "passes": [
+    {
+      "area": "Onboarding",
+      "action": "选择年级",
+      "evidence": "clicked role=button name=高二; url=http://127.0.0.1:3000/onboarding"
+    },
+    {
+      "area": "Notes",
+      "action": "切换 AI 生成 tab",
+      "evidence": "clicked role=button name=AI 生成; url=http://127.0.0.1:3000/notes"
+    }
+  ],
+  "issues": [
+    {
+      "id": "VIS-01",
+      "severity": "P2",
+      "area": "Dashboard",
+      "symptom": "开始今日计划跳转任务 点击失败或不可用",
+      "initialJudgement": "定位/状态问题：count=0",
+      "evidence": "url=http://127.0.0.1:3000/dashboard"
+    },
+    {
+      "id": "VIS-02",
+      "severity": "P2",
+      "area": "Dashboard",
+      "symptom": "AI 重排今日任务 点击失败或不可用",
+      "initialJudgement": "定位/状态问题：count=0",
+      "evidence": "url=http://127.0.0.1:3000/dashboard"
+    },
+    {
+      "id": "VIS-03",
+      "severity": "P2",
+      "area": "Notes",
+      "symptom": "填写生成内容 输入失败",
+      "initialJudgement": "输入控件定位或键盘事件问题：count=0",
+      "evidence": "url=http://127.0.0.1:3000/notes"
+    },
+    {
+      "id": "VIS-04",
+      "severity": "P2",
+      "area": "Notes",
+      "symptom": "提交生成笔记 点击失败或不可用",
+      "initialJudgement": "定位/状态问题：count=0",
+      "evidence": "url=http://127.0.0.1:3000/notes"
+    },
+    {
+      "id": "VIS-05",
+      "severity": "P2",
+      "area": "Notes",
+      "symptom": "搜索空状态 输入失败",
+      "initialJudgement": "输入控件定位或键盘事件问题：count=0",
+      "evidence": "url=http://127.0.0.1:3000/notes"
+    },
+    {
+      "id": "VIS-06",
+      "severity": "P2",
+      "area": "Knowledge",
+      "symptom": "掌握度筛选 点击失败或不可用",
+      "initialJudgement": "定位/状态问题：count=0",
+      "evidence": "url=http://127.0.0.1:3000/knowledge"
+    },
+    {
+      "id": "VIS-07",
+      "severity": "P3",
+      "area": "Knowledge",
+      "symptom": "学科筛选按钮 点击失败或不可用",
+      "initialJudgement": "定位/状态问题：count=0",
+      "evidence": "url=http://127.0.0.1:3000/knowledge"
+    },
+    {
+      "id": "VIS-08",
+      "severity": "P2",
+      "area": "Knowledge",
+      "symptom": "搜索空状态 输入失败",
+      "initialJudgement": "输入控件定位或键盘事件问题：count=0",
+      "evidence": "url=http://127.0.0.1:3000/knowledge"
+    },
+    {
+      "id": "VIS-09",
+      "severity": "P2",
+      "area": "Flashcards",
+      "symptom": "翻转闪卡 点击失败",
+      "initialJudgement": "定位/交互问题：count=0",
+      "evidence": "url=http://127.0.0.1:3000/flashcards"
+    },
+    {
+      "id": "VIS-10",
+      "severity": "P2",
+      "area": "Flashcards",
+      "symptom": "提交复习评分 点击失败或不可用",
+      "initialJudgement": "定位/状态问题：count=0",
+      "evidence": "url=http://127.0.0.1:3000/flashcards"
+    },
+    {
+      "id": "VIS-11",
+      "severity": "P1",
+      "area": "Training",
+      "symptom": "导航到 /training 超时",
+      "initialJudgement": "页面加载或 dev server 编译过程中卡住；用户会看到等待过久。需要确认训练页首屏依赖和后端请求是否阻塞渲染。",
+      "evidence": "url=http://127.0.0.1:3000/training"
+    }
+  ],
+  "suggestions": [],
+  "screenshots": [
+    "C:/zhiyao/docs/visual-audit-2026-05-18/01-dashboard.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/02-dashboard-start-plan-to-tasks.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/03-dashboard-return.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/04-dashboard-ai-resort.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/05-onboarding.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/06-onboarding-grade.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/07-notes.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/08-notes-generate.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/09-notes-list.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/10-notes-empty-filter.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/11-knowledge.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/12-knowledge-empty-filter.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/13-flashcards.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/14-flashcards-flipped.png",
+    "C:/zhiyao/docs/visual-audit-2026-05-18/15-flashcards-rated.png"
+  ],
+  "interruptedAt": "2026-05-18T00:39:32.811Z",
+  "interruption": "navigation timeout at /training"
+}

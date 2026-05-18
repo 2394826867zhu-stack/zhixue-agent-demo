@@ -219,7 +219,7 @@ export default function ProgressPage() {
                   </div>
                   <div className="p-2 rounded-lg bg-muted/60 space-y-0.5">
                     <p className="text-muted-foreground">新增错题</p>
-                    <p className="font-semibold text-foreground">{weeklyReport.wrong_count} 道</p>
+                    <p className="font-semibold text-foreground">{weeklyReport.wrong_count ?? 0} 道</p>
                   </div>
                 </div>
                 <p className="text-sm text-foreground leading-relaxed">{weeklyReport.ai_advice}</p>
