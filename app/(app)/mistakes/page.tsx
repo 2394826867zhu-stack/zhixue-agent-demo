@@ -280,11 +280,21 @@ export default function MistakesPage() {
       </div>
 
       {!isLoading && mistakes.length === 0 && (
-        <div className="text-center py-20 space-y-3">
-          <CheckCircle2 size={40} className="mx-auto text-green-500" />
-          <p className="font-semibold text-foreground">错题本已清空！</p>
-          <p className="text-sm text-muted-foreground">保持这个状态，继续加油！</p>
-        </div>
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center py-14 text-center">
+            <CheckCircle2 size={40} className="text-green-500" />
+            <p className="mt-3 font-semibold text-foreground">错题本已清空</p>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+              训练中答错的题会自动沉淀到这里。现在可以去做一次短训练，或者继续保持这个好状态。
+            </p>
+            <a
+              href="/training"
+              className="mt-5 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[0_8px_22px_oklch(0.70_0.16_170_/_22%)] transition-all hover:bg-primary/90"
+            >
+              <Target size={15} /> 开始训练
+            </a>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

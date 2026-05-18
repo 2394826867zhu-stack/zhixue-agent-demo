@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
   CheckSquare, Timer, Play, Pause, RotateCcw,
-  Sparkles, CheckCircle2, Circle, Coffee, Plus, Loader2
+  Sparkles, CheckCircle2, Circle, Coffee, Plus, Loader2,
+  Layers, AlertCircle, Target, BookOpen, ClipboardList, Lightbulb
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getTodayTasks, updateTask, generateTasks, createTask, recordPomodoro } from "@/lib/api";
 
@@ -23,11 +25,11 @@ interface Task {
   ai_priority_reason?: string;
 }
 
-const TYPE_ICONS: Record<string, string> = {
-  flashcard_review: "🃏",
-  mistake_review: "❌",
-  training: "🎯",
-  manual: "📖",
+const TYPE_ICONS: Record<string, LucideIcon> = {
+  flashcard_review: Layers,
+  mistake_review: AlertCircle,
+  training: Target,
+  manual: BookOpen,
 };
 
 const WORK_SECONDS = 25 * 60;
@@ -245,29 +247,45 @@ export default function TasksPage() {
           )}
 
           {!isLoading && pendingTasks.length === 0 && doneTasks.length === 0 && (
-            <div className="text-center py-10 space-y-3">
-              <CheckSquare size={36} className="mx-auto text-muted-foreground" />
-              <p className="text-muted-foreground">今日还没有任务</p>
-              <Button onClick={() => generateMut.mutate()} disabled={generateMut.isPending} className="gap-2">
-                <Sparkles size={15} /> AI 生成今日任务
+            <div className="rounded-2xl border border-dashed border-border bg-card px-5 py-10 text-center">
+              <CheckSquare size={36} className="mx-auto text-primary/55" />
+              <p className="mt-3 font-semibold text-foreground">今日还没有任务</p>
+              <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+                让 AI 根据你的知识点、错题和临近考试生成一组今天能完成的小任务。
+              </p>
+              <Button onClick={() => generateMut.mutate()} disabled={generateMut.isPending} className="mt-5 gap-2">
+                {generateMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+                AI 生成今日任务
               </Button>
             </div>
           )}
 
           {pendingTasks.length > 0 && (
             <div className="space-y-2">
-              {pendingTasks.map((task) => (
+              {pendingTasks.map((task) => {
+                const TypeIcon = TYPE_ICONS[task.task_type] ?? ClipboardList;
+                return (
                 <div
                   key={task.id}
-                  className="flex items-start gap-3 p-3.5 rounded-xl border border-border bg-card hover:border-primary/30 transition-colors cursor-pointer group"
+                  role="button"
+                  tabIndex={0}
+                  className="flex items-start gap-3 p-3.5 rounded-xl border border-border bg-card hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 transition-colors cursor-pointer group"
                   onClick={() => toggleMut.mutate({ id: task.id, is_done: task.is_done })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggleMut.mutate({ id: task.id, is_done: task.is_done });
+                    }
+                  }}
                 >
-                  <button className="mt-0.5 shrink-0 text-muted-foreground group-hover:text-primary transition-colors">
+                  <span className="mt-0.5 shrink-0 text-muted-foreground group-hover:text-primary transition-colors" aria-hidden="true">
                     <Circle size={18} />
-                  </button>
+                  </span>
                   <div className="flex-1 min-w-0 space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-base">{TYPE_ICONS[task.task_type] ?? "📋"}</span>
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <TypeIcon size={13} />
+                      </span>
                       <span className="text-sm font-medium text-foreground">{task.title}</span>
                       {task.priority === "high" && (
                         <span className="text-[11px] px-1.5 py-0.5 rounded-full font-medium bg-red-100 text-red-600">优先</span>
@@ -278,13 +296,15 @@ export default function TasksPage() {
                       {task.estimated_minutes && <span>· 约 {task.estimated_minutes} 分钟</span>}
                     </div>
                     {task.ai_priority_reason && (
-                      <p className="text-xs text-muted-foreground/80 leading-relaxed line-clamp-2">
-                        💡 {task.ai_priority_reason}
+                      <p className="flex gap-1.5 text-xs text-muted-foreground/80 leading-relaxed line-clamp-2">
+                        <Lightbulb size={12} className="mt-0.5 shrink-0 text-primary/75" />
+                        <span>{task.ai_priority_reason}</span>
                       </p>
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -328,8 +348,16 @@ export default function TasksPage() {
               {doneTasks.map((task) => (
                 <div
                   key={task.id}
-                  className="flex items-start gap-3 p-3.5 rounded-xl border border-border bg-muted/30 cursor-pointer opacity-60 hover:opacity-80 transition-opacity"
+                  role="button"
+                  tabIndex={0}
+                  className="flex items-start gap-3 p-3.5 rounded-xl border border-border bg-muted/30 cursor-pointer opacity-60 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 transition-opacity"
                   onClick={() => toggleMut.mutate({ id: task.id, is_done: task.is_done })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggleMut.mutate({ id: task.id, is_done: task.is_done });
+                    }
+                  }}
                 >
                   <CheckCircle2 size={18} className="text-green-500 mt-0.5 shrink-0" />
                   <p className="text-sm text-muted-foreground line-through">{task.title}</p>

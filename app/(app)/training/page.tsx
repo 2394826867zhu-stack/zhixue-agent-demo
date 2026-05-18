@@ -52,8 +52,14 @@ export default function TrainingPage() {
     setLoading(true);
     try {
       const res = await startTraining({ mode: "subject", subject, question_count: count });
+      const nextQuestions = res.questions ?? [];
+      if (nextQuestions.length === 0) {
+        setError("还没有可训练题目。先在笔记页生成笔记或知识点，再回来开始训练。");
+        setPhase("config");
+        return;
+      }
       setSessionId(String(res.id));
-      setQuestions(res.questions ?? []);
+      setQuestions(nextQuestions);
       setCurrentIdx(0);
       setCurrentAnswer("");
       setSubmitted(false);
@@ -195,7 +201,24 @@ export default function TrainingPage() {
   // ── Answering ────────────────────────────────────────────────────────────
   if (phase === "answering") {
     const q = questions[currentIdx];
-    if (!q) return null;
+    if (!q) {
+      return (
+        <div className="p-4 md:p-8 max-w-2xl mx-auto">
+          <Card className="border-dashed">
+            <CardContent className="flex min-h-[320px] flex-col items-center justify-center py-12 text-center">
+              <Target size={36} className="text-primary/55" />
+              <h2 className="mt-3 text-xl font-bold text-foreground">暂时没有训练题</h2>
+              <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                先生成笔记或补充知识点，知曜就能基于你的学习内容出题。
+              </p>
+              <Button onClick={handleRestart} className="mt-5 gap-2">
+                <RotateCcw size={14} /> 返回配置
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
     const record = records[String(q.id)];
     const progress = Math.round((currentIdx / questions.length) * 100);
 

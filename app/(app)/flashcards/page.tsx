@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { getDueCards, reviewCard } from "@/lib/api";
-import { RotateCcw, CheckCircle2, ChevronRight, Loader2 } from "lucide-react";
+import { RotateCcw, CheckCircle2, ChevronRight, Loader2, BookOpen } from "lucide-react";
 
 interface Flashcard {
   id: string;
@@ -46,21 +46,21 @@ export default function FlashcardsPage() {
   const [flipped, setFlipped] = useState(false);
   const [doneIds, setDoneIds] = useState<string[]>([]);
   const [finished, setFinished] = useState(false);
-  const [usingMock, setUsingMock] = useState(false);
 
-  const { data: apiCards, isLoading } = useQuery<Flashcard[]>({
+  const { data: apiCards, isLoading, isError } = useQuery<Flashcard[], Error>({
     queryKey: ["due-cards"],
-    queryFn: () => getDueCards(),
-    onError: () => setUsingMock(true),
-  } as Parameters<typeof useQuery>[0]);
+    queryFn: () => getDueCards() as Promise<Flashcard[]>,
+    retry: false,
+  });
 
-  const cards: Flashcard[] = usingMock || (!isLoading && (!apiCards || apiCards.length === 0))
+  const usingFallback = isError;
+  const cards: Flashcard[] = usingFallback
     ? MOCK_CARDS
     : (apiCards ?? []);
 
   const reviewMutation = useMutation({
     mutationFn: ({ id, rating }: { id: string; rating: number }) =>
-      usingMock ? Promise.resolve() : reviewCard(id, rating),
+      usingFallback ? Promise.resolve() : reviewCard(id, rating),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["due-cards"] });
       queryClient.invalidateQueries({ queryKey: ["overview"] });
@@ -109,11 +109,11 @@ export default function FlashcardsPage() {
           </div>
           <div>
             <h2 className="text-2xl font-bold text-foreground">
-              {total === 0 ? "今日没有待复习卡片" : "今日复习完成！"}
+              {total === 0 ? "今天没有到期闪卡" : "今日复习完成！"}
             </h2>
             <p className="text-muted-foreground mt-1">
               {total === 0
-                ? "所有卡片都已复习完毕，明天再来！"
+                ? "可以先去生成一篇笔记，知曜会把核心概念沉淀成后续可复习的闪卡。"
                 : `共复习了 ${total} 张卡片，保持这个节奏！`}
             </p>
           </div>
@@ -133,9 +133,19 @@ export default function FlashcardsPage() {
               </Card>
             </div>
           )}
-          <Button onClick={handleRestart} variant="outline" size="lg" className="gap-2">
-            <RotateCcw size={16} /> {total === 0 ? "刷新" : "再练一遍"}
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            {total === 0 && (
+              <a
+                href="/notes"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-[0.95rem] font-semibold text-primary-foreground shadow-[0_8px_22px_oklch(0.70_0.16_170_/_22%)] transition-all hover:bg-primary/90"
+              >
+                <BookOpen size={16} /> 生成笔记
+              </a>
+            )}
+            <Button onClick={handleRestart} variant="outline" size="lg" className="gap-2">
+              <RotateCcw size={16} /> {total === 0 ? "刷新队列" : "再练一遍"}
+            </Button>
+          </div>
         </div>
       </div>
     );

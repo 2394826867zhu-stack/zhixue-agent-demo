@@ -155,6 +155,11 @@ export type AgentChatHandlers = {
   onDone?: (event: Extract<AgentChatEvent, { done: true }>) => void;
 };
 
+export type UploadNoteFileResponse = {
+  note_id: string;
+  status: "pending" | "processing" | "done" | "failed";
+};
+
 const isBrowser = () => typeof window !== "undefined";
 
 const isLocalHost = (hostname: string) =>
@@ -698,6 +703,31 @@ export const generateNote = (body: { topic?: string; subject?: string; [key: str
     return delay(note, 600);
   }
   return api.post("/notes/generate", body).then((r) => r.data.data);
+};
+
+export const uploadNoteFile = (file: File, subject?: string): Promise<UploadNoteFileResponse> => {
+  if (isDemoMode()) {
+    const note = {
+      id: `note-file-${Date.now()}`,
+      title: file.name.replace(/\.[^.]+$/, "") || "上传资料生成笔记",
+      subject: subject || "综合",
+      summary: "资料已进入处理队列，稍后会自动整理为笔记、知识点与闪卡。",
+      kp_count: 0,
+      created_at: todayISO(),
+    };
+    demoNotes = [note, ...demoNotes];
+    return delay({ note_id: note.id, status: "processing" }, 600);
+  }
+
+  const formData = new FormData();
+  formData.append("file", file);
+  if (subject) formData.append("subject", subject);
+
+  return api
+    .post("/notes/upload/file", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    })
+    .then((r) => r.data.data);
 };
 
 // ---- Flashcards ----

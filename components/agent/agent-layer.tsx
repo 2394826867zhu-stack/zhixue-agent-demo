@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BarChart3, FilePlus2, Loader2, Mic, Send, Sparkles, X } from "lucide-react";
 import { AgentOrb } from "@/components/agent/agent-orb";
 import { Button } from "@/components/ui/button";
-import { getTodayCheckIn, streamAgentChat, type CheckIn } from "@/lib/api";
+import { getTodayCheckIn, streamAgentChat, uploadNoteFile, type CheckIn } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 type AgentMessage = {
@@ -14,6 +14,37 @@ type AgentMessage = {
   content: string;
   result?: CheckIn;
 };
+
+type AgentNotice = {
+  id: number;
+  tone: "info" | "success" | "error";
+  text: string;
+};
+
+type SpeechRecognitionResultEventLike = Event & {
+  results: {
+    [index: number]: {
+      [index: number]: {
+        transcript: string;
+      };
+    };
+  };
+};
+
+type SpeechRecognitionErrorEventLike = Event & {
+  error?: string;
+};
+
+type SpeechRecognitionLike = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: SpeechRecognitionResultEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  start: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
 const SUGGESTIONS = [
   "帮我复习今天这节课",
@@ -32,10 +63,12 @@ function AgentCommandPanel({ open, onClose }: { open: boolean; onClose: () => vo
   const queryClient = useQueryClient();
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<AgentMessage[]>([]);
+  const [notice, setNotice] = useState<AgentNotice | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messageSeqRef = useRef(0);
+  const noticeTimerRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasMessages = messages.length > 0;
 
@@ -46,6 +79,15 @@ function AgentCommandPanel({ open, onClose }: { open: boolean; onClose: () => vo
     queryClient.invalidateQueries({ queryKey: ["kp-stats"] });
     queryClient.invalidateQueries({ queryKey: ["progress-overview"] });
     queryClient.invalidateQueries({ queryKey: ["profile-insights"] });
+  }
+
+  function showNotice(text: string, tone: AgentNotice["tone"] = "info") {
+    const id = Date.now();
+    setNotice({ id, tone, text });
+    if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = window.setTimeout(() => {
+      setNotice((current) => (current?.id === id ? null : current));
+    }, 3600);
   }
 
   const agentMutation = useMutation({
@@ -85,6 +127,23 @@ function AgentCommandPanel({ open, onClose }: { open: boolean; onClose: () => vo
     },
   });
 
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => uploadNoteFile(file),
+    onMutate: (file) => {
+      showNotice(`正在上传 ${file.name}...`);
+    },
+    onSuccess: () => {
+      showNotice("笔记生成中，30 秒后在笔记页查看", "success");
+      queryClient.invalidateQueries({ queryKey: ["notes"] });
+      queryClient.invalidateQueries({ queryKey: ["kps"] });
+      queryClient.invalidateQueries({ queryKey: ["kp-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["progress-overview"] });
+    },
+    onError: () => {
+      showNotice("上传失败，请稍后重试。", "error");
+    },
+  });
+
   function submit(text = input) {
     const content = text.trim();
     if (!content || agentMutation.isPending) return;
@@ -100,12 +159,51 @@ function AgentCommandPanel({ open, onClose }: { open: boolean; onClose: () => vo
     agentMutation.mutate({ content, assistantId });
   }
 
+  function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file || uploadMutation.isPending) return;
+    uploadMutation.mutate(file);
+  }
+
+  function handleVoiceInput() {
+    const speechWindow = window as Window & {
+      SpeechRecognition?: SpeechRecognitionConstructor;
+      webkitSpeechRecognition?: SpeechRecognitionConstructor;
+    };
+    const SpeechRecognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      showNotice("当前浏览器不支持语音输入", "error");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "zh-CN";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.onresult = (event) => {
+      const transcript = event.results[0]?.[0]?.transcript?.trim();
+      if (transcript) setInput((prev) => `${prev}${prev ? " " : ""}${transcript}`);
+    };
+    recognition.onerror = (event) => {
+      showNotice(event.error ? `语音输入失败：${event.error}` : "语音输入失败", "error");
+    };
+    recognition.start();
+    showNotice("正在听，请说出你的问题");
+  }
+
   useEffect(() => {
     if (!open || messages.length === 0) return;
     window.requestAnimationFrame(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     });
   }, [messages.length, open]);
+
+  useEffect(() => {
+    return () => {
+      if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current);
+    };
+  }, []);
 
   if (!open) return null;
 
@@ -119,69 +217,48 @@ function AgentCommandPanel({ open, onClose }: { open: boolean; onClose: () => vo
 
       <section className="relative w-full max-w-[calc(100vw-1.5rem)] overflow-visible sm:max-w-3xl">
         <div className="mx-auto mb-2 flex items-center gap-2 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {QUICK_ACTIONS.map(({ label, icon: Icon }) => (
+          {QUICK_ACTIONS.map(({ label, icon: Icon }) => {
+            const isUploadAction = label === "上传资料";
+            return (
             <button
               key={label}
               type="button"
               className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-primary/18 bg-[linear-gradient(180deg,oklch(1_0_0_/_0.84),oklch(0.965_0.012_180_/_0.68))] text-foreground/62 shadow-[0_8px_24px_oklch(0.64_0.17_170_/_10%),inset_0_1px_0_oklch(1_0_0_/_0.90),inset_0_-1px_0_oklch(0.64_0.17_170_/_0.10)] backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-primary/34 hover:text-foreground"
               title={label}
               aria-label={label}
+              disabled={isUploadAction && uploadMutation.isPending}
               onClick={
-                label === "上传资料"
+                isUploadAction
                   ? () => fileInputRef.current?.click()
                   : label === "语音"
-                  ? () => {
-                      const SpeechRecognition =
-                        (window as any).SpeechRecognition ||
-                        (window as any).webkitSpeechRecognition;
-                      if (!SpeechRecognition) {
-                        console.error("Speech recognition not supported");
-                        return;
-                      }
-                      const recognition = new SpeechRecognition();
-                      recognition.lang = "zh-CN";
-                      recognition.continuous = false;
-                      recognition.interimResults = false;
-                      recognition.onresult = (event: any) => {
-                        const transcript = event.results[0][0].transcript;
-                        setInput((prev: string) => prev + transcript);
-                      };
-                      recognition.onerror = (event: any) => {
-                        console.error("Speech recognition error", event.error);
-                      };
-                      recognition.start();
-                    }
+                  ? handleVoiceInput
                   : undefined
               }
             >
-              <Icon size={16} />
+              {isUploadAction && uploadMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Icon size={16} />}
             </button>
-          ))}
+          )})}
           <input
             ref={fileInputRef}
             type="file"
             accept="image/*,application/pdf"
             className="hidden"
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              const formData = new FormData();
-              formData.append("file", file);
-              try {
-                await fetch("http://localhost:8000/v1/notes/upload/file", {
-                  method: "POST",
-                  headers: {
-                    Authorization: `Bearer ${localStorage.getItem("access_token")}`,
-                  },
-                  body: formData,
-                });
-              } catch (err) {
-                console.error("Upload failed", err);
-              }
-              e.target.value = "";
-            }}
+            onChange={handleFileUpload}
           />
         </div>
+
+        {notice && (
+          <div
+            className={cn(
+              "mx-auto mb-2 w-fit max-w-[min(32rem,calc(100vw-2rem))] rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm backdrop-blur-xl",
+              notice.tone === "success" && "border-emerald-200 bg-emerald-50/88 text-emerald-700",
+              notice.tone === "error" && "border-rose-200 bg-rose-50/88 text-rose-700",
+              notice.tone === "info" && "border-primary/16 bg-white/78 text-foreground/72"
+            )}
+          >
+            {notice.text}
+          </div>
+        )}
 
         {!hasMessages && (
         <div className="mx-auto mb-2 flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:overflow-x-auto sm:[scrollbar-width:none] sm:[&::-webkit-scrollbar]:hidden">

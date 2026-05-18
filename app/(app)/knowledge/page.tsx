@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
-import { Search, BookOpen, Clock, Loader2 } from "lucide-react";
+import { Search, BookOpen, Clock, Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { listKPs, getKPStats } from "@/lib/api";
 
@@ -213,12 +213,27 @@ export default function KnowledgePage() {
       </div>
 
       {!isLoading && filtered.length === 0 && (
-        <div className="text-center py-16 text-muted-foreground">
-          <BookOpen size={32} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm">
-            {kps.length === 0 ? "还没有知识点，先生成笔记来创建知识点吧" : "没有匹配的知识点"}
-          </p>
-        </div>
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center py-14 text-center">
+            <BookOpen size={34} className="text-primary/55" />
+            <p className="mt-3 font-semibold text-foreground">
+              {kps.length === 0 ? "还没有知识点" : "没有匹配的知识点"}
+            </p>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+              {kps.length === 0
+                ? "先生成一篇笔记，知曜会自动抽取知识点并跟踪掌握度。"
+                : "调整搜索或筛选条件，看看其它学科和掌握阶段。"}
+            </p>
+            {kps.length === 0 && (
+              <a
+                href="/notes"
+                className="mt-5 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[0_8px_22px_oklch(0.70_0.16_170_/_22%)] transition-all hover:bg-primary/90"
+              >
+                <Sparkles size={15} /> 去生成笔记
+              </a>
+            )}
+          </CardContent>
+        </Card>
       )}
     </div>
   );
