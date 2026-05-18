@@ -733,7 +733,7 @@ export const uploadNoteFile = (file: File, subject?: string): Promise<UploadNote
 // ---- Flashcards ----
 export const getDueCards = (page = 1) => {
   if (isDemoMode()) return delay(page === 1 ? demoCards : []);
-  return api.get(`/flashcards/due?page=${page}`).then((r) => r.data.data);
+  return api.get(`/flashcards/due?page=${page}`).then((r) => r.data.data.items ?? r.data.data);
 };
 
 export const reviewCard = (id: string, rating: number) => {
