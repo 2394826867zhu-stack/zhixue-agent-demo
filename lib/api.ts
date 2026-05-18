@@ -674,7 +674,7 @@ export const getWeeklyProgress = () => {
     const days = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
     return delay(days.map((day, i) => ({ day, minutes: [45, 30, 60, 25, 75, 90, 50][i], cards: [12, 8, 18, 6, 22, 28, 14][i] })));
   }
-  return api.get("/progress/weekly").then((r) => r.data.data);
+  return api.get("/progress/weekly-report").then((r) => r.data.data);
 };
 
 // ---- Notes ----
