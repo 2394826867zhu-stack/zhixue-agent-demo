@@ -74,6 +74,10 @@ class CheckInService:
         await db.commit()
         await db.refresh(checkin)
 
+        # Award stars: base 20 + streak multiplier (fire-and-forget)
+        import asyncio
+        asyncio.create_task(_post_checkin_stars(user_id))
+
         return CheckInOut(
             id=str(checkin.id),
             raw_content=checkin.raw_content,
@@ -200,3 +204,36 @@ class CheckInService:
 
 
 checkin_service = CheckInService()
+
+
+async def _post_checkin_stars(user_id: str) -> None:
+    """Fire-and-forget: award streak stars on checkin."""
+    try:
+        from app.core.database import async_session_factory
+        from app.services.star_service import StarService
+        from app.models.checkin import CheckIn
+        from sqlalchemy import select, func
+        from datetime import timedelta, timezone
+
+        async with async_session_factory() as session:
+            uid = uuid.UUID(user_id)
+            now = datetime.now(timezone.utc)
+            # Count consecutive days up to today
+            result = await session.execute(
+                select(func.count()).select_from(CheckIn).where(
+                    CheckIn.user_id == uid,
+                    CheckIn.created_at >= now - timedelta(days=7),
+                )
+            )
+            recent_days = min(result.scalar_one(), 7)
+            stars = 20 * recent_days  # 20 * n, capped at 7 days = 140
+
+            star_svc = StarService()
+            await star_svc.award(
+                session, user_id,
+                amount=stars,
+                reason="streak",
+                description=f"连续打卡第{recent_days}天",
+            )
+    except Exception:
+        pass

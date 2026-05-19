@@ -66,16 +66,38 @@ async def run(
     user_id: str,
     message: str,
     session_id: str | None,
+    studyspace_session_id: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     主 agent 循环，yield SSE data 行。
+    studyspace_session_id: 若非空，则在 system prompt 中注入课时上下文（StudySpace 模式）。
     """
     if not session_id:
         session_id = str(uuid.uuid4())
 
     # 1. 加载上下文 + 历史
     ctx = await load_user_context(db, user_id)
-    system = build_system_prompt(ctx)
+
+    # 注入 StudySpace 课时上下文（若在课时学习模式中）
+    studyspace_ctx: dict | None = None
+    if studyspace_session_id:
+        try:
+            from app.models.studyspace import StudySpaceSession
+            from app.models.curriculum import CurriculumChapter
+            ss = await db.get(StudySpaceSession, uuid.UUID(studyspace_session_id))
+            if ss and str(ss.user_id) == user_id:
+                chapter = await db.get(CurriculumChapter, ss.chapter_id)
+                if chapter:
+                    studyspace_ctx = {
+                        "chapter_title": chapter.chapter_title,
+                        "lesson_title": chapter.lesson_title,
+                        "subject": chapter.subject,
+                        "is_key": chapter.is_key,
+                    }
+        except Exception:
+            pass  # StudySpace context is optional; don't break chat if it fails
+
+    system = build_system_prompt(ctx, studyspace_ctx=studyspace_ctx)
     try:
         history = await load_history(user_id, session_id)
     except Exception:

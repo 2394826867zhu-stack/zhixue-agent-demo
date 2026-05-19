@@ -60,7 +60,7 @@ def _format_memory(memory: dict) -> str:
     return "\n".join(parts)
 
 
-def build_system_prompt(ctx: AgentContext) -> str:
+def build_system_prompt(ctx: AgentContext, studyspace_ctx: dict | None = None) -> str:
     exam_line = (
         f"近期考试：{ctx.upcoming_exam_name}（还有 {ctx.days_remaining} 天）"
         if ctx.upcoming_exam_name
@@ -83,7 +83,30 @@ def build_system_prompt(ctx: AgentContext) -> str:
         f"\n## 今日签到\n{ctx.checkin_summary}" if ctx.checkin_summary else ""
     )
 
-    return "\n\n".join([_IDENTITY, profile, memory_block, _RULES]) + checkin_block
+    # StudySpace mode: inject lesson context + change behavior rules
+    studyspace_block = ""
+    studyspace_rules = ""
+    if studyspace_ctx:
+        key_label = "（重点考查章节）" if studyspace_ctx.get("is_key") else ""
+        studyspace_block = f"""
+## StudySpace 课时上下文
+当前课时：{studyspace_ctx['subject']} — {studyspace_ctx['chapter_title']} — {studyspace_ctx['lesson_title']}{key_label}
+你正在辅导用户学习这节课，这是你当前唯一的任务。"""
+        studyspace_rules = """
+## StudySpace 行为规则
+1. 开场时先梳理本课时的知识框架（3-5个核心概念），生成一份思维导图（Mermaid格式）
+2. 然后逐步讲解，每讲完一个核心概念后暂停，等用户确认或提问，不要一次性输出全部内容
+3. 每讲完1-2个概念后提一道随堂问题，等用户作答后给反馈
+4. 用户答错时切换到更基础的解释路径，不要直接给出答案
+5. 涉及公式或图示时，建议用户打开画板配合推导
+6. 不需要调用工具，专注于课时教学内容"""
+
+    return (
+        "\n\n".join([_IDENTITY, profile, memory_block, _RULES])
+        + checkin_block
+        + studyspace_block
+        + studyspace_rules
+    )
 
 
 TOOL_DEFINITIONS = [

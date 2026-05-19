@@ -163,6 +163,10 @@ class TaskService:
 
     async def update_task(self, db: AsyncSession, task_id: str, user_id: str, data: DailyTaskUpdate) -> DailyTask:
         task = await self._get_task(db, task_id, user_id)
+        # system tasks can only be auto-completed via triggers, not manually
+        if task.source == "system" and data.status == "done":
+            from app.core.exceptions import PermissionDeniedError
+            raise PermissionDeniedError("系统任务不可手动标记完成")
         update_data = data.model_dump(exclude_none=True)
         for field, value in update_data.items():
             setattr(task, field, value)
@@ -171,6 +175,31 @@ class TaskService:
         await db.commit()
         await db.refresh(task)
         return task
+
+    async def auto_complete_system_tasks(
+        self, db: AsyncSession, user_id: str, trigger: str
+    ) -> int:
+        """Auto-complete system tasks whose auto_complete_trigger matches the given event.
+        Returns the number of tasks completed."""
+        uid = uuid.UUID(user_id)
+        today = date.today()
+        result = await db.execute(
+            select(DailyTask).where(
+                DailyTask.user_id == uid,
+                DailyTask.source == "system",
+                DailyTask.auto_complete_trigger == trigger,
+                DailyTask.task_date == today,
+                DailyTask.status != "done",
+            )
+        )
+        tasks = list(result.scalars().all())
+        now = datetime.now(timezone.utc)
+        for task in tasks:
+            task.status = "done"
+            task.completed_at = now
+        if tasks:
+            await db.commit()
+        return len(tasks)
 
     async def delete_task(self, db: AsyncSession, task_id: str, user_id: str) -> None:
         task = await self._get_task(db, task_id, user_id)

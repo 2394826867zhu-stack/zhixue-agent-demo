@@ -131,6 +131,10 @@ class StudySpaceService:
             meta={"session_id": str(session_id)},
         )
 
+        # Auto-complete matching system tasks
+        from app.services.task_service import task_service as _task_svc
+        await _task_svc.auto_complete_system_tasks(db, user_id, "lesson_complete")
+
         # Find next lesson in same chapter or next chapter
         next_lesson = await self._find_next_lesson(db, chapter)
 

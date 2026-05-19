@@ -11,8 +11,10 @@ from app.schemas.curriculum import (
     LinkKnowledgePointRequest,
 )
 from app.services.curriculum_service import curriculum_service
+from app.services.studyspace_service import StudySpaceService
 
 router = APIRouter(prefix="/curriculum", tags=["课程目录"])
+_studyspace_svc = StudySpaceService()
 
 
 def ok(data):
@@ -64,6 +66,23 @@ async def link_kp(
     db: AsyncSession = Depends(get_db),
 ):
     return ok(await curriculum_service.link_kp(db, chapter_id, str(body.kp_id), str(user.id)))
+
+
+@router.get("/subjects", summary="用户已选科目列表")
+async def get_subjects(
+    user: User = Depends(get_current_user),
+):
+    subjects = user.subjects if user.subjects else []
+    return ok(subjects)
+
+
+@router.get("/progress", summary="用户各课章学习进度")
+async def get_curriculum_progress(
+    subject: str | None = Query(None),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return ok(await _studyspace_svc.get_curriculum_progress(db, str(user.id), subject))
 
 
 @router.post("/chapters/{chapter_id}/generate-note", summary="基于课时生成笔记")

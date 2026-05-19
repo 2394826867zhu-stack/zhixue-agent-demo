@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.notification import Notification
 from app.models.flashcard import Flashcard
 from app.models.checkin import CheckIn
+from app.models.exam import Exam
 from app.schemas.notification import NotificationOut, NotificationListResponse
 from app.core.exceptions import NotFoundError
 
@@ -143,6 +144,47 @@ class NotificationService:
                     "streak_warning",
                     "/",
                 )
+
+        # Exam countdown reminders
+        await self._check_exam_reminders(db, user_id, now)
+
+    async def _check_exam_reminders(self, db: AsyncSession, user_id: str, now: datetime) -> None:
+        uid = uuid.UUID(user_id)
+        today = now.date()
+        future_limit = today + timedelta(days=8)
+
+        result = await db.execute(
+            select(Exam).where(
+                Exam.user_id == uid,
+                Exam.exam_date > today,
+                Exam.exam_date <= future_limit,
+            )
+        )
+        exams = list(result.scalars().all())
+        for exam in exams:
+            days_left = (exam.exam_date - today).days
+            if days_left not in (1, 3, 7):
+                continue
+            # Don't send duplicate for same exam + days_left within 12h
+            recent = await db.execute(
+                select(func.count()).select_from(Notification).where(
+                    Notification.user_id == uid,
+                    Notification.notification_type == "exam_reminder",
+                    Notification.content.contains(exam.name),
+                    Notification.created_at >= now - timedelta(hours=12),
+                )
+            )
+            if recent.scalar_one() == 0:
+                msg = self._exam_reminder_message(exam.name, days_left)
+                await self.create(db, user_id, msg, "exam_reminder", "/exams")
+
+    def _exam_reminder_message(self, name: str, days: int) -> str:
+        if days == 1:
+            return f"明天就是{name}了，今晚最后冲刺"
+        elif days == 3:
+            return f"距{name}还有3天，该收尾了"
+        else:
+            return f"距{name}还有一周，你知道的"
 
     def _flashcard_reminder_message(self, count: int) -> str:
         if count <= 10:

@@ -201,6 +201,10 @@ class FSRSService:
 
         await db.commit()
 
+        # Award stars + auto-complete system tasks (fire-and-forget, separate session)
+        import asyncio
+        asyncio.create_task(_post_review_side_effects(user_id))
+
         return {
             "flashcard_id": card.id,
             "next_due_date": card.due_date,
@@ -252,3 +256,23 @@ class FSRSService:
 
 
 fsrs_service = FSRSService()
+
+
+async def _post_review_side_effects(user_id: str) -> None:
+    """Fire-and-forget: award 2 stars per review + auto-complete system flashcard tasks."""
+    try:
+        from app.core.database import async_session_factory
+        from app.services.star_service import StarService
+        from app.services.task_service import task_service as _task_svc
+
+        async with async_session_factory() as session:
+            star_svc = StarService()
+            await star_svc.award(
+                session, user_id,
+                amount=2,
+                reason="flashcard_review",
+                description="复习闪卡",
+            )
+            await _task_svc.auto_complete_system_tasks(session, user_id, "flashcard_session")
+    except Exception:
+        pass  # side-effects must never break the main request
