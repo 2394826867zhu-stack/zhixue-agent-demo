@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Home, BookOpen } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export default function NotFound() {
   return (
@@ -16,16 +17,12 @@ export default function NotFound() {
           </p>
         </div>
         <div className="flex gap-3">
-          <Button asChild className="gap-2">
-            <Link href="/dashboard">
-              <Home size={14} /> 回主页
-            </Link>
-          </Button>
-          <Button asChild variant="outline" className="gap-2">
-            <Link href="/notes">
-              <BookOpen size={14} /> 去笔记
-            </Link>
-          </Button>
+          <Link href="/dashboard" className={cn(buttonVariants(), "gap-2")}>
+            <Home size={14} /> 回主页
+          </Link>
+          <Link href="/notes" className={cn(buttonVariants({ variant: "outline" }), "gap-2")}>
+            <BookOpen size={14} /> 去笔记
+          </Link>
         </div>
       </div>
     </div>
