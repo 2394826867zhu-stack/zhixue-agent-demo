@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     # 文件存储
     STORAGE_TYPE: Literal["local", "oss"] = "local"
     LOCAL_UPLOAD_DIR: str = "./uploads"
+    PUBLIC_BASE_URL: str = "http://localhost:8000"  # 用于将相对 URL 转为绝对 URL（教材图片解析）
 
     # Celery
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"

@@ -67,13 +67,23 @@ async def run(
     message: str,
     session_id: str | None,
     studyspace_session_id: str | None = None,
+    image_url: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     主 agent 循环，yield SSE data 行。
     studyspace_session_id: 若非空，则在 system prompt 中注入课时上下文（StudySpace 模式）。
+    image_url: 若非空，预处理为文字描述后拼入消息，保持工具循环在 DeepSeek 上运行。
     """
     if not session_id:
         session_id = str(uuid.uuid4())
+
+    # 0. 图片预处理：视觉 LLM 描述后拼入消息正文
+    if image_url:
+        try:
+            description = await llm_client.describe_image(image_url)
+            message = f"[图片内容]\n{description}\n\n[用户消息]\n{message}" if message.strip() else f"[图片内容]\n{description}"
+        except Exception as e:
+            logger.warning(f"Image preprocessing failed: {e}")
 
     # 1. 加载上下文 + 历史
     ctx = await load_user_context(db, user_id)
@@ -86,21 +96,31 @@ async def run(
             from app.models.curriculum import CurriculumChapter
             ss = await db.get(StudySpaceSession, uuid.UUID(studyspace_session_id))
             if ss and str(ss.user_id) == user_id:
-                chapter = await db.get(CurriculumChapter, ss.chapter_id)
-                if chapter:
+                if ss.session_type == "mock_exam" and ss.exam_config:
                     studyspace_ctx = {
-                        "chapter_title": chapter.chapter_title,
-                        "lesson_title": chapter.lesson_title,
-                        "subject": chapter.subject,
-                        "is_key": chapter.is_key,
+                        "session_type": "mock_exam",
+                        "subject": ss.exam_config.get("subject", ""),
+                        "exam_type": ss.exam_config.get("exam_type", "gaokao"),
+                        "duration_minutes": ss.exam_config.get("duration_minutes", 120),
                     }
+                elif ss.chapter_id:
+                    chapter = await db.get(CurriculumChapter, ss.chapter_id)
+                    if chapter:
+                        studyspace_ctx = {
+                            "session_type": "lesson",
+                            "chapter_title": chapter.chapter_title,
+                            "lesson_title": chapter.lesson_title,
+                            "subject": chapter.subject,
+                            "is_key": chapter.is_key,
+                        }
         except Exception:
             pass  # StudySpace context is optional; don't break chat if it fails
 
     system = build_system_prompt(ctx, studyspace_ctx=studyspace_ctx)
     try:
         history = await load_history(user_id, session_id)
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Failed to load conversation history (session {session_id}): {e}")
         history = []
     history.append({"role": "user", "content": message})
 
@@ -153,8 +173,19 @@ async def run(
         full_reply = error_msg
         yield f'data: {json.dumps({"delta": error_msg}, ensure_ascii=False)}\n\n'
 
-    # 4. done 事件
-    yield f'data: {json.dumps({"done": True, "session_id": session_id, "tools_called": tools_called}, ensure_ascii=False)}\n\n'
+    # 4. TTS（用户开启语音时，生成音频 URL 附在 done 事件中）
+    audio_url: str | None = None
+    if full_reply:
+        try:
+            from app.services.tts_service import synthesize
+            audio_url = await synthesize(full_reply, user_id)
+        except Exception as e:
+            logger.debug(f"TTS skipped: {e}")
+
+    done_payload: dict = {"done": True, "session_id": session_id, "tools_called": tools_called}
+    if audio_url:
+        done_payload["audio_url"] = audio_url
+    yield f'data: {json.dumps(done_payload, ensure_ascii=False)}\n\n'
 
     # 5. 持久化对话历史
     history.append({"role": "assistant", "content": full_reply})

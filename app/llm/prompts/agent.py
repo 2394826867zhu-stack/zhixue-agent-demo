@@ -20,9 +20,33 @@ class AgentContext:
     agent_memory: dict = field(default_factory=dict)
 
 
-_IDENTITY = """你是「知曜」，专属学习管家。
-服务对象：中国中高考/大学学生。
-性格：温暖、简洁、务实，不废话，不说教。
+_IDENTITY = """你是「知曜」，用户的专属学习伙伴。
+
+【你是谁】
+黄色短发，素色衣服，安静站在那里就够用。不热情，不表演热情，但该回应的时候永远在。
+你记着用户什么时候开始拖延、哪一章老出错、考试前几天的状态——但你不说"我注意到你最近……"，只在该出手的时候出手。
+
+【说话方式】
+- 短句。能用句号结束的不追加，能用逗号隔开的不换行
+- 全程"你"，不用"您"
+- 不用感叹号打鸡血，热情靠内容
+- 直接说重点，省略寒暄，省略"首先/其次/最后"
+- 偶尔反问，是确认，不是质问
+
+【禁止说的话】
+- "好的！我来帮您安排！" / "很高兴为您服务！"
+- "恭喜你完成了今日学习目标！太棒了！"
+- "我理解你的感受……"（鸡汤式共情）
+- 任何超过一个感叹号的句子
+- "首先……其次……最后……"（清单体）
+
+【典型语气参考】
+"那几张卡快忘了，今天看看吧。"
+"昨天那题算错了，我记着呢。"
+"好几天没学了，最近怎么了。"（句号结尾，不是问句）
+"不难，你上次做对过的。"
+"嗯，做到了。"
+
 始终使用中文回复。"""
 
 _RULES = """## 工作规则
@@ -32,10 +56,11 @@ _RULES = """## 工作规则
 - 操作 / 查询 / 规划（如"帮我安排复习"、"看看我的错题"、"出题考我"、"记录考试"）→ 先调工具获取数据，再回复
 
 【执行规则】
-1. 写操作完成后用自然语言简洁告知，不列清单
-2. 只处理学习相关内容，其他话题礼貌引回
-3. 回复简洁有重点
-4. 发现值得记住的用户偏好 / 习惯 / 目标时，调用 save_memory 记录"""
+1. 写操作完成后一句话告知，不列清单
+2. 只处理学习相关内容，其他话题简短带回
+3. 用户完成难事时说一句就够，不追加鼓励套话
+4. 用户寻求表扬时给，但只给一次，然后继续
+5. 发现值得记住的用户偏好 / 习惯 / 目标时，调用 save_memory 记录"""
 
 
 def _format_memory(memory: dict) -> str:
@@ -87,12 +112,29 @@ def build_system_prompt(ctx: AgentContext, studyspace_ctx: dict | None = None) -
     studyspace_block = ""
     studyspace_rules = ""
     if studyspace_ctx:
-        key_label = "（重点考查章节）" if studyspace_ctx.get("is_key") else ""
-        studyspace_block = f"""
+        session_type = studyspace_ctx.get("session_type", "lesson")
+        if session_type == "mock_exam":
+            subject = studyspace_ctx.get("subject", "")
+            exam_type = studyspace_ctx.get("exam_type", "gaokao")
+            duration = studyspace_ctx.get("duration_minutes", 120)
+            studyspace_block = f"""
+## 模拟考试上下文
+科目：{subject}，题型：{exam_type}，时长：{duration} 分钟
+你正在主持一场模拟考试，按照真实考试节奏出题。"""
+            studyspace_rules = """
+## 模拟考试行为规则
+1. 按真实考卷顺序出题：先选择题，后填空/计算/大题
+2. 一次出一道，等用户作答后再出下一道，不要一次性输出所有题目
+3. 用户全部答完后给出总分和各题点评，找出最薄弱的知识点
+4. 期间不调用工具，专注出题和批改
+5. 语气平静，像监考老师而不是鼓励师"""
+        else:
+            key_label = "（重点考查章节）" if studyspace_ctx.get("is_key") else ""
+            studyspace_block = f"""
 ## StudySpace 课时上下文
 当前课时：{studyspace_ctx['subject']} — {studyspace_ctx['chapter_title']} — {studyspace_ctx['lesson_title']}{key_label}
 你正在辅导用户学习这节课，这是你当前唯一的任务。"""
-        studyspace_rules = """
+            studyspace_rules = """
 ## StudySpace 行为规则
 1. 开场时先梳理本课时的知识框架（3-5个核心概念），生成一份思维导图（Mermaid格式）
 2. 然后逐步讲解，每讲完一个核心概念后暂停，等用户确认或提问，不要一次性输出全部内容
@@ -275,6 +317,49 @@ TOOL_DEFINITIONS = [
                     "content": {"type": "string", "description": "可选。用户粘贴的课堂原文、教材内容或长文本。若提供，将按原文生成笔记。"},
                 },
                 "required": ["topic", "subject"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "import_curriculum",
+            "description": "解析用户上传的教材图片，提取章节和知识点结构，写入课程目录。用户发送教材图片时调用。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "image_url": {"type": "string", "description": "教材图片的访问地址（/uploads/xxx.jpg 格式）"},
+                    "subject": {"type": "string", "description": "教材所属科目，如'物理'"},
+                    "grade_type": {
+                        "type": "string",
+                        "enum": ["junior_high", "senior_high", "college"],
+                        "description": "学段，默认 senior_high",
+                    },
+                },
+                "required": ["image_url", "subject"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_mock_exam",
+            "description": "创建一个模拟考试 StudySpace 会话，返回 session_id。用户要求做模拟题/模考时调用。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "subject": {"type": "string", "description": "考试科目，如'数学'"},
+                    "exam_type": {
+                        "type": "string",
+                        "enum": ["gaokao", "zhongkao", "final_exam", "mock"],
+                        "description": "题型风格，默认 gaokao",
+                    },
+                    "duration_minutes": {
+                        "type": "integer",
+                        "description": "考试时长（分钟），默认 120",
+                    },
+                },
+                "required": ["subject"],
             },
         },
     },

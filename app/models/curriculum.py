@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import String, Integer, Boolean, DateTime
+from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime, timezone
@@ -24,6 +24,11 @@ class CurriculumChapter(Base):
     textbook_version: Mapped[str] = mapped_column(String(30), nullable=False, default="人教版A")
     is_key: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # 重点考查章节
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="system")
+    # 'system' | 'user_import'
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

@@ -2,7 +2,7 @@ from fastapi import APIRouter
 from app.api.v1 import (
     auth, notes, knowledge_points, flashcards, training, mistakes,
     tasks, progress, guidance, path, profile, exams, onboarding,
-    checkin, agent, curriculum, studyspace, notifications, stars,
+    checkin, agent, curriculum, studyspace, notifications, stars, files,
 )
 
 router = APIRouter(prefix="/v1")
@@ -25,3 +25,4 @@ router.include_router(curriculum.router)
 router.include_router(studyspace.router)
 router.include_router(notifications.router)
 router.include_router(stars.router)
+router.include_router(files.router)

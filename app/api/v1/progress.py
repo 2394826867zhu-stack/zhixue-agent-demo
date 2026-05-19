@@ -42,6 +42,16 @@ async def get_subjects(
     return ok([SubjectProgress(**s) for s in data])
 
 
+@router.get("/predicted-scores", summary="AI 预测各科成绩区间（Agent 内部使用）")
+async def get_predicted_scores(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.score_prediction_service import predict_all
+    results = await predict_all(db, str(user.id))
+    return ok(results)
+
+
 @router.get("/weekly-report", summary="周报（含AI学习建议）")
 async def get_weekly_report(
     offset_weeks: int = Query(0, ge=0, le=4, description="0=本周 1=上周"),

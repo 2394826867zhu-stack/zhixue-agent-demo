@@ -6,7 +6,7 @@ import logging
 import uuid
 from datetime import date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 
 from app.models.knowledge_point import KnowledgePoint
 from app.models.task import DailyTask
@@ -44,6 +44,8 @@ async def dispatch_tool(
         "manage_exams": _manage_exams,
         "generate_note": _generate_note,
         "save_memory": _save_memory,
+        "import_curriculum": _import_curriculum,
+        "generate_mock_exam": _generate_mock_exam,
     }
     handler = handlers.get(tool_name)
     if not handler:
@@ -166,21 +168,29 @@ async def _plan_study_schedule(
     **_,
 ) -> dict:
     today = date.today()
-    created = []
 
+    # Batch: one query for all subjects instead of N queries in a loop
+    kp_rows = await db.execute(
+        select(KnowledgePoint.subject, KnowledgePoint.name)
+        .where(
+            KnowledgePoint.user_id == uid,
+            KnowledgePoint.subject.in_(subjects),
+            KnowledgePoint.mastery_status == "learning",
+        )
+        .order_by(KnowledgePoint.subject)
+        .limit(len(subjects) * 5)
+    )
+    # Group top-3 KP names per subject in Python
+    subject_kps: dict[str, list[str]] = {}
+    for subj, name in kp_rows.all():
+        bucket = subject_kps.setdefault(subj, [])
+        if len(bucket) < 3:
+            bucket.append(name)
+
+    created = []
     for i, subj in enumerate(subjects):
         task_date = today + timedelta(days=(i % max(days_ahead, 1)))
-
-        kp_rows = await db.execute(
-            select(KnowledgePoint.name)
-            .where(
-                KnowledgePoint.user_id == uid,
-                KnowledgePoint.subject == subj,
-                KnowledgePoint.mastery_status == "learning",
-            )
-            .limit(3)
-        )
-        kp_names = [r[0] for r in kp_rows.all()]
+        kp_names = subject_kps.get(subj, [])
         focus = "、".join(kp_names) if kp_names else subj + "复习"
         title = f"【{subj}】复习 {focus}"
 
@@ -240,15 +250,11 @@ async def _manage_knowledge_points(
         kp_ids = [uuid.UUID(kid) for kid in updates.get("kp_ids", [])]
         new_status = updates.get("new_mastery_status", "reviewing")
         if kp_ids and new_status in ("new", "learning", "reviewing", "mastered"):
-            for kid in kp_ids:
-                row = await db.execute(
-                    select(KnowledgePoint).where(
-                        KnowledgePoint.id == kid, KnowledgePoint.user_id == uid
-                    )
-                )
-                kp = row.scalar_one_or_none()
-                if kp:
-                    kp.mastery_status = new_status
+            await db.execute(
+                update(KnowledgePoint)
+                .where(KnowledgePoint.id.in_(kp_ids), KnowledgePoint.user_id == uid)
+                .values(mastery_status=new_status)
+            )
             await db.commit()
         return {"updated": len(kp_ids), "new_status": new_status}
 
@@ -467,6 +473,57 @@ async def _generate_note(
         "note_id": result["note_id"],
         "status": "generating",
         "message": f"「{topic[:40]}」的笔记正在生成中，大约需要 30 秒，请稍后在笔记页查看。",
+    }
+
+
+# ── 工具 10：import_curriculum ──────────────────────────────────────────────
+
+async def _import_curriculum(
+    db: AsyncSession,
+    uid: uuid.UUID,
+    image_url: str,
+    subject: str,
+    grade_type: str = "senior_high",
+    **_,
+) -> dict:
+    from app.services.curriculum_import_service import import_from_image
+
+    result = await import_from_image(db, str(uid), image_url, subject, grade_type)
+    return result
+
+
+# ── 工具 11：generate_mock_exam ──────────────────────────────────────────────
+
+async def _generate_mock_exam(
+    db: AsyncSession,
+    uid: uuid.UUID,
+    subject: str,
+    exam_type: str = "gaokao",
+    duration_minutes: int = 120,
+    **_,
+) -> dict:
+    from app.models.studyspace import StudySpaceSession
+
+    session = StudySpaceSession(
+        user_id=uid,
+        chapter_id=None,
+        session_type="mock_exam",
+        exam_config={
+            "subject": subject,
+            "exam_type": exam_type,
+            "duration_minutes": duration_minutes,
+        },
+        status="active",
+    )
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+
+    return {
+        "session_id": str(session.id),
+        "subject": subject,
+        "exam_type": exam_type,
+        "duration_minutes": duration_minutes,
     }
 
 

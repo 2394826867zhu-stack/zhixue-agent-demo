@@ -28,6 +28,9 @@ class User(Base):
     learning_profile: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     agent_memory: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
 
+    # 语音设置
+    voice_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     # 套餐
     plan_type: Mapped[str] = mapped_column(String(20), default="free")
     plan_expires_at: Mapped[datetime | None] = mapped_column(

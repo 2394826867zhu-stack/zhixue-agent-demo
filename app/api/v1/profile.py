@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -40,6 +41,25 @@ async def upsert_reflection(
 ):
     reflection = await profile_service.upsert_reflection(db, str(user.id), body)
     return ok(ReflectionOut.model_validate(reflection).model_dump(mode="json"))
+
+
+class VoiceToggle(BaseModel):
+    enabled: bool
+
+
+@router.patch("/voice", summary="开关语音输出")
+async def toggle_voice(
+    body: VoiceToggle,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy import select
+    from app.models.user import User as UserModel
+    row = await db.execute(select(UserModel).where(UserModel.id == user.id))
+    u = row.scalar_one()
+    u.voice_enabled = body.enabled
+    await db.commit()
+    return ok({"voice_enabled": u.voice_enabled})
 
 
 @router.get("/reflection", summary="历史复盘列表（按周倒序）", response_model=None)

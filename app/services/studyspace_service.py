@@ -122,12 +122,13 @@ class StudySpaceService:
         await db.refresh(session)
 
         # Award stars
+        lesson_label = chapter.lesson_title if chapter else "课时"
         star_svc = StarService()
         await star_svc.award(
             db, user_id,
             amount=stars_earned,
             reason="lesson_complete",
-            description=f"完成课时：{chapter.lesson_title}",
+            description=f"完成课时：{lesson_label}",
             meta={"session_id": str(session_id)},
         )
 
@@ -156,41 +157,66 @@ class StudySpaceService:
             .limit(limit)
         )
         sessions = list(result.scalars().all())
-        out = []
-        for s in sessions:
-            chapter = await db.get(CurriculumChapter, s.chapter_id)
-            out.append(await self._to_out(db, s, chapter))
-        return out
+
+        # Batch load chapters to avoid N+1
+        chapter_ids = list({s.chapter_id for s in sessions if s.chapter_id is not None})
+        chapters: dict[uuid.UUID, CurriculumChapter] = {}
+        if chapter_ids:
+            ch_result = await db.execute(
+                select(CurriculumChapter).where(CurriculumChapter.id.in_(chapter_ids))
+            )
+            chapters = {c.id: c for c in ch_result.scalars().all()}
+
+        return [
+            await self._to_out(db, s, chapters.get(s.chapter_id))
+            for s in sessions
+        ]
 
     async def get_curriculum_progress(
         self, db: AsyncSession, user_id: str, subject: str | None = None
     ) -> list[LessonProgress]:
-        query = select(StudySpaceSession).where(
-            StudySpaceSession.user_id == uuid.UUID(user_id)
-        )
-        result = await db.execute(query)
-        sessions = list(result.scalars().all())
+        from sqlalchemy import case
+        uid = uuid.UUID(user_id)
 
-        # Build map: chapter_id -> best session
-        chapter_map: dict[uuid.UUID, StudySpaceSession] = {}
-        for s in sessions:
-            if s.chapter_id not in chapter_map:
-                chapter_map[s.chapter_id] = s
-            else:
-                existing = chapter_map[s.chapter_id]
-                if s.status == "completed" or s.progress > existing.progress:
-                    chapter_map[s.chapter_id] = s
+        # Aggregate per chapter: best status rank (2=completed, 1=in_progress, 0=available)
+        # and max progress. Single query replaces loading all sessions.
+        subq = (
+            select(
+                StudySpaceSession.chapter_id,
+                func.max(
+                    case(
+                        (StudySpaceSession.status == "completed", 2),
+                        (StudySpaceSession.progress > 0, 1),
+                        else_=0,
+                    )
+                ).label("best_status_rank"),
+                func.max(StudySpaceSession.progress).label("best_progress"),
+                func.max(StudySpaceSession.started_at).label("last_session_at"),
+            )
+            .where(
+                StudySpaceSession.user_id == uid,
+                StudySpaceSession.chapter_id.isnot(None),
+            )
+            .group_by(StudySpaceSession.chapter_id)
+        ).subquery()
+
+        result = await db.execute(select(subq))
+        rows = result.all()
 
         progress_list = []
-        for chapter_id, s in chapter_map.items():
-            status = s.status if s.status in ("completed",) else (
-                "in_progress" if s.progress > 0 else "available"
-            )
+        for row in rows:
+            rank = row.best_status_rank
+            if rank >= 2:
+                status = "completed"
+            elif rank == 1:
+                status = "in_progress"
+            else:
+                status = "available"
             progress_list.append(LessonProgress(
-                chapter_id=chapter_id,
+                chapter_id=row.chapter_id,
                 status=status,
-                progress_pct=s.progress,
-                last_session_at=s.started_at,
+                progress_pct=row.best_progress,
+                last_session_at=row.last_session_at,
             ))
         return progress_list
 

@@ -24,7 +24,7 @@ async def agent_chat(
 
     async def event_stream():
         try:
-            async for chunk in run(db, str(user.id), body.message, body.session_id, body.studyspace_session_id):
+            async for chunk in run(db, str(user.id), body.message, body.session_id, body.studyspace_session_id, body.image_url):
                 yield chunk
         except Exception as e:
             _logger.error(f"Agent SSE generator crashed: {type(e).__name__}: {e}")

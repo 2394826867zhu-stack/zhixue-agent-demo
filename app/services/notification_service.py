@@ -30,10 +30,16 @@ class NotificationService:
         self, db: AsyncSession, user_id: str, page: int = 1, page_size: int = 20
     ) -> NotificationListResponse:
         uid = uuid.UUID(user_id)
-        total_result = await db.execute(
-            select(func.count()).select_from(Notification).where(Notification.user_id == uid)
+        # Single query: count total + unread using CASE (portable across dialects)
+        from sqlalchemy import case as sa_case
+        counts_result = await db.execute(
+            select(
+                func.count().label("total"),
+                func.sum(sa_case((Notification.is_read == False, 1), else_=0)).label("unread"),
+            ).where(Notification.user_id == uid)
         )
-        total = total_result.scalar_one()
+        counts = counts_result.one()
+        total, unread_count = int(counts.total or 0), int(counts.unread or 0)
 
         result = await db.execute(
             select(Notification)
@@ -43,13 +49,6 @@ class NotificationService:
             .limit(page_size)
         )
         items = list(result.scalars().all())
-
-        unread_result = await db.execute(
-            select(func.count()).select_from(Notification).where(
-                Notification.user_id == uid, Notification.is_read == False
-            )
-        )
-        unread_count = unread_result.scalar_one()
 
         return NotificationListResponse(
             items=[NotificationOut.model_validate(n) for n in items],
@@ -161,21 +160,25 @@ class NotificationService:
             )
         )
         exams = list(result.scalars().all())
-        for exam in exams:
-            days_left = (exam.exam_date - today).days
-            if days_left not in (1, 3, 7):
-                continue
-            # Don't send duplicate for same exam + days_left within 12h
-            recent = await db.execute(
-                select(func.count()).select_from(Notification).where(
-                    Notification.user_id == uid,
-                    Notification.notification_type == "exam_reminder",
-                    Notification.content.contains(exam.name),
-                    Notification.created_at >= now - timedelta(hours=12),
-                )
+        trigger_exams = [(e, (e.exam_date - today).days) for e in exams
+                         if (e.exam_date - today).days in (1, 3, 7)]
+        if not trigger_exams:
+            return
+
+        # Single batch query: all recent exam_reminder notifications in last 12h
+        recent_result = await db.execute(
+            select(Notification.content).where(
+                Notification.user_id == uid,
+                Notification.notification_type == "exam_reminder",
+                Notification.created_at >= now - timedelta(hours=12),
             )
-            if recent.scalar_one() == 0:
-                msg = self._exam_reminder_message(exam.name, days_left)
+        )
+        recently_notified: set[str] = {row[0] for row in recent_result.all()}
+
+        for exam, days_left in trigger_exams:
+            msg = self._exam_reminder_message(exam.name, days_left)
+            # Skip if we already sent an identical message recently
+            if msg not in recently_notified:
                 await self.create(db, user_id, msg, "exam_reminder", "/exams")
 
     def _exam_reminder_message(self, name: str, days: int) -> str:

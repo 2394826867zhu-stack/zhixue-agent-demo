@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import logging
 from openai import AsyncOpenAI
 from app.config import settings
@@ -118,10 +119,6 @@ class LLMClient:
         }
         return text, usage
 
-    # Keep backward-compat signature (no usage)
-    async def _call_openai_compat(self, client, model, prompt, system, image_b64=None) -> str:
-        content, _ = await self._call_openai_compat_with_usage(client, model, prompt, system, image_b64)
-        return content
 
     async def _call_anthropic_with_usage(self, prompt: str, system: str) -> tuple[str, dict]:
         from anthropic import APIStatusError, RateLimitError
@@ -143,9 +140,53 @@ class LLMClient:
         except (APIStatusError, RateLimitError) as e:
             raise RuntimeError(f"Anthropic API error: {e}") from e
 
-    async def _call_anthropic(self, prompt: str, system: str) -> str:
-        content, _ = await self._call_anthropic_with_usage(prompt, system)
-        return content
+    async def describe_image(self, image_url: str, prompt: str = "") -> str:
+        """
+        下载图片 → base64 → 视觉 LLM → 返回文字描述。
+        用于 curriculum_import 和 StudySpace 图片预处理。
+        """
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(image_url)
+                resp.raise_for_status()
+                image_b64 = base64.b64encode(resp.content).decode()
+        except Exception as e:
+            logger.warning(f"Image fetch failed ({image_url}): {e}")
+            return "[图片加载失败]"
+
+        text_prompt = prompt or "描述这张图片的内容。"
+
+        # 优先 GPT-4o（视觉稳定），其次 Claude
+        if self._openai:
+            try:
+                content, _ = await self._call_openai_compat_with_usage(
+                    self._openai, "gpt-4o", text_prompt, "", image_b64=image_b64
+                )
+                return content
+            except Exception as e:
+                logger.warning(f"GPT-4o vision failed: {e}")
+
+        if self._anthropic:
+            try:
+                from anthropic import APIStatusError
+                kwargs = {
+                    "model": "claude-sonnet-4-6",
+                    "max_tokens": 2048,
+                    "messages": [{
+                        "role": "user",
+                        "content": [
+                            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": image_b64}},
+                            {"type": "text", "text": text_prompt},
+                        ],
+                    }],
+                }
+                resp = await self._anthropic.messages.create(**kwargs)
+                return resp.content[0].text
+            except Exception as e:
+                logger.warning(f"Anthropic vision failed: {e}")
+
+        return "[视觉模型不可用]"
 
     async def call_with_tools(
         self,
