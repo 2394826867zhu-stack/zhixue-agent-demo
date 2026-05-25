@@ -14,8 +14,31 @@ class KnowledgePointService:
 
     async def create(self, db: AsyncSession, user_id: str, data: KnowledgePointCreate) -> KnowledgePoint:
         await self._ensure_chapter_exists(db, data.chapter_id)
+        from app.services._origin_resolver import resolve_origin_context
+        uid = uuid.UUID(user_id)
+        # 章节非空 → 显式 official 来源（PRD 行 538）
+        proj_id, origin = await resolve_origin_context(
+            db, uid,
+            chapter_id=data.chapter_id,
+            from_curriculum=bool(data.chapter_id),
+        )
+        # v0.34 P1-6 · 自动着色
+        from app.services.kp_tier_service import infer_tier
+        from sqlalchemy import select as _sel
+        chapter_is_key = False
+        if data.chapter_id:
+            from app.models.curriculum import CurriculumChapter
+            ch = await db.get(CurriculumChapter, data.chapter_id)
+            chapter_is_key = bool(ch and ch.is_key)
+        tier = infer_tier(
+            bloom_level=data.bloom_level,
+            name=data.name or "",
+            content=data.content or "",
+            is_chapter_key=chapter_is_key,
+            has_key_formula=bool(data.key_formula),
+        )
         kp = KnowledgePoint(
-            user_id=uuid.UUID(user_id),
+            user_id=uid,
             name=data.name,
             subject=data.subject,
             chapter_id=data.chapter_id,
@@ -23,6 +46,9 @@ class KnowledgePointService:
             key_formula=data.key_formula,
             bloom_level=data.bloom_level,
             tags=data.tags,
+            project_id=proj_id,
+            notebook_origin=origin,
+            difficulty_tier=tier,
         )
         db.add(kp)
         await db.commit()
@@ -39,6 +65,7 @@ class KnowledgePointService:
         note_id: str | None,
         page: int,
         page_size: int,
+        difficulty_tier: str | None = None,
     ) -> dict:
         conditions = [KnowledgePoint.user_id == uuid.UUID(user_id)]
         if subject:
@@ -49,6 +76,8 @@ class KnowledgePointService:
             conditions.append(KnowledgePoint.bloom_level == bloom_level)
         if note_id:
             conditions.append(KnowledgePoint.note_id == uuid.UUID(note_id))
+        if difficulty_tier:
+            conditions.append(KnowledgePoint.difficulty_tier == difficulty_tier)
 
         query = (
             select(KnowledgePoint)

@@ -70,6 +70,7 @@ class KnowledgePointResponse(BaseModel):
     key_formula: str | None
     bloom_level: str
     mastery_status: str
+    difficulty_tier: Literal["blue", "purple", "gold"] = "blue"
     tags: list
     flashcard_count: int = 0
     next_review_date: str | None = None   # ISO date，最早到期闪卡日期

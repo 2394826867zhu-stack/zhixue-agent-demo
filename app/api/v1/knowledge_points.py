@@ -45,6 +45,7 @@ async def list_kps(
     subject: str | None = Query(None),
     mastery_status: str | None = Query(None),
     bloom_level: str | None = Query(None),
+    difficulty_tier: str | None = Query(None, description="blue|purple|gold"),
     note_id: str | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
@@ -52,7 +53,8 @@ async def list_kps(
     db: AsyncSession = Depends(get_db),
 ):
     result = await kp_service.list_kps(
-        db, str(user.id), subject, mastery_status, bloom_level, note_id, page, page_size
+        db, str(user.id), subject, mastery_status, bloom_level, note_id, page, page_size,
+        difficulty_tier=difficulty_tier,
     )
     items = []
     for item in result["items"]:
