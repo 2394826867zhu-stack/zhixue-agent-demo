@@ -21,13 +21,21 @@ def _run(coro):
     return asyncio.run(coro)
 
 
-@celery_app.task(bind=True, max_retries=2, default_retry_delay=30)
+@celery_app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300, soft_time_limit=270)
 def process_note(self, note_id: str, user_id: str):
     """
     笔记处理主任务：提取内容 → 并行生成三件套 → 写入知识点
     """
+    from celery.exceptions import SoftTimeLimitExceeded
     try:
         _run(_process_note_async(self, note_id, user_id))
+    except SoftTimeLimitExceeded:
+        logger.error(f"Note task soft timeout for {note_id}")
+        try:
+            _run(_mark_note_failed(note_id, "处理超时，请稍后重试"))
+        except Exception:
+            pass
+        raise
     except Exception as exc:
         logger.error(f"Note task failed for {note_id}: {exc}")
         try:
@@ -111,7 +119,15 @@ async def _process_note_async(task, note_id: str, user_id: str):
                 KnowledgePoint.user_id == uuid.UUID(user_id),
             )
         )
+        # v0.34 P1-6 · 自动着色（蓝/紫/金）
+        from app.services.kp_tier_service import infer_tier
         for kp_data in extracted.get("knowledge_points", []):
+            tier = infer_tier(
+                bloom_level=kp_data.get("bloom_level", "remember"),
+                name=kp_data.get("name", ""),
+                content=kp_data.get("content", ""),
+                has_key_formula=bool(kp_data.get("key_formula")),
+            )
             kp = KnowledgePoint(
                 user_id=uuid.UUID(user_id),
                 note_id=uuid.UUID(note_id),
@@ -121,12 +137,28 @@ async def _process_note_async(task, note_id: str, user_id: str):
                 key_formula=kp_data.get("key_formula") or None,
                 bloom_level=kp_data.get("bloom_level", "remember"),
                 mastery_status="new",
+                difficulty_tier=tier,
+                # v0.27 Q-01 Q-02 · KP 继承 note 的 project_id + notebook_origin
+                project_id=note.project_id,
+                notebook_origin=note.notebook_origin,
             )
             db.add(kp)
 
         await db.commit()
         await _update_task_progress(note_id, 100, "完成")
         logger.info(f"Note {note_id} processed successfully")
+
+        # v0.28 RAG · note + 新 KPs 入向量库（5min 异步延迟，Q3 锁定）
+        try:
+            from app.tasks.embedding_tasks import embed_note, embed_kp
+            embed_note.apply_async(args=[note_id], countdown=300)
+            kp_rows = await db.execute(
+                select(KnowledgePoint.id).where(KnowledgePoint.note_id == uuid.UUID(note_id))
+            )
+            for (kp_id,) in kp_rows.all():
+                embed_kp.apply_async(args=[str(kp_id)], countdown=300)
+        except Exception as e:
+            logger.warning(f"Embedding tasks dispatch failed for note {note_id}: {e}")
 
 
 async def _update_task_progress(note_id: str, progress: int, message: str):

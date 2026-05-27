@@ -26,13 +26,18 @@ class NoteService:
 
     async def create_from_ai(self, db: AsyncSession, user_id: str, data: NoteGenerateRequest) -> dict:
         """主入口：AI主动生成"""
+        from app.services._origin_resolver import resolve_origin_context
+        uid = uuid.UUID(user_id)
+        proj_id, origin = await resolve_origin_context(db, uid)
         note = Note(
-            user_id=uuid.UUID(user_id),
+            user_id=uid,
             title=data.topic[:50],
             subject=data.subject,
             source_type="ai_generated",
             source_input=data.topic,
             status="processing",
+            project_id=proj_id,
+            notebook_origin=origin,
         )
         db.add(note)
         await db.commit()
@@ -46,13 +51,18 @@ class NoteService:
 
     async def create_from_text(self, db: AsyncSession, user_id: str, data: NoteUploadRequest) -> dict:
         """次入口：用户粘贴文字"""
+        from app.services._origin_resolver import resolve_origin_context
+        uid = uuid.UUID(user_id)
+        proj_id, origin = await resolve_origin_context(db, uid)
         note = Note(
-            user_id=uuid.UUID(user_id),
+            user_id=uid,
             title=data.title,
             subject=data.subject,
             source_type="text",
             source_input=data.content,
             status="processing",
+            project_id=proj_id,
+            notebook_origin=origin,
         )
         db.add(note)
         await db.commit()
@@ -88,12 +98,17 @@ class NoteService:
                 from app.core.exceptions import ValidationError
                 raise ValidationError("未能从PDF中提取到文字，请上传可复制文字的PDF或改用图片/文本上传")
 
+        from app.services._origin_resolver import resolve_origin_context
+        uid = uuid.UUID(user_id)
+        proj_id, origin = await resolve_origin_context(db, uid)
         note = Note(
-            user_id=uuid.UUID(user_id),
+            user_id=uid,
             source_type=source_type,
             source_file_url=file_path,
             source_input=text_content,  # PDF文字内容，image时为空
             status="processing",
+            project_id=proj_id,
+            notebook_origin=origin,
         )
         db.add(note)
         await db.commit()
@@ -208,6 +223,9 @@ class NoteService:
                         card_type=card.get("card_type", "concept"),
                         front=card.get("front", ""),
                         back=card.get("back", ""),
+                        # v0.27 Q-01 Q-02 · Flashcard 继承 KP 的 project_id + notebook_origin
+                        project_id=kp.project_id,
+                        notebook_origin=kp.notebook_origin,
                     )
                     db.add(flashcard)
                     created_count += 1
@@ -234,20 +252,13 @@ class NoteService:
 
 def _extract_pdf_text(file_path: str, max_pages: int = 5) -> str:
     """提取PDF前N页文字"""
-    try:
-        import pypdf
-        text_parts = []
-        with open(file_path, "rb") as f:
-            reader = pypdf.PdfReader(f)
-            for i, page in enumerate(reader.pages[:max_pages]):
-                text_parts.append(page.extract_text() or "")
-        return "\n".join(text_parts)
-    except ImportError:
-        logger.warning("pypdf not installed, PDF text extraction skipped")
-        return ""
-    except Exception as e:
-        logger.warning(f"PDF extraction failed: {e}")
-        return ""
+    import pypdf
+    text_parts = []
+    with open(file_path, "rb") as f:
+        reader = pypdf.PdfReader(f)
+        for page in reader.pages[:max_pages]:
+            text_parts.append(page.extract_text() or "")
+    return "\n".join(text_parts)
 
 
 def _parse_json_array(text: str) -> list:

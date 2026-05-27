@@ -17,6 +17,7 @@ _ALLOWED_CONTENT_TYPES = {
     "image/jpeg", "image/png", "image/webp", "image/gif",
     "application/pdf",
 }
+_ALLOWED_MAGIC_MIMES = _ALLOWED_CONTENT_TYPES
 _MAX_FILE_BYTES = 20 * 1024 * 1024  # 20 MB
 
 
@@ -31,6 +32,15 @@ async def upload_file(
     content = await file.read()
     if len(content) > _MAX_FILE_BYTES:
         raise HTTPException(status_code=400, detail="文件不能超过 20 MB")
+
+    # magic bytes 校验：不信任 Content-Type 头，验证实际文件内容（F-03）
+    try:
+        import filetype
+        kind = filetype.guess(content)
+        if kind is None or kind.mime not in _ALLOWED_MAGIC_MIMES:
+            raise HTTPException(status_code=400, detail="文件格式不正确，仅支持 JPG / PNG / WebP / GIF / PDF")
+    except ImportError:
+        pass  # filetype 未安装时退化到 Content-Type 检查（已在上方做过）
 
     ext = os.path.splitext(file.filename or "")[1].lower() or ".bin"
     filename = f"{uuid.uuid4().hex}{ext}"

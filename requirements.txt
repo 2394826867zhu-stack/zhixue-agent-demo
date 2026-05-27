@@ -18,3 +18,15 @@ httpx==0.28.1
 pytest==8.3.4
 pytest-asyncio==0.24.0
 fsrs>=5.0.0
+# v0.28 RAG MVP · BGE-M3 本地嵌入
+sentence-transformers==3.3.1
+# torch CPU only — sentence-transformers 依赖
+torch==2.5.1
+tiktoken==0.8.0
+numpy>=1.26
+# v0.32 视觉 · RapidOCR 本地中文 OCR
+rapidocr-onnxruntime>=1.4.0
+# v0.35 PDF 文本提取（F-04）
+pypdf>=4.0.0
+# v0.35 文件 magic bytes 校验（F-03）
+filetype>=1.2.0
