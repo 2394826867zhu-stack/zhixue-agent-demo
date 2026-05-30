@@ -165,8 +165,12 @@ class NoteService:
 
     async def delete_note(self, db: AsyncSession, note_id: str, user_id: str):
         note = await self._get_note(db, note_id, user_id)
+        note_id_val = note.id
         await db.delete(note)
         await db.commit()
+        # RAG 写入侧：删除笔记 → 失效其向量，防召回过时内容
+        from app.services import rag_index
+        await rag_index.purge_doc(db, doc_kind="note", doc_id=note_id_val)
 
     async def generate_flashcards(self, db: AsyncSession, note_id: str, user_id: str) -> dict:
         """用户触发：为该笔记的所有知识点生成闪卡（联动入口）"""

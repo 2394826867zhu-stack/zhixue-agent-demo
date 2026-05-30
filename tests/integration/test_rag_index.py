@@ -120,3 +120,23 @@ async def test_kp_delete_purges_vectors(client, db):
 
     remaining = await rag_index.purge_doc(db, doc_kind="kp", doc_id=kp.id)
     assert remaining == 0, "delete 后向量应已被失效，不应有残留"
+
+
+@pytest.mark.asyncio
+async def test_note_delete_purges_vectors(client, db):
+    from app.services import rag_index
+    from app.services.note_service import note_service
+    from app.models.note import Note
+
+    uid = await _register_user(client, "note_idx_delete@zhiyao.ai")
+    note = Note(user_id=uuid.UUID(uid), source_type="text", title="待删笔记")
+    db.add(note)
+    await db.commit()
+    await db.refresh(note)
+    _add_vector(db, doc_kind="note", doc_id=note.id, user_id=uuid.UUID(uid))
+    await db.commit()
+
+    await note_service.delete_note(db, str(note.id), uid)
+
+    remaining = await rag_index.purge_doc(db, doc_kind="note", doc_id=note.id)
+    assert remaining == 0, "note 删除后向量应已失效"
