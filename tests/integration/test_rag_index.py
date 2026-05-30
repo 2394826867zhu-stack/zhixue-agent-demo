@@ -140,3 +140,22 @@ async def test_note_delete_purges_vectors(client, db):
 
     remaining = await rag_index.purge_doc(db, doc_kind="note", doc_id=note.id)
     assert remaining == 0, "note 删除后向量应已失效"
+
+
+@pytest.mark.asyncio
+async def test_agent_create_kp_triggers_index(client, db, monkeypatch):
+    from app.services import agent_tools
+
+    calls = []
+    monkeypatch.setattr(
+        "app.services.rag_index.enqueue_kp_index", lambda kp_id: calls.append(kp_id)
+    )
+    uid = await _register_user(client, "agent_kp@zhiyao.ai")
+    result = await agent_tools._manage_knowledge_points(
+        db,
+        uuid.UUID(uid),
+        "create",
+        new_kps=[{"title": "Agent建的KP", "subject": "math"}],
+    )
+    assert result["total"] == 1
+    assert len(calls) == 1, "Agent 建 KP 应触发向量索引"

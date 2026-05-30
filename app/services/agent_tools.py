@@ -363,8 +363,10 @@ async def _manage_knowledge_points(
 
     if action == "create":
         from app.services._origin_resolver import resolve_origin_context
+        from app.services import rag_index
         proj_id, origin = await resolve_origin_context(db, uid)
         created = []
+        new_objs = []
         for item in new_kps:
             name = item.get("title", "").strip() or item.get("name", "").strip()
             if not name:
@@ -381,7 +383,13 @@ async def _manage_knowledge_points(
             )
             db.add(kp)
             created.append(name)
+            new_objs.append(kp)
+        await db.flush()  # 生成 id（commit 前取，避免 commit-expire 触发异步 lazy-load）
+        new_ids = [str(kp.id) for kp in new_objs]
         await db.commit()
+        # RAG 写入侧：Agent 建的 KP 也触发向量索引
+        for kp_id in new_ids:
+            rag_index.enqueue_kp_index(kp_id)
         return {"created": created, "total": len(created)}
 
     return {"error": f"未知 action: {action}"}
