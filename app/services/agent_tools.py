@@ -223,7 +223,27 @@ async def _diagnose_learning(db: AsyncSession, uid: uuid.UUID, subject: str | No
         })
 
     report.sort(key=lambda x: x["weakness_pct"], reverse=True)
-    return {"diagnosis": report}
+
+    # 具体错题样本：精确全量用 DB query（诊断要的是精确统计，不是语义相似，故不用 RAG）
+    ms_q = (
+        select(
+            TrainingQuestion.question_text,
+            TrainingQuestion.error_reason,
+            KnowledgePoint.subject,
+        )
+        .join(KnowledgePoint, TrainingQuestion.knowledge_point_id == KnowledgePoint.id)
+        .where(TrainingQuestion.user_id == uid, TrainingQuestion.is_wrong.is_(True))
+    )
+    if subject:
+        ms_q = ms_q.where(KnowledgePoint.subject == subject)
+    ms_q = ms_q.order_by(TrainingQuestion.answered_at.desc().nullslast()).limit(5)
+    ms_rows = await db.execute(ms_q)
+    recent_mistakes = [
+        {"question": qt[:80], "error_reason": er, "subject": subj}
+        for qt, er, subj in ms_rows.all()
+    ]
+
+    return {"diagnosis": report, "recent_mistakes": recent_mistakes}
 
 
 # ── 工具 3：plan_study_schedule ─────────────────────────────────────────────

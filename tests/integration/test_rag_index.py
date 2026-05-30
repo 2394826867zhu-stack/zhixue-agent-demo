@@ -239,6 +239,42 @@ async def test_submit_wrong_answer_enqueues_mistake(client, db, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_diagnose_returns_recent_mistakes(client, db, monkeypatch):
+    """诊断增强：返回具体错题样本（DB query，精确全量——不是 RAG 语义场景）。"""
+    import uuid as _uuid
+    from datetime import datetime, timezone
+    from app.services import agent_tools
+    from app.services.knowledge_point_service import kp_service
+    from app.schemas.knowledge_point import KnowledgePointCreate
+    from app.models.training import TrainingSession, TrainingQuestion
+
+    monkeypatch.setattr("app.services.rag_index.enqueue_kp_index", lambda x: None)
+    uid = await _register_user(client, "diag_mistake@zhiyao.ai")
+    uuid_uid = _uuid.UUID(uid)
+    kp = await kp_service.create(db, uid, KnowledgePointCreate(name="导数KP", subject="math"))
+    sess = TrainingSession(
+        user_id=uuid_uid, mode="single_kp", subject="math",
+        question_count=1, status="completed",
+    )
+    db.add(sess)
+    await db.flush()
+    q = TrainingQuestion(
+        session_id=sess.id, user_id=uuid_uid, knowledge_point_id=kp.id,
+        bloom_level="remember", question_type="short_answer",
+        question_text="求 2x 的导数", reference_answer="2", is_wrong=True,
+        error_reason="concept", answered_at=datetime.now(timezone.utc),
+    )
+    db.add(q)
+    await db.commit()
+
+    result = await agent_tools._diagnose_learning(db, uuid_uid, subject="math")
+    assert "recent_mistakes" in result
+    qs = [m["question"] for m in result["recent_mistakes"]]
+    assert any("求 2x 的导数" in t for t in qs)
+    assert result["recent_mistakes"][0]["error_reason"] == "concept"
+
+
+@pytest.mark.asyncio
 async def test_admin_backfill_requires_admin(client):
     resp = await client.post("/admin/rag/backfill/some-user-id")
     assert resp.status_code in (401, 403)
