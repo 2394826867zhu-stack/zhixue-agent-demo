@@ -17,6 +17,8 @@ class DocumentEmbedding(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
 
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    # 多租户隔离层：org 共享库的所属机构（user 私有内容为 NULL，official 也为 NULL）
+    org_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
     notebook_origin = Column(String(20), nullable=True)
 

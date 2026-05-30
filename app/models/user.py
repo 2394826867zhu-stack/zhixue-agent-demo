@@ -48,6 +48,9 @@ class User(Base):
     # 推送通知
     expo_push_token: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
+    # 多租户（F/企业隔离层）：所属机构；个人用户为 NULL。先不加 FK，组织实体表后续
+    org_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+
     # 套餐
     plan_type: Mapped[str] = mapped_column(String(20), default="free")
     plan_expires_at: Mapped[datetime | None] = mapped_column(

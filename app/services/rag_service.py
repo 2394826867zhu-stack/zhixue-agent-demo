@@ -137,6 +137,7 @@ async def search(
     project_id: uuid.UUID | None = None,
     include_official: bool = True,
     subject: str | None = None,
+    org_id: uuid.UUID | None = None,
 ) -> list[dict]:
     """语义检索 top-K。
 
@@ -155,6 +156,7 @@ async def search(
         WHERE embedding_model = :model
           AND (
             user_id = :uid
+            {org_clause}
             {official_clause}
           )
           {kind_clause}
@@ -169,7 +171,11 @@ async def search(
         "uid": user_id,
         "k": min(top_k, SEARCH_TOP_K_CAP),
     }
-    official_clause = "OR user_id IS NULL" if include_official else ""
+    # 三级隔离：self（user_id=me）/ tenant（org_id=我的机构共享库）/ official（两者皆 NULL）
+    org_clause = "OR org_id = :org_id" if org_id is not None else ""
+    if org_id is not None:
+        params["org_id"] = org_id
+    official_clause = "OR (user_id IS NULL AND org_id IS NULL)" if include_official else ""
     kind_clause = ""
     if doc_kinds:
         kind_clause = "AND doc_kind = ANY(:kinds)"
@@ -184,6 +190,7 @@ async def search(
         params["subj"] = subject
 
     sql_final = sql.format(
+        org_clause=org_clause,
         official_clause=official_clause,
         kind_clause=kind_clause,
         project_clause=project_clause,
