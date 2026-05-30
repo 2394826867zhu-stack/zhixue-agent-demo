@@ -41,6 +41,22 @@ async def test_enqueue_kp_index_schedules_celery(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_enqueue_mistake_index_schedules_celery(monkeypatch):
+    from app.services import rag_index
+
+    calls = {}
+
+    def fake_apply_async(args=None, countdown=None, **kw):
+        calls["args"] = args
+
+    monkeypatch.setattr(
+        "app.tasks.embedding_tasks.embed_mistake.apply_async", fake_apply_async
+    )
+    rag_index.enqueue_mistake_index("q1")
+    assert calls["args"] == ["q1"]
+
+
+@pytest.mark.asyncio
 async def test_purge_doc_deletes_vectors(db):
     from app.services import rag_index
 
@@ -159,6 +175,67 @@ async def test_agent_create_kp_triggers_index(client, db, monkeypatch):
     )
     assert result["total"] == 1
     assert len(calls) == 1, "Agent 建 KP 应触发向量索引"
+
+
+@pytest.mark.asyncio
+async def test_submit_wrong_answer_enqueues_mistake(client, db, monkeypatch):
+    """F 业务联动：答错训练题 → 错题入向量库；答对则不触发。"""
+    import uuid as _uuid
+    from app.services.knowledge_point_service import kp_service
+    from app.schemas.knowledge_point import KnowledgePointCreate
+    from app.services.training_service import training_service, TrainingService
+    from app.models.training import TrainingSession, TrainingQuestion
+    from app.schemas.training import AnswerRequest
+
+    monkeypatch.setattr("app.services.rag_index.enqueue_kp_index", lambda x: None)
+    uid = await _register_user(client, "mistake_trig@zhiyao.ai")
+    uuid_uid = _uuid.UUID(uid)
+    kp = await kp_service.create(db, uid, KnowledgePointCreate(name="测试KP"))
+
+    async def _mk_question():
+        sess = TrainingSession(
+            user_id=uuid_uid, mode="single_kp", subject="math",
+            question_count=1, status="active",
+        )
+        db.add(sess)
+        await db.flush()
+        q = TrainingQuestion(
+            session_id=sess.id, user_id=uuid_uid, knowledge_point_id=kp.id,
+            bloom_level="remember", question_type="short_answer",
+            question_text="2+2=?", reference_answer="4",
+        )
+        db.add(q)
+        await db.commit()
+        return sess, q
+
+    calls = []
+    monkeypatch.setattr(
+        "app.services.rag_index.enqueue_mistake_index", lambda qid: calls.append(qid)
+    )
+
+    # 答错 → 触发
+    async def grade_wrong(self, question, user_answer):
+        return (0.0, "错了", True, "concept")
+
+    monkeypatch.setattr(TrainingService, "_grade_answer", grade_wrong)
+    sess, q = await _mk_question()
+    await training_service.submit_answer(
+        db, str(sess.id), str(q.id), uid, AnswerRequest(user_answer="5")
+    )
+    assert str(q.id) in calls, "答错应触发错题入向量库"
+
+    # 答对 → 不触发
+    calls.clear()
+
+    async def grade_right(self, question, user_answer):
+        return (1.0, "对", False, None)
+
+    monkeypatch.setattr(TrainingService, "_grade_answer", grade_right)
+    sess2, q2 = await _mk_question()
+    await training_service.submit_answer(
+        db, str(sess2.id), str(q2.id), uid, AnswerRequest(user_answer="4")
+    )
+    assert str(q2.id) not in calls, "答对不应触发"
 
 
 @pytest.mark.asyncio

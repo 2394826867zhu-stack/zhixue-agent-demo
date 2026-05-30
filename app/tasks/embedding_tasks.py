@@ -60,6 +60,46 @@ async def _embed_kp_async(kp_id: str):
         logger.info(f"embed_kp: {kp_id} indexed")
 
 
+@celery_app.task(name="app.tasks.embedding_tasks.embed_mistake", time_limit=120, soft_time_limit=100)
+def embed_mistake(question_id: str):
+    """错题（答错的 TrainingQuestion）入库。F 业务联动：答错时延迟触发。"""
+    _run(_embed_mistake_async(question_id))
+
+
+async def _embed_mistake_async(question_id: str):
+    from app.core.database import AsyncSessionLocal
+    from app.models.training import TrainingQuestion, TrainingSession
+    from app.services.rag_service import upsert_doc
+
+    async with AsyncSessionLocal() as db:
+        q = await db.get(TrainingQuestion, uuid.UUID(question_id))
+        if not q or not q.is_wrong:
+            return  # 只索引错题
+        subject = None
+        if q.session_id:
+            sess = await db.get(TrainingSession, q.session_id)
+            subject = sess.subject if sess else None
+        content = "\n".join(filter(None, [
+            f"题目：{q.question_text}",
+            f"参考答案：{q.reference_answer}",
+            f"我的错误答案：{q.user_answer}" if q.user_answer else "",
+            f"错误原因：{q.error_reason}" if q.error_reason else "",
+        ]))
+        await upsert_doc(
+            db,
+            doc_kind="mistake",
+            doc_id=q.id,
+            content=content,
+            user_id=q.user_id,
+            metadata={
+                "subject": subject,
+                "error_reason": q.error_reason,
+                "question_type": q.question_type,
+            },
+        )
+        logger.info(f"embed_mistake: {question_id} indexed")
+
+
 @celery_app.task(name="app.tasks.embedding_tasks.embed_note", time_limit=180, soft_time_limit=160)
 def embed_note(note_id: str):
     """笔记入库：用 exam_version（精简摘要）作为可检索摘要 + full_version 切块。"""

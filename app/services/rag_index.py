@@ -34,6 +34,16 @@ def enqueue_note_index(note_id: str) -> None:
         logger.warning("enqueue_note_index failed for %s: %s", note_id, e)
 
 
+def enqueue_mistake_index(question_id: str) -> None:
+    """F 业务联动：答错的训练题（错题）入向量库。"""
+    try:
+        from app.tasks.embedding_tasks import embed_mistake
+
+        embed_mistake.apply_async(args=[str(question_id)], countdown=_EMBED_COUNTDOWN)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("enqueue_mistake_index failed for %s: %s", question_id, e)
+
+
 def enqueue_user_backfill(user_id: str) -> None:
     try:
         from app.tasks.embedding_tasks import backfill_user

@@ -369,6 +369,11 @@ class TrainingService:
 
         await db.commit()
 
+        # F 业务联动：答错 → 错题入向量库（供出题/错题场景召回）
+        if is_wrong:
+            from app.services import rag_index
+            rag_index.enqueue_mistake_index(str(question.id))
+
         # v0.26 · 自动写入 SS 时间线（PRD 行 438 第 4/5 类）
         # v0.27 Q-05 · 优先用 TrainingSession 上挂的 ss_session_id（若有），否则 fallback active
         try:
