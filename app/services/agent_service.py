@@ -107,7 +107,7 @@ async def run(
             redirect = make_redirect_reply(audit.get("category"))
             logger.info(f"content_safety blocked user={user_id} cat={audit.get('category')}")
             yield f'data: {json.dumps({"delta": redirect}, ensure_ascii=False)}\n\n'
-            yield f'data: {json.dumps({"done": True, "session_id": session_id, "tools_called": [], "blocked": True}, ensure_ascii=False)}\n\n'
+            yield f'data: {json.dumps({"done": True, "session_id": session_id, "tools_called": [], "blocked": True, "sources": []}, ensure_ascii=False)}\n\n'
             return
     except Exception as _e:
         logger.debug(f"content_safety skipped: {_e}")
@@ -155,6 +155,8 @@ async def run(
 
     # v0.28 RAG · 自动注入相关学习内容（KP/Note/Chapter top-5）
     # 失败静默，不阻断主流；不出现在工具循环中（工具循环里另有 retrieve_knowledge 让 LLM 主动调）
+    # C-12 · 召回结果同时保留下来，结束时随 done 事件回前端展示"引用来源"
+    rag_hits: list[dict] = []
     try:
         from app.services.rag_service import search as rag_search, format_for_prompt
         subject_hint = None
@@ -169,6 +171,7 @@ async def run(
             include_official=True,
             subject=subject_hint,
         )
+        rag_hits = hits
         rag_block = format_for_prompt(hits)
         if rag_block:
             system = system + "\n\n" + rag_block
@@ -321,7 +324,14 @@ async def run(
         except Exception as e:
             logger.debug(f"TTS skipped: {e}")
 
-    done_payload: dict = {"done": True, "session_id": session_id, "tools_called": tools_called}
+    # C-12 · RAG 召回来源随 done 事件回前端展示（"答案参考了你的：错题《…》/ 笔记《…》"）
+    from app.services.rag_service import format_citations
+    done_payload: dict = {
+        "done": True,
+        "session_id": session_id,
+        "tools_called": tools_called,
+        "sources": format_citations(rag_hits),
+    }
     if audio_url:
         done_payload["audio_url"] = audio_url
     yield f'data: {json.dumps(done_payload, ensure_ascii=False)}\n\n'
