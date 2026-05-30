@@ -144,6 +144,10 @@ class TrainingService:
         from app.llm.prompts.training_prompts import QUESTION_GENERATE_PROMPT, SYSTEM_TRAINING
 
         questions: list[TrainingQuestion] = []
+        # F 召回侧：出题前召回该生历史错题，注入 prompt 以针对性强化薄弱点
+        mistake_hint = await self._recall_mistakes_hint(
+            db, user_id, kps[0].subject if kps else None
+        )
         # v0.34 P1-3 · 构造交错池：interleave_ratio 比例来自历史 KP
         n_interleave = int(round(data.question_count * interleave_ratio)) if interleave_kps else 0
         n_primary = data.question_count - n_interleave
@@ -181,7 +185,8 @@ class TrainingService:
                         key_formula=kp.key_formula or "无",
                         bloom_level=kp.bloom_level,
                         count=1,
-                    ) + f"\n\n【强制题型】请生成一道 {qtype} 题。",
+                    ) + f"\n\n【强制题型】请生成一道 {qtype} 题。"
+                    + (f"\n\n{mistake_hint}" if mistake_hint else ""),
                     system=SYSTEM_TRAINING,
                     user_id=user_id,
                     endpoint="training.compose_quiz",
@@ -304,6 +309,25 @@ class TrainingService:
         )
         total = count_result.scalar() or 0
         return {"items": sessions, "total": total, "page": page, "page_size": page_size}
+
+    async def _recall_mistakes_hint(self, db, user_id: str, subject: str | None) -> str:
+        """F 召回侧：召回用户历史错题，格式化为出题 prompt 提示。失败静默返回空串。"""
+        try:
+            from app.services import rag_service
+            hits = await rag_service.search(
+                db,
+                user_id=uuid.UUID(user_id),
+                query=f"{subject or ''}常见易错点",
+                doc_kinds=["mistake"],
+                top_k=3,
+                subject=subject,
+            )
+            if not hits:
+                return ""
+            lines = [f"- {h['content'][:120]}" for h in hits]
+            return "【该学生过往易错点（出题时针对性强化）】\n" + "\n".join(lines)
+        except Exception:
+            return ""
 
     async def submit_answer(
         self, db: AsyncSession, session_id: str, question_id: str, user_id: str, data: AnswerRequest
