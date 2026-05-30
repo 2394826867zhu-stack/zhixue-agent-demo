@@ -294,8 +294,8 @@ class LLMClient:
             r = await get_redis()
             today = date.today().isoformat()
             used = int(await r.get(f"quota:{user_id}:used:{today}") or 0)
-            limit_raw = await r.get(f"quota:{user_id}:daily_limit")
-            limit = int(limit_raw) if limit_raw else _DEFAULT_LIMIT
+            # limit 真相源统一（F-13）：Redis 缓存优先，未命中回源 DB 权威值，再无才 DEFAULT
+            limit = await self._resolve_daily_limit(user_id)
             if used >= limit:
                 raise QuotaExceededError(f"今日 Token 配额已用尽（{used}/{limit}）")
         except QuotaExceededError:
@@ -315,6 +315,43 @@ class LLMClient:
             return int(await r.get(f"quota:{user_id}:used:{today}") or 0)
         except Exception:
             return 0
+
+    async def _resolve_daily_limit(self, user_id: str, session_factory=None) -> int:
+        """daily_limit 真相源（F-13）：Redis 缓存优先；未命中回源 DB 权威值并回填；
+        DB 无记录才退 DEFAULT。与 /profile/token-quota（读 DB）保持一致，
+        修复审计 P1-3：admin 在 DB 设的配额不再因 Redis 失效/未同步而被绕过。"""
+        from app.core.redis import get_redis
+
+        r = None
+        try:
+            r = await get_redis()
+            cached = await r.get(f"quota:{user_id}:daily_limit")
+            if cached is not None:
+                return int(cached)
+        except Exception:
+            r = None
+        # Redis 未命中 → 回源 DB（权威）
+        limit = _DEFAULT_LIMIT
+        try:
+            import uuid as _uuid
+            from sqlalchemy import select
+            from app.models.user_quota import UserQuota
+            from app.core.database import async_session_factory
+
+            factory = session_factory or async_session_factory
+            async with factory() as db:
+                row = (
+                    await db.execute(
+                        select(UserQuota).where(UserQuota.user_id == _uuid.UUID(user_id))
+                    )
+                ).scalar_one_or_none()
+                if row is not None:
+                    limit = row.daily_token_limit
+            if r is not None:
+                await r.set(f"quota:{user_id}:daily_limit", limit)  # 回填缓存
+        except Exception as e:
+            logger.debug(f"Resolve daily limit fell back to default: {e}")
+        return limit
 
     async def _record(self, user_id: str | None, model: str, endpoint: str | None, usage: dict) -> None:
         prompt_tokens = usage.get("prompt_tokens", 0)

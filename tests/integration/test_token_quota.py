@@ -52,3 +52,32 @@ async def test_token_quota_reflects_redis_usage(client: AsyncClient):
         assert data["remaining"] == data["daily_limit"] - 5000
     finally:
         await r.delete(key)
+
+
+@pytest.mark.asyncio
+async def test_resolve_daily_limit_falls_back_to_db(db):
+    """F-13：Redis 无 daily_limit 缓存时，enforcement 应回源 DB 权威值，而非退 DEFAULT。
+
+    根因（审计 P1-3）：_check_quota 原本 Redis 未命中即用 DEFAULT，
+    忽略 admin 在 DB 设的配额，与 /profile/token-quota（读 DB）不一致。
+    """
+    import uuid as _uuid
+
+    from app.core.redis import get_redis
+    from app.llm.client import llm_client
+    from app.models.user_quota import UserQuota
+    from tests.conftest import TestSessionLocal
+
+    uid = _uuid.uuid4()
+    db.add(UserQuota(user_id=uid, daily_token_limit=100))
+    await db.commit()
+
+    r = await get_redis()
+    await r.delete(f"quota:{uid}:daily_limit")  # 确保 Redis 未命中
+    try:
+        limit = await llm_client._resolve_daily_limit(
+            str(uid), session_factory=TestSessionLocal
+        )
+        assert limit == 100, "Redis 未命中应回源 DB 权威值 100，而非 DEFAULT"
+    finally:
+        await r.delete(f"quota:{uid}:daily_limit")
