@@ -303,6 +303,19 @@ class LLMClient:
         except Exception as e:
             logger.debug(f"Quota check skipped: {e}")
 
+    async def get_today_usage(self, user_id: str | None) -> int:
+        """F-10 · 用户今日已用 token（与 _check_quota 同一 Redis 真相源）。"""
+        if not user_id:
+            return 0
+        try:
+            from app.core.redis import get_redis
+            from datetime import date
+            r = await get_redis()
+            today = date.today().isoformat()
+            return int(await r.get(f"quota:{user_id}:used:{today}") or 0)
+        except Exception:
+            return 0
+
     async def _record(self, user_id: str | None, model: str, endpoint: str | None, usage: dict) -> None:
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)

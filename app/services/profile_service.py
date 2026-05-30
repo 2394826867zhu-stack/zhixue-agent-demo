@@ -232,5 +232,25 @@ class ProfileService:
         today = date.today()
         return today - timedelta(days=today.weekday())  # 本周一
 
+    async def get_token_quota(self, db: AsyncSession, user_id: str) -> dict:
+        """F-10 · 当前用户今日 token 配额余量。
+
+        limit 取 DB 权威值（admin_service.get_quota，与 Redis daily_limit 同步），
+        used 取 enforcement 真实计数（llm_client.get_today_usage / Redis）。
+        """
+        from app.services.admin_service import admin_service
+        from app.llm.client import llm_client
+
+        quota = await admin_service.get_quota(db, user_id)
+        limit = quota["daily_token_limit"]
+        used = await llm_client.get_today_usage(user_id)
+        return {
+            "date": date.today().isoformat(),
+            "used": used,
+            "daily_limit": limit,
+            "remaining": max(0, limit - used),
+            "is_default_limit": quota["is_default"],
+        }
+
 
 profile_service = ProfileService()

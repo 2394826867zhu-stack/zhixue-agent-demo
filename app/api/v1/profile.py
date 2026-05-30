@@ -33,6 +33,15 @@ async def get_achievements(
     return ok([a.model_dump() for a in items])
 
 
+@router.get("/token-quota", summary="当前用户今日 Token 配额余量（F-10）", response_model=None)
+async def get_token_quota(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    data = await profile_service.get_token_quota(db, str(user.id))
+    return ok(data)
+
+
 @router.post("/reflection", summary="保存周复盘（同一周重复提交则覆盖）", response_model=None)
 async def upsert_reflection(
     body: ReflectionCreate,
