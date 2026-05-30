@@ -201,7 +201,9 @@ class ProjectService:
             ))
 
         await db.commit()
-        await db.refresh(proj)
+        # 端点用 ProjectListItem.model_validate(proj) 会同步访问 proj.phases，
+        # 必须显式 load 关系，否则异步 lazy-load 触发 MissingGreenlet（审计 P1-1/P1-2）。
+        await db.refresh(proj, attribute_names=["phases", "milestones"])
         return proj
 
     # ── 更新 / 删除 ─────────────────────────────────────────────────────
@@ -216,7 +218,9 @@ class ProjectService:
         if data.summary is not None:
             proj.summary = data.summary
         await db.commit()
-        await db.refresh(proj)
+        # 端点用 ProjectListItem.model_validate(proj) 会同步访问 proj.phases，
+        # 必须显式 load 关系，否则异步 lazy-load 触发 MissingGreenlet（审计 P1-1/P1-2）。
+        await db.refresh(proj, attribute_names=["phases", "milestones"])
         return proj
 
     async def delete_project(self, db: AsyncSession, project_id: str, user_id: str) -> None:

@@ -8,7 +8,7 @@ from app.models.exam import Exam
 from app.models.knowledge_point import KnowledgePoint
 from app.models.training import TrainingQuestion
 from app.schemas.exam import ExamCreate, ExamUpdate, ExamOut, CountdownItem, CountdownOut
-from app.core.exceptions import NotFoundError, PermissionDeniedError
+from app.core.exceptions import NotFoundError, PermissionDeniedError, ValidationError
 from app.llm.client import llm_client
 from app.llm.prompts.exam_tip import exam_tip_prompt
 
@@ -107,12 +107,16 @@ class ExamService:
     # ---------- 内部工具 ----------
 
     async def _get_exam(self, db: AsyncSession, exam_id: str, user_id: str) -> Exam:
+        try:
+            eid = uuid.UUID(exam_id)
+        except (ValueError, TypeError):
+            raise ValidationError("exam_id 格式不合法")
         result = await db.execute(
-            select(Exam).where(Exam.id == uuid.UUID(exam_id))
+            select(Exam).where(Exam.id == eid)
         )
         exam = result.scalar_one_or_none()
         if not exam:
-            raise NotFoundError("考试不存在")
+            raise NotFoundError("考试")
         if str(exam.user_id) != user_id:
             raise PermissionDeniedError("无权操作此考试")
         return exam

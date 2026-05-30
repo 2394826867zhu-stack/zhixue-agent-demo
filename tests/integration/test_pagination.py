@@ -73,6 +73,61 @@ async def test_create_project_returns_200_with_relations(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_update_project_returns_200_with_relations(client: AsyncClient):
+    """回归（审计 P1-2）：update_project 的 db.refresh 漏加载 phases → 500。"""
+    h = await _auth(client, "proj_update@zhiyao.ai")
+    r = await client.post("/v1/projects", headers=h, json={"name": "原名"})
+    pid = r.json()["data"]["id"]
+
+    resp = await client.patch(f"/v1/projects/{pid}", headers=h, json={"name": "新名"})
+    assert resp.status_code == 200, resp.text
+    data = resp.json()["data"]
+    assert data["name"] == "新名"
+    assert data["phases"] == []
+
+
+@pytest.mark.asyncio
+async def test_confirm_from_dialog_returns_200_with_relations(client: AsyncClient):
+    """回归（审计 P1-1）：confirm_preview 的 db.refresh 漏加载关系 → 500。"""
+    h = await _auth(client, "proj_confirm@zhiyao.ai")
+    body = {
+        "preview": {
+            "draft": {"name": "确认项目", "summary": "审计回归"},
+            "proposed_phases": [{"name": "基础", "description": "x", "est_weeks": 2}],
+            "proposed_milestones": [{"title": "M1", "type": "custom", "days_from_now": 30}],
+            "proposed_tree_summary": {"total_nodes": 0},
+            "estimated_total_hours": 10.0,
+        }
+    }
+    resp = await client.post(
+        "/v1/projects/from-agent-dialog/confirm", headers=h, json=body
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()["data"]
+    assert data["name"] == "确认项目"
+    assert len(data["phases"]) == 1, "confirm 应生成 1 个 phase 且关系已加载"
+
+
+@pytest.mark.asyncio
+async def test_get_exam_invalid_uuid_returns_422(client: AsyncClient):
+    """回归（审计 P2-4）：非法 exam_id 应 422，而非未捕获 ValueError → 500。"""
+    h = await _auth(client, "exam_baduuid@zhiyao.ai")
+    resp = await client.get("/v1/exams/not-a-uuid", headers=h)
+    assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.asyncio
+async def test_get_exam_not_found_message_clean(client: AsyncClient):
+    """回归（审计 P2-3）：404 文案不应出现『不存在不存在』。"""
+    import uuid as _uuid
+
+    h = await _auth(client, "exam_notfound@zhiyao.ai")
+    resp = await client.get(f"/v1/exams/{_uuid.uuid4()}", headers=h)
+    assert resp.status_code == 404
+    assert "不存在不存在" not in resp.json()["message"]
+
+
+@pytest.mark.asyncio
 async def test_list_projects_returns_pagination_metadata(client: AsyncClient):
     h = await _auth(client, "proj_page@zhiyao.ai")
     for i in range(3):
