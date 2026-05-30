@@ -116,3 +116,20 @@ async def test_done_event_sources_empty_when_no_hits(monkeypatch):
 
     assert done is not None
     assert done["sources"] == []
+
+
+@pytest.mark.asyncio
+async def test_run_emits_rag_recall_observability(monkeypatch, caplog):
+    """E 可观测：自动召回时发出 rag_recall 结构化埋点（含命中数 / 分布）。"""
+    import logging
+
+    hits = [
+        {"doc_kind": "note", "doc_id": "n1", "content": "x", "score": 0.8, "metadata": {"title": "t"}},
+    ]
+    caplog.set_level(logging.INFO, logger="app.services.agent_service")
+    await _collect_done(monkeypatch, hits)
+
+    recall = [r.getMessage() for r in caplog.records if "rag_recall" in r.getMessage()]
+    assert recall, "应发出 rag_recall 埋点日志"
+    assert '"hit_count": 1' in recall[0]
+    assert '"is_empty": false' in recall[0]

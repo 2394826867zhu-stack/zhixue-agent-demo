@@ -251,6 +251,28 @@ def format_citations(hits: list[dict]) -> list[dict]:
     return out
 
 
+def summarize_retrieval(query: str, hits: list[dict]) -> dict:
+    """把一次 RAG 召回压缩成可观测指标（E 可观测·召回质量埋点）。
+
+    不落原始 query（隐私），只记长度；统计命中数 / score 分布 / doc_kind 分布 /
+    零召回标记。供结构化日志与离线分析，数据驱动后续检索与上下文迭代。
+    """
+    scores = [h.get("score", 0.0) for h in hits if h.get("score") is not None]
+    kind_dist: dict[str, int] = {}
+    for h in hits:
+        k = h.get("doc_kind") or "unknown"
+        kind_dist[k] = kind_dist.get(k, 0) + 1
+    return {
+        "query_len": len(query or ""),
+        "hit_count": len(hits),
+        "is_empty": len(hits) == 0,
+        "score_max": max(scores) if scores else None,
+        "score_min": min(scores) if scores else None,
+        "score_avg": (sum(scores) / len(scores)) if scores else None,
+        "kind_distribution": kind_dist,
+    }
+
+
 def format_for_prompt(hits: list[dict]) -> str:
     """把检索结果格式化为可拼进 system prompt 的引用块。"""
     if not hits:

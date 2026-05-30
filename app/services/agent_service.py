@@ -172,6 +172,13 @@ async def run(
             subject=subject_hint,
         )
         rag_hits = hits
+        # E 可观测 · 召回质量结构化埋点（不落原始 query，只记长度 + score/kind 分布 + 零召回）
+        try:
+            from app.services.rag_service import summarize_retrieval
+            obs = summarize_retrieval(message, hits)
+            logger.info("rag_recall %s", json.dumps({"user_id": user_id, **obs}, ensure_ascii=False))
+        except Exception:
+            pass
         rag_block = format_for_prompt(hits)
         if rag_block:
             system = system + "\n\n" + rag_block
