@@ -13,6 +13,10 @@ logger = logging.getLogger(__name__)
 
 MAX_CONTEXT_MESSAGES = 20  # keep last 20 turns for LLM context
 
+# v0.34 P1-1 · PRD 行 396 苏格拉底 5 轮上限
+MAX_GUIDANCE_TURNS = 5  # 最多 5 轮（user 5 轮 + assistant 5 轮 = 10 条 message_count）
+# 第 6 轮：自动给"提示词卡片"（关键 hint 但非完整答案）
+
 
 class GuidanceService:
 
@@ -94,11 +98,24 @@ class GuidanceService:
 
         kp_context = await self._fetch_kp_context(db, uid, session.subject, message)
 
-        ai_content = await self._call_llm(
-            conversation=conversation,
-            user_message=message,
-            kp_context=kp_context,
-        )
+        # v0.34 P1-1 · 苏格拉底 5 轮上限（user 已发条数）
+        # message_count 包含 user+ai；user 单边发条数 = message_count // 2
+        # 当前正在处理的 user_msg 已 add 但 message_count 还没 +2，user 已发条数 = (message_count // 2) + 1
+        user_turns_after = (session.message_count // 2) + 1
+        force_hint_card = user_turns_after > MAX_GUIDANCE_TURNS
+
+        if force_hint_card:
+            ai_content = await self._call_llm_hint_card(
+                conversation=conversation,
+                user_message=message,
+                kp_context=kp_context,
+            )
+        else:
+            ai_content = await self._call_llm(
+                conversation=conversation,
+                user_message=message,
+                kp_context=kp_context,
+            )
 
         ai_msg = GuidanceMessage(
             session_id=session.id,
@@ -214,6 +231,45 @@ class GuidanceService:
         except Exception as e:
             logger.warning(f"Guidance LLM call failed: {e}")
             raise LLMError() from e
+
+    async def _call_llm_hint_card(
+        self, conversation: list[dict], user_message: str, kp_context: str
+    ) -> str:
+        """v0.34 P1-1 · 5 轮后 给"提示词卡片"
+
+        不是完整答案，是"关键 hint + 解题思路骨架"，让学生能继续推但不放弃。
+        典型结构：
+        - 你已经摸到核心了
+        - 关键点是 X
+        - 套路：[1] 先做 A [2] 再算 B [3] 最后看 C
+        - 你试试，做完发给我
+        """
+        from app.llm.client import llm_client
+
+        hint_system = (
+            "你是知曜的引导老师，学生已经在这道题上引导了 5 轮还没自己推出答案。"
+            "现在你必须给一张【提示词卡片】，不能给完整答案，但要把解题骨架交给学生。"
+            "结构：[1] 一句话肯定他的进展 [2] 指出关键转折点 [3] 给 3 步以内的骨架（每步只点关键变量/公式名，不算出结果）"
+            "[4] 鼓励他自己做完发给你检查。"
+            "全程不超过 150 字，voice 短句、不打鸡血、不'首先其次'。"
+        )
+
+        conv_text = "\n".join(
+            f"{'学生' if m['role'] == 'user' else '老师'}：{m['content']}"
+            for m in conversation[:-1]
+        )
+        prompt = (
+            f"已用知识点：\n{kp_context or '无'}\n\n"
+            f"对话历史：\n{conv_text}\n\n"
+            f"学生最新消息：{user_message}\n\n"
+            "请按上述结构产出【提示词卡片】。"
+        )
+        try:
+            content = await llm_client.generate(prompt, system=hint_system)
+            return content
+        except Exception as e:
+            logger.warning(f"Guidance hint card LLM failed: {e}")
+            return "你已经摸到核心。这步是关键转折，自己试着推一下，做完发给我。"
 
     async def _get_session(
         self, db: AsyncSession, session_id: str, user_id: str

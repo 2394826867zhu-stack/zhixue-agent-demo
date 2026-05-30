@@ -1,0 +1,29 @@
+version: "3.9"
+
+# pgvector/pgvector:pg17 — 取代 Windows 原生 Postgres 17 服务
+# 同端口 5432 + 同 credentials → 应用配置无需改动
+# 数据卷 zhiyao_pgdata 持久化挂在 docker volume
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: zhiyao_pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zhiyao
+      POSTGRES_PASSWORD: zhiyao_dev_password
+      POSTGRES_DB: zhiyao
+      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - zhiyao_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zhiyao -d zhiyao"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  zhiyao_pgdata:
+    name: zhiyao_pgdata

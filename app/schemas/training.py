@@ -1,6 +1,22 @@
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, field_validator
+from typing import Literal
+from pydantic import BaseModel, Field, field_validator
+
+
+# v0.26 · 题型清单（PRD 行 415-416）
+# demo：choice / true_false
+# 后续扩展：fill_blank / short_answer / proof / calculation / essay / programming
+QuestionType = Literal[
+    "choice",         # 选择题
+    "true_false",     # 判断题
+    "fill_blank",     # 填空
+    "short_answer",   # 简答
+    "proof",          # 证明
+    "calculation",    # 计算
+    "essay",          # 写作
+    "programming",    # 编程
+]
 
 
 class TrainingStartRequest(BaseModel):
@@ -12,8 +28,8 @@ class TrainingStartRequest(BaseModel):
     @field_validator("mode")
     @classmethod
     def valid_mode(cls, v: str) -> str:
-        if v not in ("single_kp", "subject"):
-            raise ValueError("mode 必须为 single_kp 或 subject")
+        if v not in ("single_kp", "subject", "compose"):
+            raise ValueError("mode 必须为 single_kp / subject / compose")
         return v
 
     @field_validator("question_count")
@@ -22,6 +38,35 @@ class TrainingStartRequest(BaseModel):
         if not 1 <= v <= 20:
             raise ValueError("题目数量必须在 1-20 之间")
         return v
+
+
+# v0.26 · 组卷模式（PRD 9.4 行 645 + 行 415-416）
+class ComposeQuizRequest(BaseModel):
+    """组卷模式：选题型 / 题量 / 难度 / 范围。
+
+    PRD 9.4 行 645 锁定支持 4 维筛选。
+    """
+    # 题型清单（任选一个或多个，按比例混合出题）
+    question_types: list[QuestionType] = Field(
+        default_factory=lambda: ["choice", "true_false"],
+        min_length=1, max_length=8,
+    )
+    question_count: int = Field(default=10, ge=1, le=30)
+
+    # 难度：按知识卡分级（PRD 5.4 蓝/紫/金）
+    difficulty_tiers: list[Literal["blue", "purple", "gold"]] = Field(
+        default_factory=lambda: ["blue", "purple"],
+        min_length=1, max_length=3,
+    )
+
+    # 范围（四选一，按优先级解析）
+    project_id: uuid.UUID | None = None     # 项目内所有 KP
+    tree_node_id: uuid.UUID | None = None   # 项目某子树
+    subject: str | None = None              # 学科
+    knowledge_point_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
+
+    # 可选：StudySpace 会话挂载（写时间线用）
+    ss_session_id: uuid.UUID | None = None
 
 
 class TrainingQuestionOut(BaseModel):

@@ -6,7 +6,15 @@ celery_app = Celery(
     "zhiyao",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.tasks.note_tasks", "app.tasks.task_tasks", "app.tasks.notification_tasks"],
+    include=[
+        "app.tasks.note_tasks",
+        "app.tasks.task_tasks",
+        "app.tasks.notification_tasks",
+        "app.tasks.embedding_tasks",  # v0.28 RAG
+        "app.tasks.memory_tasks",     # v0.29 Memory
+        "app.tasks.first_review_tasks",  # v0.33 P0-1 · 24h 首次复习推送
+        "app.tasks.weekly_reflection_tasks",  # v0.33 P0-3 · 周复盘自动生成
+    ],
 )
 
 # dev: every 5 min (so daily-task logic runs during demos); prod: once at 00:05
@@ -40,6 +48,35 @@ celery_app.conf.update(
         "push-organic-notifications-evening": {
             "task": "app.tasks.notification_tasks.push_organic_notifications",
             "schedule": crontab(hour=20, minute=0) if settings.APP_ENV != "development" else 7200.0,
+        },
+        # v0.29 Memory · 行为信号扫描
+        "scan-inactive-users": {
+            "task": "app.tasks.memory_tasks.scan_inactive_users",
+            "schedule": crontab(hour=22, minute=30) if settings.APP_ENV != "development" else 3600.0,
+        },
+        "scan-upcoming-exams": {
+            "task": "app.tasks.memory_tasks.scan_upcoming_exams",
+            "schedule": crontab(hour=9, minute=0) if settings.APP_ENV != "development" else 7200.0,
+        },
+        "cleanup-old-episodes": {
+            "task": "app.tasks.memory_tasks.cleanup_old_episodes",
+            "schedule": crontab(hour=3, minute=0) if settings.APP_ENV != "development" else 86400.0,
+        },
+        # v0.33 P0-1 · 24h 首次复习推送（每小时扫一次）
+        "scan-first-review-due": {
+            "task": "app.tasks.first_review_tasks.scan_first_review_due",
+            "schedule": crontab(minute=15) if settings.APP_ENV != "development" else 3600.0,
+        },
+        # v0.33 P0-3 · 周复盘自动（每周日 20:00）
+        "generate-weekly-reflection": {
+            "task": "app.tasks.weekly_reflection_tasks.generate_all_users",
+            "schedule": crontab(day_of_week="sun", hour=20, minute=0)
+                        if settings.APP_ENV != "development" else 86400.0,
+        },
+        # v0.34 P1-11 · 6h 软提醒（每小时扫一次）
+        "scan-focus-overload": {
+            "task": "app.tasks.focus_overload_tasks.scan_overload",
+            "schedule": crontab(minute=45) if settings.APP_ENV != "development" else 3600.0,
         },
     },
 )

@@ -32,6 +32,15 @@ async def user_token_history(
     return ok(await admin_service.get_user_token_history(db, user_id, limit))
 
 
+@router.get("/quotas/{user_id}", summary="用户当前配额详情（v0.32）")
+async def get_quota(
+    user_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: dict = Depends(get_current_admin),
+):
+    return ok(await admin_service.get_quota(db, user_id))
+
+
 @router.put("/quotas/{user_id}", summary="设置用户每日 Token 配额")
 async def set_quota(
     user_id: str,

@@ -1,4 +1,5 @@
 import uuid
+import logging
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,8 +8,25 @@ from app.models.notification import Notification
 from app.models.flashcard import Flashcard
 from app.models.checkin import CheckIn
 from app.models.exam import Exam
+from app.models.user import User
 from app.schemas.notification import NotificationOut, NotificationListResponse
 from app.core.exceptions import NotFoundError
+
+logger = logging.getLogger(__name__)
+
+
+async def _send_expo_push(token: str, body: str) -> None:
+    """Fire-and-forget Expo push. Failures are logged, never raised."""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.post(
+                "https://exp.host/--/api/v2/push/send",
+                json={"to": token, "title": "知曜", "body": body, "sound": "default"},
+                headers={"Accept": "application/json", "Content-Type": "application/json"},
+            )
+    except Exception as e:
+        logger.debug(f"Expo push failed: {e}")
 
 
 class NotificationService:
@@ -79,9 +97,15 @@ class NotificationService:
         content: str,
         notification_type: str,
         related_action: str | None = None,
+        force_push: bool = False,
     ) -> Notification:
+        """v0.34 P1-14 · 推送时段静默（22:00-06:00 不发 Expo push，但 in-app 仍写入）
+
+        force_push=True 时强制推（保留给紧急通知用，目前不用）
+        """
+        uid = uuid.UUID(user_id)
         notif = Notification(
-            user_id=uuid.UUID(user_id),
+            user_id=uid,
             content=content,
             notification_type=notification_type,
             related_action=related_action,
@@ -89,6 +113,24 @@ class NotificationService:
         db.add(notif)
         await db.commit()
         await db.refresh(notif)
+
+        # 推送时段静默：22:00 - 06:00（北京时间）
+        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+        # 用 UTC+8 算
+        bj_now = _dt.now(_tz.utc) + _td(hours=8)
+        hour = bj_now.hour
+        in_quiet = (hour >= 22 or hour < 6)
+
+        if in_quiet and not force_push:
+            # 静默期：只入库不推 Expo，用户次日 06:00 后看到
+            return notif
+
+        # Attempt Expo push (non-blocking)
+        user_row = await db.execute(select(User).where(User.id == uid))
+        user = user_row.scalar_one_or_none()
+        if user and user.expo_push_token:
+            await _send_expo_push(user.expo_push_token, content)
+
         return notif
 
     # --- Organic push logic (called from Celery) ---

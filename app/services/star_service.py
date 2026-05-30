@@ -4,7 +4,10 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
-from app.models.star import StarLedger, UserCosmetic, COSMETIC_CATALOG
+from app.models.star import (
+    StarLedger, UserCosmetic, COSMETIC_CATALOG,
+    STARTER_OUTFITS, get_starter_item_ids,
+)
 from app.schemas.star import (
     StarBalanceResponse, StarHistoryResponse, StarTransactionOut,
     CosmeticItemOut, ShopResponse, EquippedCosmeticsResponse,
@@ -77,6 +80,10 @@ class StarService:
 
     async def get_shop(self, db: AsyncSession, user_id: str) -> ShopResponse:
         uid = uuid.UUID(user_id)
+
+        # 首次访问：自动解锁三套默认服装的所有 starter 道具（PRD 9.10 行 693）
+        await self._ensure_starters_granted(db, uid)
+
         result = await db.execute(
             select(UserCosmetic).where(UserCosmetic.user_id == uid)
         )
@@ -96,6 +103,44 @@ class StarService:
                 is_equipped=owned_entry.equipped if owned_entry else False,
             ))
         return ShopResponse(items=items)
+
+    async def _ensure_starters_granted(self, db: AsyncSession, uid: uuid.UUID) -> None:
+        """新用户首次进商店时解锁三套默认服装内的所有 starter 道具。
+
+        幂等：已解锁的不重复插入。
+        """
+        starter_ids = get_starter_item_ids()
+        if not starter_ids:
+            return
+        existing_q = await db.execute(
+            select(UserCosmetic.item_id).where(
+                UserCosmetic.user_id == uid,
+                UserCosmetic.item_id.in_(starter_ids),
+            )
+        )
+        existing = {row[0] for row in existing_q.all()}
+        missing = [iid for iid in starter_ids if iid not in existing]
+        if not missing:
+            return
+        for iid in missing:
+            db.add(UserCosmetic(user_id=uid, item_id=iid, equipped=False))
+        await db.commit()
+
+    async def list_starter_outfits(self) -> list[dict]:
+        """列出三套默认服装组合（用于前端展示和一键装备）。"""
+        return [
+            {"id": oid, "name": meta["name"], "items": meta["items"]}
+            for oid, meta in STARTER_OUTFITS.items()
+        ]
+
+    async def equip_outfit(self, db: AsyncSession, user_id: str, outfit_id: str) -> None:
+        """一键装备一套默认服装（PRD 9.10 starter set）。"""
+        if outfit_id not in STARTER_OUTFITS:
+            raise AppError(404, "服装套装不存在", 404)
+        uid = uuid.UUID(user_id)
+        await self._ensure_starters_granted(db, uid)
+        for item_id in STARTER_OUTFITS[outfit_id]["items"]:
+            await self.equip(db, str(uid), item_id)
 
     async def purchase(self, db: AsyncSession, user_id: str, item_id: str) -> None:
         if item_id not in COSMETIC_CATALOG:
@@ -191,8 +236,8 @@ class StarService:
                 equipped_map[info["category"]] = row.item_id
 
         return EquippedCosmeticsResponse(
-            material=equipped_map.get("material"),
+            clothing=equipped_map.get("clothing"),
+            hair=equipped_map.get("hair"),
             accessory=equipped_map.get("accessory"),
-            aura=equipped_map.get("aura"),
-            voice=equipped_map.get("voice"),
+            background=equipped_map.get("background"),
         )

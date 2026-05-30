@@ -28,7 +28,7 @@ class StarHistoryResponse(BaseModel):
 class CosmeticItemOut(BaseModel):
     id: str
     name: str
-    category: str       # 'material' | 'accessory' | 'aura' | 'voice'
+    category: str       # v0.27 · 'clothing' | 'hair' | 'accessory' | 'background' (PRD 9.10 行 694)
     description: str
     price: int
     preview_url: str
@@ -41,7 +41,8 @@ class ShopResponse(BaseModel):
 
 
 class EquippedCosmeticsResponse(BaseModel):
-    material: str | None
-    accessory: str | None
-    aura: str | None
-    voice: str | None
+    """当前装备状态（v0.27 schema 对齐 PRD 9.10 四类目）"""
+    clothing: str | None = None
+    hair: str | None = None
+    accessory: str | None = None
+    background: str | None = None

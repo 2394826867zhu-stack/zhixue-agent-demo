@@ -2,8 +2,11 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy import String, Text, DateTime, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, ENUM as PgEnum
 from app.core.database import Base
+
+NOTEBOOK_ORIGIN = PgEnum("official", "user_project", name="project_source", create_type=False)
+DIFFICULTY_TIER = PgEnum("blue", "purple", "gold", name="node_difficulty", create_type=False)
 
 
 class KnowledgePoint(Base):
@@ -28,6 +31,13 @@ class KnowledgePoint(Base):
     # 'new'|'learning'|'reviewing'|'mastered'
 
     tags: Mapped[list] = mapped_column(JSON, default=list)
+
+    # v2 PRD · 项目挂载 + 来源区分 + 蓝紫金分级（migration 020）
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    notebook_origin: Mapped[str] = mapped_column(NOTEBOOK_ORIGIN, nullable=False, server_default="user_project")
+    difficulty_tier: Mapped[str] = mapped_column(DIFFICULTY_TIER, nullable=False, server_default="blue", index=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

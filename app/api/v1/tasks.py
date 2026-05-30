@@ -45,6 +45,16 @@ async def create_task(
     return ok(DailyTaskOut.model_validate(task))
 
 
+@router.get("/{task_id}", summary="任务详情（v0.32）")
+async def get_task(
+    task_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    task = await task_service._get_task(db, task_id, str(user.id))
+    return ok(DailyTaskOut.model_validate(task))
+
+
 @router.patch("/{task_id}", summary="更新任务状态或信息")
 async def update_task(
     task_id: str,

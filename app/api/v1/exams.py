@@ -43,6 +43,16 @@ async def get_countdown(
     return ok(data.model_dump(mode="json"))
 
 
+@router.get("/{exam_id}", summary="考试详情（v0.32）", response_model=None)
+async def get_exam(
+    exam_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    exam = await exam_service.get_exam(db, exam_id, str(user.id))
+    return ok(ExamOut.model_validate(exam).model_dump(mode="json"))
+
+
 @router.put("/{exam_id}", summary="更新考试信息", response_model=None)
 async def update_exam(
     exam_id: str,

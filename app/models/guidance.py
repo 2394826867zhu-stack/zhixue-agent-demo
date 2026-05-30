@@ -20,6 +20,12 @@ class GuidanceSession(Base):
     # 'active' | 'resolved'
 
     message_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # v2 PRD · 项目挂载（migration 020）
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

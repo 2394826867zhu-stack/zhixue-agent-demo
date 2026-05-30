@@ -70,6 +70,16 @@ async def submit_retry_answer(
     return ok(RetryAnswerResult(**result))
 
 
+@router.get("/{question_id}", summary="错题详情（v0.32）")
+async def get_mistake(
+    question_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    q = await mistake_service._get_mistake(db, question_id, str(user.id))
+    return ok(MistakeOut.model_validate(q))
+
+
 @router.delete("/{question_id}", summary="手动移出错题本")
 async def remove_mistake(
     question_id: str,

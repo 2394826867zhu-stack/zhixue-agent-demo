@@ -32,12 +32,39 @@ class NotFoundError(AppError):
 
 class QuotaExceededError(AppError):
     def __init__(self):
-        super().__init__(4291, "今日使用额度已用尽，请升级套餐", 429)
+        # v0.34 P1-13 · PRD voice 重写
+        super().__init__(4291, "今天的额度用完了。明天再来，或者升 Pro。", 429)
 
 
 class LLMError(AppError):
     def __init__(self):
-        super().__init__(5001, "AI 服务暂时不可用，请稍后重试", 503)
+        super().__init__(5001, "AI 那边卡住了。等几秒再试。", 503)
+
+
+# v0.34 P1-13 · 新增 PRD voice 错误类型
+class FileTooLargeError(AppError):
+    def __init__(self, max_mb: int = 10):
+        super().__init__(4131, f"文件太大了。最多 {max_mb}MB。", 413)
+
+
+class FileFormatError(AppError):
+    def __init__(self, supported: str = "JPG/PNG/PDF/TXT"):
+        super().__init__(4151, f"这个格式我处理不了。支持 {supported}。", 415)
+
+
+class OCRFailedError(AppError):
+    def __init__(self):
+        super().__init__(5002, "图里没认出文字。换一张清晰点的。", 422)
+
+
+class NoteGenerationFailedError(AppError):
+    def __init__(self):
+        super().__init__(5003, "笔记没生成出来。再试一次，或者直接发文字给我。", 503)
+
+
+class ContentBlockedError(AppError):
+    def __init__(self):
+        super().__init__(4030, "这个聊不了。换个话题。", 403)
 
 
 async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:

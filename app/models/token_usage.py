@@ -6,16 +6,36 @@ from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
 
 # USD cost per 1M tokens by model
+# DeepSeek V4 Flash 官方定价（2026-04-26 起）：
+#   cache hit prompt  ¥0.02/M → $0.003/M  ← 上下文硬盘缓存
+#   cache miss prompt ¥1.0/M  → $0.143/M
+#   completion        ¥2.0/M  → $0.286/M
 TOKEN_PRICES: dict[str, dict[str, float]] = {
-    "deepseek-chat":    {"prompt": 0.14,  "completion": 0.28},
-    "claude-opus-4-7":  {"prompt": 3.0,   "completion": 15.0},
-    "gpt-4o":           {"prompt": 2.5,   "completion": 10.0},
+    "deepseek-v4-flash":  {"prompt": 0.143, "prompt_cache_hit": 0.003, "completion": 0.286},
+    "deepseek-v4-pro":    {"prompt": 0.286, "prompt_cache_hit": 0.006, "completion": 0.572},
+    # legacy v3 (2026-07-24 下线)
+    "deepseek-chat":      {"prompt": 0.14,  "completion": 0.28},
+    "deepseek-reasoner":  {"prompt": 0.14,  "completion": 2.19},
+    "claude-opus-4-7":    {"prompt": 3.0,   "completion": 15.0},
+    "gpt-4o":             {"prompt": 2.5,   "completion": 10.0},
 }
 
 
-def estimate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
+def estimate_cost(
+    model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    prompt_cache_hit_tokens: int = 0,
+) -> float:
+    """v0.32 · 考虑 DeepSeek prompt cache 命中
+
+    prompt_cache_hit_tokens 走 cache_hit 价；剩余走 prompt 价。
+    """
     prices = TOKEN_PRICES.get(model, {"prompt": 0.5, "completion": 1.5})
-    return (prompt_tokens * prices["prompt"] + completion_tokens * prices["completion"]) / 1_000_000
+    hit = max(0, min(prompt_cache_hit_tokens, prompt_tokens))
+    miss = prompt_tokens - hit
+    hit_price = prices.get("prompt_cache_hit", prices["prompt"])
+    return (miss * prices["prompt"] + hit * hit_price + completion_tokens * prices["completion"]) / 1_000_000
 
 
 class TokenUsage(Base):

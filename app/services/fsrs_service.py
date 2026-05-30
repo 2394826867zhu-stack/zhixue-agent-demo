@@ -201,9 +201,46 @@ class FSRSService:
 
         await db.commit()
 
+        # v0.29 Memory · KP 连续答错 → 写 episode（Q5 锁定）
+        try:
+            await _check_kp_struggle_streak(db, uuid.UUID(user_id), kp, rating)
+        except Exception as _e:
+            import logging
+            logging.getLogger(__name__).warning(f"kp_struggle hook failed: {_e}")
+
         # Award stars + auto-complete system tasks (fire-and-forget, separate session)
         import asyncio
         asyncio.create_task(_post_review_side_effects(user_id))
+
+        # v0.26 · 自动写 SS 时间线（PRD 行 438 第 3 类）
+        try:
+            import logging as _lg
+            from app.services.ss_timeline_service import (
+                ss_timeline_service, find_active_ss_session_id,
+            )
+            ss_id = await find_active_ss_session_id(db, uuid.UUID(user_id))
+            if ss_id is not None:
+                rating_labels = {1: "不认识", 2: "模糊", 3: "认识", 4: "熟练"}
+                await ss_timeline_service.append_system_node(
+                    db,
+                    session_id=ss_id,
+                    user_id=uuid.UUID(user_id),
+                    kind="flashcard_result",
+                    title=f"闪卡复习 · {rating_labels.get(rating, str(rating))}",
+                    content=(card.front or "")[:200],
+                    payload={
+                        "flashcard_id": str(card.id),
+                        "rating": rating,
+                        "interval_days": scheduled["interval_days"],
+                        "fsrs_state": card.fsrs_state,
+                    },
+                    ref_flashcard_id=card.id,
+                    ref_kp_id=card.knowledge_point_id,
+                )
+                await db.commit()
+        except Exception as _e:
+            import logging as _lg2
+            _lg2.getLogger(__name__).warning(f"SS timeline write (flashcard) failed: {_e}")
 
         return {
             "flashcard_id": card.id,
@@ -223,15 +260,24 @@ class FSRSService:
                 KnowledgePoint.user_id == uid,
             )
         )
-        if not kp_result.scalar_one_or_none():
+        kp = kp_result.scalar_one_or_none()
+        if not kp:
             raise NotFoundError("知识点")
 
+        # v0.33 P0-1 · 24h 首次复习（PRD 行 311 · 对抗遗忘曲线）
+        # 新闪卡 due_date 默认 today+1d，让用户第二天能在每日任务里看到
+        from datetime import timedelta as _td
+        first_due = date.today() + _td(days=1)
         card = Flashcard(
             user_id=uid,
             knowledge_point_id=uuid.UUID(knowledge_point_id),
             card_type=card_type,
             front=front,
             back=back,
+            due_date=first_due,
+            # v0.27 Q-01 Q-02 · Flashcard 继承 KP 的 project_id + notebook_origin
+            project_id=kp.project_id,
+            notebook_origin=kp.notebook_origin,
         )
         db.add(card)
         await db.commit()
@@ -256,6 +302,44 @@ class FSRSService:
 
 
 fsrs_service = FSRSService()
+
+
+async def _check_kp_struggle_streak(
+    db: AsyncSession, user_id: uuid.UUID, kp: KnowledgePoint, rating: int,
+) -> None:
+    """v0.29 · 连续答错 3 次同一 KP → 写 kp_struggle episode（Redis 计数）"""
+    from app.core.redis import get_redis
+    redis = await get_redis()
+    key = f"kp_fail_streak:{user_id}:{kp.id}"
+    if rating > 1:
+        # 答对 / 模糊 / 熟练 → 重置
+        await redis.delete(key)
+        return
+    # rating == 1 答错
+    cnt = await redis.incr(key)
+    await redis.expire(key, 86400 * 14)  # 14 天窗口
+    if cnt >= 3:
+        # 写 episode + 重置
+        try:
+            from app.services.episodic_memory_service import record_event
+            await record_event(
+                db,
+                user_id=user_id,
+                event_kind="kp_struggle",
+                summary=f"用户连续 {cnt} 次记不住「{kp.name}」（{kp.subject}）。建议下次主动提及。",
+                detail={
+                    "kp_id": str(kp.id),
+                    "kp_name": kp.name,
+                    "subject": kp.subject,
+                    "fail_count": cnt,
+                },
+                ref_kp_ids=[kp.id],
+                emotional_tone="negative",
+            )
+            await redis.delete(key)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"record kp_struggle failed: {e}")
 
 
 async def _post_review_side_effects(user_id: str) -> None:

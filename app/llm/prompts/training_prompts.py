@@ -48,6 +48,37 @@ ANSWER_GRADE_PROMPT = """请评判以下学生答案，给出评分和反馈。
 {{
   "score": 0-100的整数,
   "feedback": "具体反馈（指出正确点和不足，给出改进建议，100字以内）",
-  "is_wrong": true/false（分数<60则为true）
+  "is_wrong": true/false（分数<60则为true）,
+  "error_reason": "careless|concept|method|null"
+}}
+
+error_reason 含义（is_wrong=true 时必填）：
+- careless：粗心（答案接近正确，计算/笔误失分）
+- concept：概念不清（基础理解有漏洞）
+- method：方法不会（思路错或不会用）
+答对（is_wrong=false）时 error_reason 填 null。
+"""
+
+
+# v0.34 P1-5 · 错题孪生题生成（不是改数字，是变情境）
+TWIN_QUESTION_PROMPT = """学生在下面这道题上答错了。请生成一道**同型异质**的孪生题，让学生再练一次。
+
+原题：{original_question}
+正确答案：{reference_answer}
+学生答案：{user_answer}
+错误原因：{error_reason}
+
+要求：
+1. 考察同一个知识点 + 同一种解题方法
+2. **不要只改数字** — 要换情境/换问法/换变量（比如原题问"小明买苹果"，孪生题改为"工厂生产零件"）
+3. 难度持平，不要变难也不要变简单
+4. 如果原题是 fill_blank，孪生也是 fill_blank
+5. 题目正文 ≤200 字，参考答案含解题步骤
+
+输出 JSON（不要 ```json 包裹）：
+{{
+  "question_type": "<同原题>",
+  "question_text": "孪生题正文",
+  "reference_answer": "参考答案 + 解题步骤"
 }}
 """

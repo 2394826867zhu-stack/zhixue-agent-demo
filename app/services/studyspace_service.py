@@ -28,10 +28,13 @@ class StudySpaceService:
         if not chapter:
             raise NotFoundError("课时不存在")
 
-        # Check for existing active session on same chapter
+        uid = uuid.UUID(user_id)
+
+        # v0.27 Bug-02 · 强制单 active SS session（PRD 9.3 行 638 中途退出保留进度）
+        # 如果同一 chapter 已有 active session，直接复用
         existing = await db.execute(
             select(StudySpaceSession).where(
-                StudySpaceSession.user_id == uuid.UUID(user_id),
+                StudySpaceSession.user_id == uid,
                 StudySpaceSession.chapter_id == req.chapter_id,
                 StudySpaceSession.status == "active",
             )
@@ -39,6 +42,17 @@ class StudySpaceService:
         active = existing.scalar_one_or_none()
         if active:
             return await self._to_out(db, active, chapter)
+
+        # 其他 chapter 的 active session → 自动 paused（保证 find_active_ss_session_id 返回唯一）
+        from sqlalchemy import update as _sql_update
+        await db.execute(
+            _sql_update(StudySpaceSession)
+            .where(
+                StudySpaceSession.user_id == uid,
+                StudySpaceSession.status == "active",
+            )
+            .values(status="paused")
+        )
 
         session = StudySpaceSession(
             user_id=uuid.UUID(user_id),
@@ -135,6 +149,122 @@ class StudySpaceService:
         # Auto-complete matching system tasks
         from app.services.task_service import task_service as _task_svc
         await _task_svc.auto_complete_system_tasks(db, user_id, "lesson_complete")
+
+        # v0.27 Q-04 · Agent 切换 celebrate 状态（PRD 2.1 行 167）
+        try:
+            from app.services.agent_state_service import agent_state_service
+            await agent_state_service.set_celebrate(
+                db, user_id, reason=f"完成「{lesson_label}」",
+            )
+        except Exception:
+            pass
+
+        # v0.27 Q-09 · 自动批量生成闪卡（PRD 行 553 强反馈）
+        # 找出该用户在本 SS 期间没闪卡的 KP，每个生成 1 张
+        fc_auto_created = 0
+        try:
+            from app.services.fsrs_service import fsrs_service
+            from app.models.flashcard import Flashcard
+            kp_rows = await db.execute(
+                select(KnowledgePoint)
+                .outerjoin(Flashcard, Flashcard.knowledge_point_id == KnowledgePoint.id)
+                .where(
+                    KnowledgePoint.user_id == uuid.UUID(user_id),
+                    Flashcard.id.is_(None),
+                )
+                .limit(20)
+            )
+            for kp in kp_rows.scalars().all():
+                if not (kp.name and kp.content):
+                    continue
+                try:
+                    await fsrs_service.create_card(
+                        db, user_id,
+                        knowledge_point_id=str(kp.id),
+                        front=kp.name,
+                        back=(kp.content or "")[:500],
+                        card_type="concept",
+                    )
+                    fc_auto_created += 1
+                except Exception:
+                    continue
+            if fc_auto_created:
+                session.flashcards_created = session.flashcards_created + fc_auto_created
+                await db.commit()
+        except Exception as _e:
+            logger.warning(f"Auto flashcard generation skipped: {_e}")
+
+        # v0.25 + v0.27 Q-08 · StudySpace 时间线写多条节点（PRD 行 438）
+        try:
+            from app.services.ss_timeline_service import ss_timeline_service
+            # 节点 1：课程总结
+            await ss_timeline_service.append_system_node(
+                db,
+                session_id=session_id,
+                user_id=uuid.UUID(user_id),
+                kind="agent_action",
+                title="课程完成",
+                content=f"完成「{lesson_label}」· 知星 +{stars_earned}",
+                payload={
+                    "tool": "complete_session",
+                    "lesson": lesson_label,
+                    "stars_earned": stars_earned,
+                },
+            )
+            # 节点 2：KP 提取（如有）
+            if kp_count > 0:
+                await ss_timeline_service.append_system_node(
+                    db,
+                    session_id=session_id,
+                    user_id=uuid.UUID(user_id),
+                    kind="kp_extracted",
+                    title=f"提炼 {kp_count} 个知识点",
+                    payload={"count": kp_count, "lesson": lesson_label},
+                )
+            # 节点 3：闪卡生成（含本次自动批量）
+            total_fc = fc_count + fc_auto_created
+            if total_fc > 0:
+                await ss_timeline_service.append_system_node(
+                    db,
+                    session_id=session_id,
+                    user_id=uuid.UUID(user_id),
+                    kind="agent_action",
+                    title=f"生成 {total_fc} 张闪卡",
+                    payload={
+                        "auto": fc_auto_created,
+                        "existing": fc_count,
+                        "total": total_fc,
+                    },
+                )
+            await db.commit()
+        except Exception:
+            # 时间线写入失败不阻断完成流程
+            pass
+
+        # v0.29 Memory · SS 完成 → 写 episode
+        try:
+            from app.services.episodic_memory_service import record_event
+            summary = f"完成课时「{lesson_label}」"
+            if kp_count or total_fc:
+                summary += f"，提取 {kp_count} 个知识点，生成 {total_fc} 张闪卡"
+            summary += "。"
+            await record_event(
+                db, user_id=uuid.UUID(user_id),
+                event_kind="ss_completed",
+                summary=summary,
+                detail={
+                    "lesson": lesson_label,
+                    "session_id": str(session_id),
+                    "subject": chapter.subject if chapter else None,
+                    "kp_extracted": kp_count,
+                    "flashcards_created": total_fc,
+                },
+                ref_project_id=session.project_id,
+                emotional_tone="positive",
+                session_id=session.agent_session_id,
+            )
+        except Exception as _e:
+            logger.warning(f"ss_completed episode hook failed: {_e}")
 
         # Find next lesson in same chapter or next chapter
         next_lesson = await self._find_next_lesson(db, chapter)

@@ -193,19 +193,26 @@ class OnboardingService:
 
         await db.commit()
 
-        # 4. 自动生成学习路径（不阻塞 onboarding 完成）
-        path_generated = False
+        # v0.27 Q-10 · onboarding 完成后，用 LLM 整理对话生成项目骨架（PRD 9.2 行 624）
+        project_generated = False
         try:
-            from app.services.path_service import path_service
-            from app.schemas.path import PathGenerateRequest
+            from app.services.project_service import project_service
+            from app.schemas.project import ProjectConfirmRequest
             subjects = draft.get("subjects", [])
-            await path_service.ai_generate(
-                db, user_id,
-                PathGenerateRequest(subjects=subjects, goal=draft.get("goal", "")),
-            )
-            path_generated = True
+            goal = draft.get("goal", "")
+            if subjects:
+                # 把 onboarding 收集到的所有字段拼成一段自然语言，喂给 LLM 整理
+                dialog_summary = self._build_onboarding_dialog(draft)
+                preview = await project_service.draft_from_dialog(
+                    db, user_id, dialog_summary,
+                )
+                # 不需要用户二次确认（onboarding 是首次入场，直接 confirm）
+                await project_service.confirm_preview(
+                    db, user_id, ProjectConfirmRequest(preview=preview),
+                )
+                project_generated = True
         except Exception as e:
-            logger.warning(f"auto path generation failed after onboarding: {e}")
+            logger.warning(f"auto project generation (LLM) after onboarding failed: {e}")
 
         lines = [
             "🎉 太棒了！你的专属学习档案已经建立完成！",
@@ -214,16 +221,39 @@ class OnboardingService:
         ]
         if exam_created:
             lines.append(f"📅 已添加考试倒计时：{draft.get('next_exam_name', '')}")
-        if path_generated:
-            lines.append("🗺️ 已为你生成专属学习路径，可在「路径」页面查看")
+        if project_generated:
+            lines.append("📁 已为你创建首个项目，可在「学习工作台」查看时间线和树状路径")
         lines += [
             "",
             "现在你可以：",
-            "• 去「路径」页面查看你的专属学习计划",
+            "• 去「学习工作台」查看你的项目",
             "• 去「知识点」页面查看和补充你的知识库",
             "• 有什么学到的内容，随时回来和我说，我来帮你整理 📝",
         ]
         return "\n".join(lines)
+
+    @staticmethod
+    def _build_onboarding_dialog(draft: dict) -> str:
+        """把 onboarding 收集到的字段拼成一段对话，喂给 project_init prompt。"""
+        parts = []
+        if draft.get("grade"):
+            parts.append(f"年级：{draft['grade']}")
+        if draft.get("subjects"):
+            parts.append(f"主攻：{', '.join(draft['subjects'][:5])}")
+        if draft.get("progress"):
+            parts.append(f"当前进度：{draft['progress']}")
+        if draft.get("performance"):
+            parts.append(f"成绩水平：{draft['performance']}")
+        if draft.get("next_exam_name"):
+            parts.append(
+                f"近期考试：{draft['next_exam_name']}"
+                + (f"（{draft.get('next_exam_date', '')}）" if draft.get("next_exam_date") else "")
+            )
+        if draft.get("goal"):
+            parts.append(f"目标：{draft['goal']}")
+        if not parts:
+            parts.append("我想开始一段学习。")
+        return "\n".join(parts)
 
     async def _populate_kps(self, db: AsyncSession, uid: uuid.UUID, draft: dict) -> int:
         grade_type = draft.get("grade_type", "senior")

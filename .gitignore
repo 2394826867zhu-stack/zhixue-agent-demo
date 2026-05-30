@@ -33,3 +33,9 @@ htmlcov/
 
 # 日志
 *.log
+
+# 数据库备份
+backups/
+
+# 本地 IDE 配置
+.claude/

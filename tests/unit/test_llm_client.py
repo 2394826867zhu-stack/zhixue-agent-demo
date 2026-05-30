@@ -11,6 +11,10 @@ async def test_openai_compat_sends_image_content():
         async def create(self, **kwargs):
             captured.update(kwargs)
 
+            class Usage:
+                prompt_tokens = 10
+                completion_tokens = 5
+
             class Message:
                 content = "ok"
 
@@ -19,6 +23,7 @@ async def test_openai_compat_sends_image_content():
 
             class Response:
                 choices = [Choice()]
+                usage = Usage()
 
             return Response()
 
@@ -30,7 +35,7 @@ async def test_openai_compat_sends_image_content():
 
     client = LLMClient()
 
-    result = await client._call_openai_compat(
+    result, usage = await client._call_openai_compat_with_usage(
         FakeClient(),
         "gpt-4o",
         "请识别图片",
@@ -39,6 +44,7 @@ async def test_openai_compat_sends_image_content():
     )
 
     assert result == "ok"
+    assert usage["prompt_tokens"] == 10
     user_content = captured["messages"][-1]["content"]
     assert isinstance(user_content, list)
     assert user_content[1]["type"] == "image_url"

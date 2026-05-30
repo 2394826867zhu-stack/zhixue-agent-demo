@@ -121,27 +121,29 @@ class MistakeService:
             raise ValidationError("该错题已有待作答的重练题，请先完成")
 
         from app.llm.client import llm_client
-        from app.llm.prompts.training_prompts import QUESTION_GENERATE_PROMPT, SYSTEM_TRAINING
+        from app.llm.prompts.training_prompts import TWIN_QUESTION_PROMPT, SYSTEM_TRAINING
 
+        # v0.34 P1-5 · 错题孪生题（不是改数字，是换情境）
         try:
             raw = await llm_client.generate(
-                QUESTION_GENERATE_PROMPT.format(
-                    name=kp.name,
-                    content=kp.content or "（无详细内容）",
-                    key_formula=kp.key_formula or "无",
-                    bloom_level=kp.bloom_level,
-                    count=1,
+                TWIN_QUESTION_PROMPT.format(
+                    original_question=original.question_text,
+                    reference_answer=original.reference_answer or "无",
+                    user_answer=original.user_answer or "未作答",
+                    error_reason=original.error_reason or "未归类",
                 ),
                 system=SYSTEM_TRAINING,
+                user_id=user_id,
+                endpoint="mistake.create_retry_twin",
             )
         except Exception as e:
-            logger.warning(f"Retry question generation failed: {e}")
+            logger.warning(f"Retry twin question generation failed: {e}")
             raise LLMError() from e
         items = _parse_json_safe(raw)
         if not items:
             raise ValidationError("题目生成失败，请稍后重试")
 
-        item = items[0]
+        item = items[0] if isinstance(items, list) else items
         retry_q = TrainingQuestion(
             session_id=None,
             user_id=uuid.UUID(user_id),

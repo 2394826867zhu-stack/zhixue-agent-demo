@@ -138,10 +138,10 @@ def build_system_prompt(ctx: AgentContext, studyspace_ctx: dict | None = None) -
 ## StudySpace 行为规则
 1. 开场时先梳理本课时的知识框架（3-5个核心概念），生成一份思维导图（Mermaid格式）
 2. 然后逐步讲解，每讲完一个核心概念后暂停，等用户确认或提问，不要一次性输出全部内容
-3. 每讲完1-2个概念后提一道随堂问题，等用户作答后给反馈
+3. **每讲完一个核心概念后调用 spot_quiz 工具自动出随堂测验题**（传入 kp_id），等用户作答后给反馈
 4. 用户答错时切换到更基础的解释路径，不要直接给出答案
 5. 涉及公式或图示时，建议用户打开画板配合推导
-6. 不需要调用工具，专注于课时教学内容"""
+6. 课时讲解结束后，调用 set_agent_state('celebrate') 庆祝"""
 
     return (
         "\n\n".join([_IDENTITY, profile, memory_block, _RULES])
@@ -377,6 +377,160 @@ TOOL_DEFINITIONS = [
                     },
                 },
                 "required": ["updates"],
+            },
+        },
+    },
+    # ── v0.24 · 项目系统工具（PRD 9.2）────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "create_project_from_dialog",
+            "description": (
+                "用户在对话里说'我要做一个 XX 项目'/'帮我建一个 XX 学习计划'/'我要备考 XX' 等"
+                "明确表达学习项目意图时调用。会把上下文整理成项目骨架预览卡返回，"
+                "用户确认后由前端调用 /confirm 入库。不要在普通问答中调用。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "dialog": {
+                        "type": "string",
+                        "description": "用户表达项目意图的原话或对话片段。",
+                    },
+                },
+                "required": ["dialog"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_project_tree",
+            "description": (
+                "项目刚创建后调用，由 LLM 填充蓝/紫/金 知识树节点（PRD 9.1 行 621）。"
+                "幂等：已有节点直接返回 0。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string", "description": "目标项目 UUID"},
+                },
+                "required": ["project_id"],
+            },
+        },
+    },
+    # ── v0.34 · 费曼输出评估（P1-4 · PRD 行 372-379）─────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "feynman_grade",
+            "description": (
+                "学生用自己的话向'完全不懂的人'解释一个知识点 → 你调用此工具评估。"
+                "返回 3 维度评分（准确性40% / 完整性30% / 清晰度30%）+ 漏洞清单 + 综合反馈。"
+                "适用场景：StudySpace 学完一个 KP 后让学生费曼输出 / 用户主动说'我来讲讲'"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "kp_id": {"type": "string", "description": "被解释的知识点 UUID"},
+                    "user_explanation": {"type": "string", "description": "学生的解释文本（自己的话）"},
+                    "ss_session_id": {"type": "string", "description": "可选 · 当前 SS 会话 ID"},
+                },
+                "required": ["kp_id", "user_explanation"],
+            },
+        },
+    },
+    # ── v0.33 · 随堂测验自动出题（P0-2 · PRD 行 213-218）──────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "spot_quiz",
+            "description": (
+                "学生刚学完一个知识点 → 立刻出 1-2 道随堂测验题。"
+                "适用场景：StudySpace 内每讲解完一个知识点后调用，确认学生真听懂了。"
+                "题目自动按知识点的布鲁姆层级选题型（填空 / 简答 / 计算）。"
+                "返回题目列表 + training_session_id，让用户作答。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "kp_id": {
+                        "type": "string",
+                        "description": "刚讲完的知识点 UUID。",
+                    },
+                    "ss_session_id": {
+                        "type": "string",
+                        "description": "可选。当前 StudySpace 会话 ID。前端在 SS 模式时会自动注入。",
+                    },
+                    "count": {
+                        "type": "integer",
+                        "description": "题目数量，1-3，默认 1。",
+                    },
+                },
+                "required": ["kp_id"],
+            },
+        },
+    },
+    # ── v0.28 · RAG 主动召回（PRD Agent OS 升级）─────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "retrieve_knowledge",
+            "description": (
+                "主动召回与某主题相关的用户笔记/知识点/课程章节。"
+                "适用场景：用户提到一个具体知识点想深入讨论；准备出题前需要找参考；"
+                "回顾用户学过什么；用户问'我之前学的XX是什么'。"
+                "用户系统已自动在每条消息前注入 top-5 相关内容，"
+                "只在需要更针对性、更深入召回时调用此工具。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "检索关键词或自然语言问题，越具体越好。",
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "返回数量，默认 5，最多 20。",
+                    },
+                    "doc_kinds": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": ["kp", "note", "chapter"]},
+                        "description": "限定文档类型。默认全部。",
+                    },
+                    "subject": {
+                        "type": "string",
+                        "description": "限定学科（如'数学'）。可空。",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_agent_state",
+            "description": (
+                "切换 Agent 头像/动画状态（PRD 2.1 行 167）。"
+                "用户达成关键节点（连击、闪卡满分、项目完成）时用 celebrate；"
+                "执行长时间工具时用 thinking；空闲回归 idle。少用，只在状态有实质变化时调用。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "state": {
+                        "type": "string",
+                        "enum": [
+                            "idle", "thinking", "speaking", "focus",
+                            "celebrate", "reward", "remind", "sleepy",
+                            "confused", "error",
+                        ],
+                    },
+                    "reason": {"type": "string", "description": "状态变化原因，可空"},
+                },
+                "required": ["state"],
             },
         },
     },

@@ -40,6 +40,10 @@ class ExamService:
         result = await db.execute(q)
         return list(result.scalars().all())
 
+    async def get_exam(self, db: AsyncSession, exam_id: str, user_id: str) -> Exam:
+        """v0.32 · 单条详情"""
+        return await self._get_exam(db, exam_id, user_id)
+
     async def update_exam(self, db: AsyncSession, exam_id: str, user_id: str, data: ExamUpdate) -> Exam:
         exam = await self._get_exam(db, exam_id, user_id)
         for field, value in data.model_dump(exclude_none=True).items():

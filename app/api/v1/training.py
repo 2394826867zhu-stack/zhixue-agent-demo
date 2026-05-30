@@ -13,6 +13,7 @@ from app.schemas.training import (
     TrainingQuestionOut,
     AnswerRequest,
     AnswerResult,
+    ComposeQuizRequest,
 )
 from app.services.training_service import training_service
 
@@ -69,6 +70,41 @@ async def submit_answer(
 ):
     result = await training_service.submit_answer(db, session_id, question_id, str(user.id), body)
     return ok(AnswerResult(**result))
+
+
+# v0.26 · 组卷模式（PRD 9.4 行 645）
+@router.post("/compose-quiz", summary="组卷模式：选题型/题量/难度/范围 生成混合题型")
+async def compose_quiz(
+    body: ComposeQuizRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    session = await training_service.compose_quiz(db, str(user.id), body)
+    q_result = await db.execute(
+        select(TrainingQuestion).where(TrainingQuestion.session_id == session.id)
+    )
+    questions = q_result.scalars().all()
+    built = [
+        TrainingQuestionOut(
+            id=q.id,
+            knowledge_point_id=q.knowledge_point_id,
+            bloom_level=q.bloom_level,
+            question_type=q.question_type,
+            question=q.question_text,
+            reference=None,
+            user_answer=q.user_answer,
+            ai_score=q.ai_score,
+            ai_feedback=q.ai_feedback,
+            is_wrong=q.is_wrong,
+            answered_at=q.answered_at,
+        )
+        for q in questions
+    ]
+    resp = TrainingSessionDetail(
+        **TrainingSessionOut.model_validate(session).model_dump(),
+        questions=built,
+    )
+    return ok(resp)
 
 
 @router.get("", summary="训练历史列表")

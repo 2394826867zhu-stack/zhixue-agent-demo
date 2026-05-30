@@ -32,12 +32,29 @@ async def get_history(
     return ok(await _svc.get_history(db, str(user.id), page, page_size))
 
 
-@router.get("/cosmetics/shop", summary="道具商店（含解锁状态）")
+@router.get("/cosmetics/shop", summary="道具商店（含解锁状态，首次访问自动发放三套默认服装）")
 async def get_shop(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     return ok(await _svc.get_shop(db, str(user.id)))
+
+
+@router.get("/cosmetics/outfits", summary="三套默认服装套装（PRD 9.10 行 693）")
+async def list_outfits(
+    user: User = Depends(get_current_user),
+):
+    return ok(await _svc.list_starter_outfits())
+
+
+@router.post("/cosmetics/outfits/{outfit_id}/equip", summary="一键装备整套默认服装")
+async def equip_outfit(
+    outfit_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _svc.equip_outfit(db, str(user.id), outfit_id)
+    return ok({"equipped_outfit": outfit_id})
 
 
 @router.post("/cosmetics/{item_id}/purchase", summary="购买道具（扣星）")

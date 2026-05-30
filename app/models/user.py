@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, DateTime, JSON, Boolean
+from sqlalchemy import String, DateTime, JSON, Boolean, Float
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.core.database import Base
@@ -30,6 +30,23 @@ class User(Base):
 
     # 语音设置
     voice_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # v0.25 · UI 偏好（PRD 9.11 + ui-ux brief）
+    theme_mode: Mapped[str] = mapped_column(
+        String(10), nullable=False, server_default="auto",
+    )  # "auto" | "light" | "dark"
+    dynamic_type_scale: Mapped[float] = mapped_column(
+        Float, nullable=False, server_default="1.0",
+    )  # 0.8 - 1.4 适配 iOS Dynamic Type
+    reduced_motion: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false",
+    )
+    haptics_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true",
+    )
+
+    # 推送通知
+    expo_push_token: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     # 套餐
     plan_type: Mapped[str] = mapped_column(String(20), default="free")

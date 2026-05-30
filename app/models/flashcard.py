@@ -2,8 +2,10 @@ import uuid
 from datetime import datetime, date, timezone
 from sqlalchemy import String, Text, DateTime, Date, Float, Integer, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, ENUM as PgEnum
 from app.core.database import Base
+
+NOTEBOOK_ORIGIN = PgEnum("official", "user_project", name="project_source", create_type=False)
 
 
 class Flashcard(Base):
@@ -31,7 +33,16 @@ class Flashcard(Base):
     # FSRS state string: 'New'|'Learning'|'Review'|'Relearning'
     fsrs_state: Mapped[str] = mapped_column(String(20), default="New", nullable=False)
 
+    # v2 PRD · 项目挂载 + 来源区分（migration 020）
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    notebook_origin: Mapped[str] = mapped_column(NOTEBOOK_ORIGIN, nullable=False, server_default="user_project")
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # v0.33 P0-1 · 24h 首次复习推送时间戳（NULL=未推过，非 NULL=已推过不再推）
+    first_review_pushed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relations
     knowledge_point: Mapped["KnowledgePoint"] = relationship("KnowledgePoint", back_populates="flashcards")

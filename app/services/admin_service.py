@@ -110,6 +110,25 @@ class AdminService:
                 "tokens": row.tokens,
             })
 
+        # v0.27 F-04 · v2 维度（项目 + 沉浸 + 时间线）
+        total_projects = (await db.execute(
+            select(func.count()).select_from(text("projects"))
+        )).scalar() or 0
+        active_projects = (await db.execute(
+            select(func.count()).select_from(text("projects"))
+            .where(text("status = 'active'"))
+        )).scalar() or 0
+        total_immersion_sessions = (await db.execute(
+            select(func.count()).select_from(text("immersion_sessions"))
+        )).scalar() or 0
+        total_focus_minutes = (await db.execute(
+            select(func.coalesce(func.sum(text("total_focus_minutes")), 0))
+            .select_from(text("immersion_sessions"))
+        )).scalar() or 0
+        total_ss_timeline_nodes = (await db.execute(
+            select(func.count()).select_from(text("studyspace_timeline_nodes"))
+        )).scalar() or 0
+
         return {
             "total_users": total_users,
             "active_users_today": active_today,
@@ -120,6 +139,12 @@ class AdminService:
             "total_cost_today_usd": round(float(cost_today), 6),
             "total_cost_7d_usd": round(float(cost_7d), 6),
             "top_token_users": top_users,
+            # v0.27 F-04 · v2 维度
+            "total_projects": int(total_projects),
+            "active_projects": int(active_projects),
+            "total_immersion_sessions": int(total_immersion_sessions),
+            "total_focus_minutes": int(total_focus_minutes),
+            "total_ss_timeline_nodes": int(total_ss_timeline_nodes),
         }
 
     # ---- Users ----
@@ -305,6 +330,26 @@ class AdminService:
             }
             for r in rows
         ]
+
+    async def get_quota(self, db: AsyncSession, user_id: str) -> dict:
+        """v0.32 · 单用户配额详情"""
+        uid = uuid.UUID(user_id)
+        quota = await self._get_quota(db, uid)
+        from app.config import settings as _settings
+        if quota is None:
+            return {
+                "user_id": user_id,
+                "daily_token_limit": _settings.DEFAULT_DAILY_TOKEN_LIMIT,
+                "notes": None,
+                "is_default": True,
+            }
+        return {
+            "user_id": user_id,
+            "daily_token_limit": quota.daily_token_limit,
+            "notes": quota.notes,
+            "is_default": False,
+            "updated_at": quota.updated_at.isoformat() if quota.updated_at else None,
+        }
 
     async def set_quota(self, db: AsyncSession, user_id: str, limit: int, notes: str | None) -> dict:
         uid = uuid.UUID(user_id)

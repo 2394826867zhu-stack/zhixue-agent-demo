@@ -58,6 +58,19 @@ class PomodoroRecord(Base):
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
     # actual duration (user may customize 25/50min etc.)
 
+    # v2 PRD 6.1 行 372 · 自定义番茄钟控制（migration 020）
+    focus_minutes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="25")
+    break_minutes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="5")
+    long_break_minutes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="15")
+    cycle_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="4")
+
+    # v0.27 Q-07 · 沉浸会话挂载（pomodoro_records 仍是事实源，沉浸只汇总）
+    immersion_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("immersion_sessions.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

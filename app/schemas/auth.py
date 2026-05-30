@@ -42,6 +42,8 @@ class UserProfile(BaseModel):
     plan_type: str
     plan_expires_at: datetime | None
     created_at: datetime
+    learning_profile: dict | None = None
+    voice_enabled: bool = False
 
     model_config = {"from_attributes": True}
 

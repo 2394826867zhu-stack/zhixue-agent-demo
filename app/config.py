@@ -9,14 +9,21 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    # LLM — DeepSeek 主模型（OpenAI 兼容接口）
+    # LLM — DeepSeek V4 Flash 主模型（OpenAI 兼容接口）
+    # v0.28 全面切 v4-flash；deepseek-chat / deepseek-reasoner 2026-07-24 下线
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
-    DEEPSEEK_MODEL: str = "deepseek-chat"
+    DEEPSEEK_MODEL: str = "deepseek-v4-flash"
 
-    # 备用模型（可选）
+    # 备用模型（已弃用）
     ANTHROPIC_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
+
+    # RAG 嵌入模型 — BGE-M3 本地（HuggingFace sentence-transformers）
+    EMBEDDING_PROVIDER: Literal["bge-m3"] = "bge-m3"
+    EMBEDDING_MODEL: str = "BAAI/bge-m3"
+    EMBEDDING_DIM: int = 1024
+    HF_HOME: str = "./.cache/huggingface"
 
     # JWT (用户)
     JWT_SECRET_KEY: str

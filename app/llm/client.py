@@ -10,6 +10,25 @@ logger = logging.getLogger(__name__)
 _DEFAULT_LIMIT = settings.DEFAULT_DAILY_TOKEN_LIMIT
 
 
+def _extract_usage(usage) -> dict:
+    """v0.32 · 从 OpenAI SDK usage 对象提取所有需要的字段，含 DeepSeek prompt cache。"""
+    if not usage:
+        return {"prompt_tokens": 0, "completion_tokens": 0, "prompt_cache_hit_tokens": 0}
+    try:
+        d = usage.model_dump() if hasattr(usage, "model_dump") else {}
+    except Exception:
+        d = {}
+    return {
+        "prompt_tokens": usage.prompt_tokens or 0,
+        "completion_tokens": usage.completion_tokens or 0,
+        # DeepSeek 独有：上下文硬盘缓存命中量
+        "prompt_cache_hit_tokens": d.get("prompt_cache_hit_tokens") or 0,
+        "prompt_cache_miss_tokens": d.get("prompt_cache_miss_tokens") or 0,
+        # DeepSeek V4 thinking mode 的推理 token（也算在 completion 里）
+        "reasoning_tokens": (d.get("completion_tokens_details") or {}).get("reasoning_tokens") or 0,
+    }
+
+
 class QuotaExceededError(Exception):
     pass
 
@@ -113,14 +132,11 @@ class LLMClient:
             timeout=60,
         )
         text = resp.choices[0].message.content or ""
-        usage = {
-            "prompt_tokens": resp.usage.prompt_tokens if resp.usage else 0,
-            "completion_tokens": resp.usage.completion_tokens if resp.usage else 0,
-        }
+        usage = _extract_usage(resp.usage)
         return text, usage
 
 
-    async def _call_anthropic_with_usage(self, prompt: str, system: str) -> tuple[str, dict]:
+    async def _call_anthropic_with_usage(self, prompt: str, system: str) -> tuple[str, dict]:  # noqa
         from anthropic import APIStatusError, RateLimitError
         kwargs = {
             "model": "claude-opus-4-7",
@@ -142,51 +158,40 @@ class LLMClient:
 
     async def describe_image(self, image_url: str, prompt: str = "") -> str:
         """
-        下载图片 → base64 → 视觉 LLM → 返回文字描述。
-        用于 curriculum_import 和 StudySpace 图片预处理。
+        v0.32 · OCR + DeepSeek V4 Flash 视觉链路（纯 DeepSeek，零云依赖）
+        ------------------------------------------------
+        1. RapidOCR 本地提取图片文字（中文 SOTA，~50MB 模型）
+        2. 把 OCR 结果 + 用户 prompt 拼好交给 DeepSeek V4 Flash
+        3. DeepSeek 根据文字内容做语义理解 + 描述
+
+        适用：教材图片 / 笔记照片 / 板书 / 文字截图 — 都是文字为主的场景
+        不适用：无文字的纯图（如纯几何图、艺术画）
         """
+        from app.services.ocr_service import extract_text_from_image
+
+        # 1) OCR
+        ocr = await extract_text_from_image(image_url=image_url)
+        if not ocr.get("text"):
+            err = ocr.get("error", "无文字")
+            logger.info(f"OCR returned empty for {image_url}: {err}")
+            return f"[图片中没有识别到文字 · {err}]"
+
+        # 2) 让 DeepSeek 处理 OCR 文本
+        text = ocr["text"]
+        conf = ocr.get("confidence", 0)
+        instruct = prompt or "下面是从一张图片里 OCR 出来的文字，请整理结构、补完缺失，描述这张图片的内容。"
+        full_prompt = f"{instruct}\n\n---\n[OCR 文本，置信度 {conf:.2f}]\n{text[:4000]}\n---"
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.get(image_url)
-                resp.raise_for_status()
-                image_b64 = base64.b64encode(resp.content).decode()
+            content, usage = await self._call_openai_compat_with_usage(
+                self._deepseek, settings.DEEPSEEK_MODEL,
+                full_prompt, "",
+            )
+            asyncio.create_task(self._record(None, settings.DEEPSEEK_MODEL, "describe_image", usage))
+            return content
         except Exception as e:
-            logger.warning(f"Image fetch failed ({image_url}): {e}")
-            return "[图片加载失败]"
-
-        text_prompt = prompt or "描述这张图片的内容。"
-
-        # 优先 GPT-4o（视觉稳定），其次 Claude
-        if self._openai:
-            try:
-                content, _ = await self._call_openai_compat_with_usage(
-                    self._openai, "gpt-4o", text_prompt, "", image_b64=image_b64
-                )
-                return content
-            except Exception as e:
-                logger.warning(f"GPT-4o vision failed: {e}")
-
-        if self._anthropic:
-            try:
-                from anthropic import APIStatusError
-                kwargs = {
-                    "model": "claude-sonnet-4-6",
-                    "max_tokens": 2048,
-                    "messages": [{
-                        "role": "user",
-                        "content": [
-                            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": image_b64}},
-                            {"type": "text", "text": text_prompt},
-                        ],
-                    }],
-                }
-                resp = await self._anthropic.messages.create(**kwargs)
-                return resp.content[0].text
-            except Exception as e:
-                logger.warning(f"Anthropic vision failed: {e}")
-
-        return "[视觉模型不可用]"
+            logger.warning(f"DeepSeek describe_image failed: {e}")
+            # 至少把 OCR 原文返回，下游能用
+            return text
 
     async def call_with_tools(
         self,
@@ -213,10 +218,9 @@ class LLMClient:
             timeout=60,
         )
         if resp.usage:
-            asyncio.create_task(self._record(user_id, settings.DEEPSEEK_MODEL, endpoint, {
-                "prompt_tokens": resp.usage.prompt_tokens,
-                "completion_tokens": resp.usage.completion_tokens,
-            }))
+            asyncio.create_task(self._record(
+                user_id, settings.DEEPSEEK_MODEL, endpoint, _extract_usage(resp.usage)
+            ))
         return resp.choices[0]
 
     async def stream_response(
@@ -233,8 +237,7 @@ class LLMClient:
         if system:
             full_messages.append({"role": "system", "content": system})
         full_messages.extend(messages)
-        prompt_tokens = 0
-        completion_tokens = 0
+        usage_final = None
         stream = await self._deepseek.chat.completions.create(
             model=settings.DEEPSEEK_MODEL,
             messages=full_messages,
@@ -243,18 +246,42 @@ class LLMClient:
             timeout=60,
             stream_options={"include_usage": True},
         )
+        # v0.32 · 过滤 DeepSeek V4 thinking mode 偶发泄漏的 DSML 内部标记
+        # 例：'<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name="x">…'
+        # 策略：前 32 字符缓冲不立即输出；缓冲满后判断是否 DSML，
+        # 若是就吞剩下整段；不是则一次性 flush + 后续直通。
+        dsml_open = "<｜｜DSML"
+        decided = False
+        is_dsml = False
+        buffer = ""
+        BUFFER_LIMIT = 32
         async for chunk in stream:
             if chunk.usage:
-                prompt_tokens = chunk.usage.prompt_tokens or 0
-                completion_tokens = chunk.usage.completion_tokens or 0
+                usage_final = chunk.usage
             delta = chunk.choices[0].delta.content if chunk.choices else None
-            if delta:
-                yield delta
-        if prompt_tokens or completion_tokens:
-            asyncio.create_task(self._record(user_id, settings.DEEPSEEK_MODEL, endpoint, {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-            }))
+            if not delta:
+                continue
+            if decided:
+                if not is_dsml:
+                    yield delta
+                # is_dsml → 吞掉
+                continue
+            buffer += delta
+            if len(buffer) < BUFFER_LIMIT and dsml_open not in buffer:
+                continue
+            # 已积够长度或已发现 DSML，决定
+            decided = True
+            is_dsml = dsml_open in buffer
+            if not is_dsml:
+                yield buffer
+            # 否则丢弃整个 buffer
+        # stream 结束：若决策从未触发（reply 短于 BUFFER_LIMIT 且不含 DSML），flush buffer
+        if not decided and buffer:
+            yield buffer
+        if usage_final:
+            asyncio.create_task(self._record(
+                user_id, settings.DEEPSEEK_MODEL, endpoint, _extract_usage(usage_final)
+            ))
 
     # ---- Quota & Recording ----
 
@@ -279,11 +306,12 @@ class LLMClient:
     async def _record(self, user_id: str | None, model: str, endpoint: str | None, usage: dict) -> None:
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
+        cache_hit = usage.get("prompt_cache_hit_tokens", 0)
         total = prompt_tokens + completion_tokens
         if total == 0:
             return
         from app.models.token_usage import estimate_cost, TokenUsage
-        cost = estimate_cost(model, prompt_tokens, completion_tokens)
+        cost = estimate_cost(model, prompt_tokens, completion_tokens, cache_hit)
         try:
             # 更新 Redis 计数
             from app.core.redis import get_redis

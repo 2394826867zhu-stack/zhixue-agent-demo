@@ -78,6 +78,31 @@ class CheckInService:
         import asyncio
         asyncio.create_task(_post_checkin_stars(user_id))
 
+        # v0.29 Memory · 连击突破阈值 → 写 streak_milestone episode
+        try:
+            from datetime import timedelta
+            now = datetime.now(timezone.utc)
+            cnt_row = await db.execute(
+                select(func.count(CheckIn.id)).where(
+                    CheckIn.user_id == uid,
+                    CheckIn.created_at >= now - timedelta(days=30),
+                )
+            )
+            streak = cnt_row.scalar_one() or 0
+            from app.services.episodic_memory_service import record_event
+            for threshold in (3, 7, 14, 30):
+                if streak == threshold:
+                    await record_event(
+                        db, user_id=uid, event_kind="streak_milestone",
+                        summary=f"用户达成 {threshold} 天签到连击。",
+                        detail={"streak": threshold},
+                        importance=8 if threshold >= 14 else 7,
+                        emotional_tone="positive",
+                    )
+                    break
+        except Exception as _e:
+            logger.warning(f"streak milestone hook failed: {_e}")
+
         return CheckInOut(
             id=str(checkin.id),
             raw_content=checkin.raw_content,
@@ -175,12 +200,16 @@ class CheckInService:
             name = item.get("name", "").strip()
             if not name:
                 continue
+            from app.services._origin_resolver import resolve_origin_context
+            proj_id, origin = await resolve_origin_context(db, uid)
             kp = KnowledgePoint(
                 user_id=uid,
                 name=name,
                 subject=item.get("subject"),
                 mastery_status=item.get("mastery_status", "learning"),
                 bloom_level="remember",
+                project_id=proj_id,
+                notebook_origin=origin,
             )
             db.add(kp)
 

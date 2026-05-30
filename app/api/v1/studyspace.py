@@ -6,7 +6,11 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
 from app.schemas.studyspace import StartSessionRequest, UpdateSessionRequest
+from app.schemas.studyspace_timeline import (
+    TimelineNodeOut, TimelineUserAddRequest, TimelineNodePatch,
+)
 from app.services.studyspace_service import StudySpaceService
+from app.services.ss_timeline_service import ss_timeline_service
 
 router = APIRouter(prefix="/studyspace", tags=["StudySpace"])
 _svc = StudySpaceService()
@@ -69,3 +73,66 @@ async def get_progress(
     db: AsyncSession = Depends(get_db),
 ):
     return ok(await _svc.get_curriculum_progress(db, str(user.id), subject))
+
+
+# ── v2 PRD 行 436-448 · 垂直时间线 ────────────────────────────────────
+
+@router.get("/sessions/{session_id}/timeline", summary="StudySpace 垂直时间线（沉淀学习记录）")
+async def get_timeline(
+    session_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    nodes = await ss_timeline_service.list_nodes(db, str(session_id), str(user.id))
+    return ok([TimelineNodeOut.model_validate(n).model_dump(mode="json") for n in nodes])
+
+
+@router.post("/sessions/{session_id}/timeline", summary="用户主动追加内容 / 复盘节点")
+async def user_add_timeline_node(
+    session_id: uuid.UUID,
+    body: TimelineUserAddRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    node = await ss_timeline_service.user_add_node(db, str(session_id), str(user.id), body)
+    return ok(TimelineNodeOut.model_validate(node).model_dump(mode="json"))
+
+
+@router.post("/sessions/{session_id}/spot-quiz", summary="为某 KP 自动出随堂测验（v0.33 P0-2）")
+async def create_spot_quiz(
+    session_id: uuid.UUID,
+    body: dict,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """前端在 SS 内每讲完一个 KP 调一次（或 Agent 通过工具调用）"""
+    from app.services.spot_quiz_service import spot_quiz_service
+    kp_id = str(body.get("kp_id") or "")
+    if not kp_id:
+        return {"code": 400, "message": "kp_id required", "data": None}
+    count = int(body.get("count") or 1)
+    result = await spot_quiz_service.generate_for_kp(
+        db, str(user.id), kp_id, ss_session_id=str(session_id), count=count,
+    )
+    return ok(result)
+
+
+@router.get("/timeline-nodes/{node_id}", summary="时间线节点详情（v0.32）")
+async def get_timeline_node(
+    node_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    node = await ss_timeline_service.get_node(db, str(node_id), str(user.id))
+    return ok(TimelineNodeOut.model_validate(node).model_dump(mode="json"))
+
+
+@router.patch("/timeline-nodes/{node_id}", summary="编辑时间线节点（仅可编辑节点）")
+async def patch_timeline_node(
+    node_id: uuid.UUID,
+    body: TimelineNodePatch,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    node = await ss_timeline_service.patch_node(db, str(node_id), str(user.id), body)
+    return ok(TimelineNodeOut.model_validate(node).model_dump(mode="json"))

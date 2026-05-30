@@ -1,9 +1,12 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, DateTime, JSON, ForeignKey, Integer
+from sqlalchemy import String, Text, DateTime, JSON, ForeignKey, Integer, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, ENUM as PgEnum
 from app.core.database import Base
+
+# 引用 018 已创建的 enum（不重复创建）
+NOTEBOOK_ORIGIN = PgEnum("official", "user_project", name="project_source", create_type=False)
 
 
 class Note(Base):
@@ -39,6 +42,13 @@ class Note(Base):
 
     # 闪卡是否已生成（用于前端提示按钮状态）
     flashcards_generated: Mapped[bool] = mapped_column(default=False)
+
+    # v2 PRD · 项目挂载 + 来源区分（migration 020）
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    notebook_origin: Mapped[str] = mapped_column(NOTEBOOK_ORIGIN, nullable=False, server_default="user_project")
+    is_editable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
