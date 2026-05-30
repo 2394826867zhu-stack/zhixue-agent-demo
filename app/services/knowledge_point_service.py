@@ -53,6 +53,9 @@ class KnowledgePointService:
         db.add(kp)
         await db.commit()
         await db.refresh(kp)
+        # RAG 写入侧：新 KP 触发向量索引（异步重建）
+        from app.services import rag_index
+        rag_index.enqueue_kp_index(str(kp.id))
         return kp
 
     async def list_kps(
@@ -117,12 +120,19 @@ class KnowledgePointService:
         kp.updated_at = datetime.now(timezone.utc)
         await db.commit()
         await db.refresh(kp)
+        # RAG 写入侧：内容变更 → 失效旧向量 + 异步重建
+        from app.services import rag_index
+        await rag_index.reindex_kp(db, str(kp.id))
         return kp
 
     async def delete(self, db: AsyncSession, kp_id: str, user_id: str) -> None:
         kp = await self._get_kp(db, kp_id, user_id)
+        kp_id_val = kp.id
         await db.delete(kp)
         await db.commit()
+        # RAG 写入侧：删除 KP → 失效其向量，防召回过时内容
+        from app.services import rag_index
+        await rag_index.purge_doc(db, doc_kind="kp", doc_id=kp_id_val)
 
     async def get_stats(self, db: AsyncSession, user_id: str) -> dict:
         uid = uuid.UUID(user_id)
