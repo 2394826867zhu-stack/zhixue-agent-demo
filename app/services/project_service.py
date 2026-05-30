@@ -42,24 +42,30 @@ class ProjectService:
         db: AsyncSession,
         user_id: str,
         status: str | None = None,
-    ) -> list[Project]:
+        page: int = 1,
+        page_size: int = 20,
+    ) -> tuple[list[Project], int]:
         uid = uuid.UUID(user_id)
+        base = select(Project).where(Project.user_id == uid)
+        if status:
+            base = base.where(Project.status == status)
+        else:
+            # 默认不展示 archived
+            base = base.where(Project.status != "archived")
+        total = (
+            await db.execute(select(func.count()).select_from(base.subquery()))
+        ).scalar_one()
         q = (
-            select(Project)
-            .options(
+            base.options(
                 selectinload(Project.phases),
                 selectinload(Project.milestones),
             )
-            .where(Project.user_id == uid)
+            .order_by(Project.sort_order.asc(), Project.created_at.desc())
+            .limit(page_size)
+            .offset((page - 1) * page_size)
         )
-        if status:
-            q = q.where(Project.status == status)
-        else:
-            # 默认不展示 archived
-            q = q.where(Project.status != "archived")
-        q = q.order_by(Project.sort_order.asc(), Project.created_at.desc())
         result = await db.execute(q)
-        return list(result.scalars().all())
+        return list(result.scalars().all()), total
 
     async def get_project(self, db: AsyncSession, project_id: str, user_id: str) -> Project:
         proj = await self._fetch_project(db, project_id, user_id)
@@ -95,7 +101,9 @@ class ProjectService:
         )
         db.add(proj)
         await db.commit()
-        await db.refresh(proj)
+        # 必须显式 load 关系：端点用 ProjectListItem.model_validate(proj) 会同步
+        # 访问 proj.phases，未 load 会在异步上下文触发 MissingGreenlet。
+        await db.refresh(proj, attribute_names=["phases", "milestones"])
         return proj
 
     async def create_from_draft(

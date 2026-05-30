@@ -31,10 +31,14 @@ def ok(data):
 @router.get("", summary="项目列表")
 async def list_projects(
     status: str | None = Query(default=None, description="active|paused|completed|archived"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    projects = await project_service.list_projects(db, str(user.id), status=status)
+    projects, total = await project_service.list_projects(
+        db, str(user.id), status=status, page=page, page_size=page_size
+    )
     items = [
         ProjectListItem(
             id=p.id,
@@ -61,7 +65,11 @@ async def list_projects(
         )
         for p in projects
     ]
-    return ok(ProjectListResponse(items=items, total=len(items)).model_dump())
+    return ok(
+        ProjectListResponse(
+            items=items, total=total, page=page, page_size=page_size
+        ).model_dump()
+    )
 
 
 @router.get("/{project_id}", summary="项目详情（含时间线+phase+milestone）")

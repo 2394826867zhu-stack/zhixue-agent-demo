@@ -31,14 +31,28 @@ class ExamService:
         await db.refresh(exam)
         return exam
 
-    async def list_exams(self, db: AsyncSession, user_id: str, include_past: bool = False) -> list[Exam]:
+    async def list_exams(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        include_past: bool = False,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> tuple[list[Exam], int]:
         uid = uuid.UUID(user_id)
-        q = select(Exam).where(Exam.user_id == uid)
+        base = select(Exam).where(Exam.user_id == uid)
         if not include_past:
-            q = q.where(Exam.exam_date >= date.today())
-        q = q.order_by(Exam.exam_date.asc())
+            base = base.where(Exam.exam_date >= date.today())
+        total = (
+            await db.execute(select(func.count()).select_from(base.subquery()))
+        ).scalar_one()
+        q = (
+            base.order_by(Exam.exam_date.asc())
+            .limit(page_size)
+            .offset((page - 1) * page_size)
+        )
         result = await db.execute(q)
-        return list(result.scalars().all())
+        return list(result.scalars().all()), total
 
     async def get_exam(self, db: AsyncSession, exam_id: str, user_id: str) -> Exam:
         """v0.32 · 单条详情"""
