@@ -31,6 +31,8 @@ from app.models.agent_tool_trace import AgentToolTrace
 from app.models.user_skill_level import UserSkillLevel
 # v0.34 P1-4 · 费曼输出
 from app.models.feynman_attempt import FeynmanAttempt
+# F-11 · Celery 死信队列
+from app.models.dead_letter import DeadLetterTask
 
 __all__ = [
     "User", "Note", "KnowledgePoint", "Flashcard",

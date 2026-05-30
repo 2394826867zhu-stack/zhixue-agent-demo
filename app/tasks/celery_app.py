@@ -14,6 +14,7 @@ celery_app = Celery(
         "app.tasks.memory_tasks",     # v0.29 Memory
         "app.tasks.first_review_tasks",  # v0.33 P0-1 · 24h 首次复习推送
         "app.tasks.weekly_reflection_tasks",  # v0.33 P0-3 · 周复盘自动生成
+        "app.tasks.dead_letter",  # F-11 · task_failure → 死信队列 + 告警
     ],
 )
 
