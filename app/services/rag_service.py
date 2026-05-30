@@ -229,6 +229,28 @@ async def delete_doc(
     return res.rowcount or 0
 
 
+_KIND_LABEL = {
+    "kp": "知识点", "note": "笔记", "chapter": "课程",
+    "mistake": "错题", "episode": "记忆", "guidance": "引导",
+}
+
+
+def format_citations(hits: list[dict]) -> list[dict]:
+    """把 RAG 召回结果格式化为前端可展示的引用来源列表（C-12 引用展示契约）。"""
+    out = []
+    for h in hits:
+        meta = h.get("metadata") or {}
+        kind = h.get("doc_kind")
+        out.append({
+            "doc_kind": kind,
+            "source_label": _KIND_LABEL.get(kind, kind),
+            "title": meta.get("title") or (h.get("content", "")[:30]),
+            "score": h.get("score", 0.0),
+            "doc_id": h.get("doc_id"),
+        })
+    return out
+
+
 def format_for_prompt(hits: list[dict]) -> str:
     """把检索结果格式化为可拼进 system prompt 的引用块。"""
     if not hits:
