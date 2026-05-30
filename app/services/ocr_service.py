@@ -9,14 +9,32 @@ import asyncio
 import base64
 import io
 import logging
+import os
 from threading import Lock
 
 import httpx
+
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 _ocr = None
 _ocr_lock = Lock()
+
+
+def resolve_upload_path(image_url: str | None) -> str | None:
+    """把 /agent/chat 传来的 `/uploads/{filename}` 相对 URL 映射到本地 LOCAL_UPLOAD_DIR。
+
+    files/upload 返回的就是 `/uploads/{filename}`（F-08 后裸静态服务已下线，
+    无法匿名下载），OCR 必须直接读本地文件。仅取 basename 防路径遍历；
+    非 /uploads/ 前缀返回 None，交回原 URL / 绝对路径逻辑。
+    """
+    if not image_url or not image_url.startswith("/uploads/"):
+        return None
+    name = os.path.basename(image_url)
+    if not name:
+        return None
+    return os.path.join(settings.LOCAL_UPLOAD_DIR, name)
 
 
 def _get_ocr():
@@ -59,9 +77,12 @@ async def extract_text_from_image(
             return _empty_result(reason=f"base64 decode failed: {e}")
     elif image_url:
         try:
-            # 本地 /uploads 路径直接读
-            import os
-            if os.path.exists(image_url):
+            # /uploads/{filename} 相对 URL → 映射本地 LOCAL_UPLOAD_DIR 读；否则当本地绝对路径 / 远程 URL
+            local = resolve_upload_path(image_url)
+            if local and os.path.exists(local):
+                with open(local, "rb") as f:
+                    img_bytes = f.read()
+            elif os.path.exists(image_url):
                 with open(image_url, "rb") as f:
                     img_bytes = f.read()
             else:
