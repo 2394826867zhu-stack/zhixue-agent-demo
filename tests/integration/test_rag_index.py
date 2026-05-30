@@ -7,9 +7,10 @@ from app.models.document_embedding import DocumentEmbedding
 
 
 def _add_vector(db, *, doc_kind: str, doc_id, user_id=None):
+    # user_id 可空（official 内容用 NULL）；传 None 避免 users 外键约束
     db.add(
         DocumentEmbedding(
-            user_id=user_id or uuid.uuid4(),
+            user_id=user_id,
             doc_kind=doc_kind,
             doc_id=doc_id,
             chunk_index=0,
