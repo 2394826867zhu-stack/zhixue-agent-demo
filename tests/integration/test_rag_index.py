@@ -159,3 +159,9 @@ async def test_agent_create_kp_triggers_index(client, db, monkeypatch):
     )
     assert result["total"] == 1
     assert len(calls) == 1, "Agent 建 KP 应触发向量索引"
+
+
+@pytest.mark.asyncio
+async def test_admin_backfill_requires_admin(client):
+    resp = await client.post("/admin/rag/backfill/some-user-id")
+    assert resp.status_code in (401, 403)
