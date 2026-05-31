@@ -159,6 +159,14 @@ class FeynmanService:
         attempt.ai_feedback = feedback
         attempt.status = "graded"
         attempt.graded_at = datetime.now(timezone.utc)
+
+        # 学习内核 P0-4：费曼输出 total≥70 视为掌握证据（M4 提取练习），就地更新 p_mastery（fail-safe）
+        try:
+            from app.services import measurement_service
+            measurement_service.apply_answer_to_kp(kp, correct=(total >= 70))
+        except Exception as _e:
+            logger.debug(f"feynman mastery hook failed: {_e}")
+
         await db.commit()
         await db.refresh(attempt)
 

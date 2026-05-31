@@ -199,6 +199,11 @@ class FSRSService:
             kp.mastery_status = new_mastery
             mastery_updated = True
 
+        # 学习内核 P0-4：FSRS rating≥3(Good/Easy) 视为答对（M3），就地更新 p_mastery
+        if kp:
+            from app.services import measurement_service
+            measurement_service.apply_answer_to_kp(kp, correct=(rating >= 3))
+
         await db.commit()
 
         # v0.29 Memory · KP 连续答错 → 写 episode（Q5 锁定）
