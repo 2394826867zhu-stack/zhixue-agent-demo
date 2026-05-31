@@ -406,6 +406,10 @@ async def _manage_knowledge_points(
             new_objs.append(kp)
         await db.flush()  # 生成 id（commit 前取，避免 commit-expire 触发异步 lazy-load）
         new_ids = [str(kp.id) for kp in new_objs]
+        # 学习内核 P1-2 · 生成即建边：Agent 批量建 KP 时推断先修关系（fail-safe）
+        if len(new_objs) >= 2:
+            from app.services import graph_service
+            await graph_service.build_edges_for_kps(db, uid, new_objs)
         await db.commit()
         # RAG 写入侧：Agent 建的 KP 也触发向量索引
         for kp_id in new_ids:

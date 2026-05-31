@@ -121,6 +121,7 @@ async def _process_note_async(task, note_id: str, user_id: str):
         )
         # v0.34 P1-6 · 自动着色（蓝/紫/金）
         from app.services.kp_tier_service import infer_tier
+        created_kps = []  # 学习内核 P1-2：收集本批 KP 用于建先修边
         for kp_data in extracted.get("knowledge_points", []):
             tier = infer_tier(
                 bloom_level=kp_data.get("bloom_level", "remember"),
@@ -143,6 +144,14 @@ async def _process_note_async(task, note_id: str, user_id: str):
                 notebook_origin=note.notebook_origin,
             )
             db.add(kp)
+            created_kps.append(kp)
+
+        await db.flush()  # 生成 id 供建边引用
+
+        # 学习内核 P1-2 · 生成即建边：对本批新 KP 推断先修关系（fail-safe，不阻断）
+        if len(created_kps) >= 2:
+            from app.services import graph_service
+            await graph_service.build_edges_for_kps(db, uuid.UUID(user_id), created_kps)
 
         await db.commit()
         await _update_task_progress(note_id, 100, "完成")

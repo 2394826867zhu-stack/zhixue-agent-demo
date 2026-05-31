@@ -5,7 +5,11 @@
 """
 from __future__ import annotations
 
+import logging
+import uuid
 from collections import defaultdict
+
+logger = logging.getLogger(__name__)
 
 
 def _adj(edges: list[tuple]) -> dict:
@@ -71,3 +75,82 @@ def root_cause(node, mastery: dict, edges: list[tuple], *, threshold: float = 0.
         if not weak:
             return cur
         cur = min(weak, key=lambda p: mastery.get(p, 0.0))
+
+
+# ============ DB 建边（生成即建边，P1-2）============
+
+async def add_edges(db, user_id, edges_with_conf: list[dict]) -> int:
+    """落库先修边。edges_with_conf: [{from_kp_id, to_kp_id, confidence, source}]。
+
+    防护：跳过自环 / 会成环的边 / 重复边（已存在 + 本批已加）。返回成功加入数。
+    不在此 commit（交调用方事务）。fail-safe：单条异常跳过。
+    """
+    from sqlalchemy import select
+    from app.models.prerequisite_edge import PrerequisiteEdge
+
+    rows = await db.execute(
+        select(PrerequisiteEdge.from_kp_id, PrerequisiteEdge.to_kp_id).where(
+            PrerequisiteEdge.user_id == user_id
+        )
+    )
+    existing = [(str(a), str(b)) for a, b in rows.all()]
+    seen = set(existing)
+    added = 0
+    for e in edges_with_conf:
+        f, t = str(e["from_kp_id"]), str(e["to_kp_id"])
+        if f == t or (f, t) in seen:
+            continue
+        if would_create_cycle(existing, f, t):
+            logger.info("prereq edge skipped (cycle): %s->%s", f, t)
+            continue
+        try:
+            db.add(PrerequisiteEdge(
+                user_id=user_id,
+                from_kp_id=uuid.UUID(f),
+                to_kp_id=uuid.UUID(t),
+                confidence=float(e.get("confidence", 0.7)),
+                source=e.get("source", "llm"),
+            ))
+            existing.append((f, t))
+            seen.add((f, t))
+            added += 1
+        except Exception:  # noqa: BLE001
+            logger.exception("add prereq edge failed %s->%s", f, t)
+    return added
+
+
+async def build_edges_for_kps(db, user_id, kps: list) -> int:
+    """对一批新建 KP 调 LLM 推断先修边并落库。失败静默返回 0（不阻断建 KP）。"""
+    if not kps or len(kps) < 2:
+        return 0
+    try:
+        import json
+        from app.llm.client import llm_client
+        from app.llm.prompts.prerequisite_prompts import (
+            SYSTEM_PREREQUISITE, INFER_PREREQUISITES_PROMPT,
+        )
+
+        kp_list = "\n".join(f"{i}. {kp.name}" for i, kp in enumerate(kps))
+        raw = await llm_client.generate(
+            INFER_PREREQUISITES_PROMPT.format(kp_list=kp_list),
+            system=SYSTEM_PREREQUISITE,
+            user_id=str(user_id),
+            endpoint="infer_prerequisites",
+        )
+        txt = raw.strip().replace("```json", "").replace("```", "")
+        data = json.loads(txt[txt.index("{"):txt.rindex("}") + 1])
+        idx_to_id = {i: kp.id for i, kp in enumerate(kps)}
+        edges = []
+        for e in data.get("edges", []):
+            fi, ti = e.get("from"), e.get("to")
+            if fi in idx_to_id and ti in idx_to_id and fi != ti:
+                edges.append({
+                    "from_kp_id": idx_to_id[fi],
+                    "to_kp_id": idx_to_id[ti],
+                    "confidence": e.get("confidence", 0.7),
+                    "source": "llm",
+                })
+        return await add_edges(db, user_id, edges)
+    except Exception:  # noqa: BLE001
+        logger.exception("build_edges_for_kps failed user=%s", user_id)
+        return 0
