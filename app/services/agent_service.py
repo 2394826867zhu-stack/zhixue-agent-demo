@@ -172,11 +172,20 @@ async def run(
             subject=subject_hint,
         )
         rag_hits = hits
-        # E 可观测 · 召回质量结构化埋点（不落原始 query，只记长度 + score/kind 分布 + 零召回）
+        # E 可观测 · 召回质量埋点（不落原始 query，只记长度 + score/kind 分布 + 零召回）
         try:
-            from app.services.rag_service import summarize_retrieval
+            from app.services.rag_service import summarize_retrieval, record_retrieval
             obs = summarize_retrieval(message, hits)
             logger.info("rag_recall %s", json.dumps({"user_id": user_id, **obs}, ensure_ascii=False))
+            # 落库供运维聚合分析（失败静默，不阻断对话）
+            await record_retrieval(
+                db,
+                user_id=uuid.UUID(user_id),
+                session_id=uuid.UUID(session_id) if session_id else None,
+                source="auto_inject",
+                query=message,
+                hits=hits,
+            )
         except Exception:
             pass
         rag_block = format_for_prompt(hits)

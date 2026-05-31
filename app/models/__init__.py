@@ -27,6 +27,7 @@ from app.models.document_embedding import DocumentEmbedding
 from app.models.agent_episode import AgentEpisode
 # v0.30 Reasoning
 from app.models.agent_tool_trace import AgentToolTrace
+from app.models.rag_retrieval_trace import RagRetrievalTrace
 # v0.34 P1-2 · 自适应难度
 from app.models.user_skill_level import UserSkillLevel
 # v0.34 P1-4 · 费曼输出
@@ -53,6 +54,7 @@ __all__ = [
     "DocumentEmbedding",
     "AgentEpisode",
     "AgentToolTrace",
+    "RagRetrievalTrace",
     "UserSkillLevel",
     "FeynmanAttempt",
 ]

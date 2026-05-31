@@ -273,6 +273,71 @@ def summarize_retrieval(query: str, hits: list[dict]) -> dict:
     }
 
 
+async def record_retrieval(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID | None,
+    session_id: uuid.UUID | None,
+    source: str,
+    query: str,
+    hits: list[dict],
+):
+    """把一次召回的质量指标落库（E 可观测）。失败由调用方静默降级，不阻断对话。"""
+    from app.models.rag_retrieval_trace import RagRetrievalTrace
+
+    obs = summarize_retrieval(query, hits)
+    row = RagRetrievalTrace(
+        user_id=user_id,
+        session_id=session_id,
+        source=source,
+        query_len=obs["query_len"],
+        hit_count=obs["hit_count"],
+        is_empty=obs["is_empty"],
+        score_max=obs["score_max"],
+        score_min=obs["score_min"],
+        score_avg=obs["score_avg"],
+        kind_distribution=obs["kind_distribution"],
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+async def recall_stats(db: AsyncSession, *, days: int = 7) -> dict:
+    """聚合最近 days 天召回质量：零召回率 / 平均 score / doc_kind 命中分布。"""
+    from datetime import datetime, timedelta, timezone
+    from app.models.rag_retrieval_trace import RagRetrievalTrace as T
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    rows = (
+        await db.execute(
+            select(T.is_empty, T.score_avg, T.kind_distribution).where(T.created_at >= since)
+        )
+    ).all()
+
+    total = len(rows)
+    empty_count = sum(1 for r in rows if r.is_empty)
+    non_empty_scores = [
+        float(r.score_avg) for r in rows if not r.is_empty and r.score_avg is not None
+    ]
+    avg_score = (sum(non_empty_scores) / len(non_empty_scores)) if non_empty_scores else None
+
+    kind_totals: dict[str, int] = {}
+    for r in rows:
+        for k, v in (r.kind_distribution or {}).items():
+            kind_totals[k] = kind_totals.get(k, 0) + int(v)
+
+    return {
+        "window_days": days,
+        "total": total,
+        "empty_count": empty_count,
+        "empty_rate": (empty_count / total) if total else 0.0,
+        "avg_score": avg_score,
+        "kind_totals": kind_totals,
+    }
+
+
 def format_for_prompt(hits: list[dict]) -> str:
     """把检索结果格式化为可拼进 system prompt 的引用块。"""
     if not hits:
