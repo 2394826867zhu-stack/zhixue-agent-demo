@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_TOP_K = 5
 SEARCH_TOP_K_CAP = 30  # 最多召回 30 再 filter
 
+# 低质召回采集阈值：非空但平均 score 低于此值视为伪召回，连同零召回一起采集脱敏 query
+RECALL_COLLECT_THRESHOLD = 0.5
+
 
 async def upsert_doc(
     db: AsyncSession,
@@ -286,6 +289,19 @@ async def record_retrieval(
     from app.models.rag_retrieval_trace import RagRetrievalTrace
 
     obs = summarize_retrieval(query, hits)
+
+    # 仅低质召回（零召回 / 伪召回）采集脱敏 query，供构建评估集；健康召回不存
+    masked_query = None
+    is_low_quality = obs["is_empty"] or (
+        obs["score_avg"] is not None and obs["score_avg"] < RECALL_COLLECT_THRESHOLD
+    )
+    if is_low_quality and query:
+        try:
+            from app.services.pii_filter import mask_pii
+            masked_query = mask_pii(query)[0]
+        except Exception:
+            masked_query = None
+
     row = RagRetrievalTrace(
         user_id=user_id,
         session_id=session_id,
@@ -297,6 +313,7 @@ async def record_retrieval(
         score_min=obs["score_min"],
         score_avg=obs["score_avg"],
         kind_distribution=obs["kind_distribution"],
+        masked_query=masked_query,
     )
     db.add(row)
     await db.commit()
@@ -343,6 +360,32 @@ async def recall_stats(db: AsyncSession, *, days: int = 7, low_score_threshold: 
         "low_score_count": low_score_count,
         "kind_totals": kind_totals,
     }
+
+
+async def list_low_quality_samples(db: AsyncSession, *, days: int = 7, limit: int = 100) -> list[dict]:
+    """导出最近 days 天采集到的低质召回脱敏样本，供人工标注期望 doc_id → 沉淀检索评估集。"""
+    from datetime import datetime, timedelta, timezone
+    from app.models.rag_retrieval_trace import RagRetrievalTrace as T
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    rows = (
+        await db.execute(
+            select(T.masked_query, T.is_empty, T.hit_count, T.score_avg, T.created_at)
+            .where(T.created_at >= since, T.masked_query.isnot(None))
+            .order_by(T.created_at.desc())
+            .limit(limit)
+        )
+    ).all()
+    return [
+        {
+            "masked_query": r.masked_query,
+            "is_empty": r.is_empty,
+            "hit_count": r.hit_count,
+            "score_avg": float(r.score_avg) if r.score_avg is not None else None,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]
 
 
 def format_for_prompt(hits: list[dict]) -> str:

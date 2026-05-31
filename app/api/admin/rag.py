@@ -33,3 +33,15 @@ async def recall_stats(
     """最近 days 天召回质量：零召回率 / 平均 score / 伪召回数 / doc_kind 命中分布，数据驱动检索迭代。"""
     stats = await rag_service.recall_stats(db, days=days, low_score_threshold=low_score_threshold)
     return ok(stats)
+
+
+@router.get("/rag/low-quality-samples", summary="低质召回脱敏样本（E→B 评估集沉淀）")
+async def low_quality_samples(
+    days: int = Query(7, ge=1, le=90),
+    limit: int = Query(100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    _: dict = Depends(get_current_admin),
+):
+    """导出零召回 / 伪召回的脱敏 query 样本，供人工标注期望 doc_id 后沉淀进检索评估集。"""
+    samples = await rag_service.list_low_quality_samples(db, days=days, limit=limit)
+    return ok({"count": len(samples), "samples": samples})

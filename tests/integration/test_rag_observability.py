@@ -66,6 +66,50 @@ async def test_recall_stats_flags_low_score_pseudo_recall(db):
 
 
 @pytest.mark.asyncio
+async def test_collects_masked_query_only_for_low_quality(db):
+    """仅低质召回（零召回 / 伪召回）采集脱敏 query；健康召回不存。"""
+    uid = uuid.uuid4()
+    healthy = await R.record_retrieval(db, user_id=uid, session_id=None, source="auto_inject",
+                                       query="高分健康问题", hits=[{"doc_kind": "note", "score": 0.9, "doc_id": "n1"}])
+    assert healthy.masked_query is None
+
+    empty = await R.record_retrieval(db, user_id=uid, session_id=None, source="auto_inject",
+                                     query="一个冷门没召回的问题", hits=[])
+    assert empty.masked_query == "一个冷门没召回的问题"
+
+    low = await R.record_retrieval(db, user_id=uid, session_id=None, source="auto_inject",
+                                   query="低分伪召回问题", hits=[{"doc_kind": "note", "score": 0.3, "doc_id": "n2"}])
+    assert low.masked_query == "低分伪召回问题"
+
+
+@pytest.mark.asyncio
+async def test_masks_pii_in_collected_query(db):
+    """采集前经 pii_filter 脱敏，手机号等不落库。"""
+    uid = uuid.uuid4()
+    row = await R.record_retrieval(db, user_id=uid, session_id=None, source="auto_inject",
+                                   query="我的手机是13800138000帮我查", hits=[])
+    assert row.masked_query is not None
+    assert "13800138000" not in row.masked_query
+
+
+@pytest.mark.asyncio
+async def test_list_low_quality_samples_for_eval_curation(db):
+    """导出待标注的低质召回样本，供沉淀进检索评估集。"""
+    uid = uuid.uuid4()
+    await R.record_retrieval(db, user_id=uid, session_id=None, source="auto_inject",
+                             query="冷门问题", hits=[])
+    await R.record_retrieval(db, user_id=uid, session_id=None, source="auto_inject",
+                             query="健康问题", hits=[{"doc_kind": "note", "score": 0.9, "doc_id": "n1"}])
+
+    samples = await R.list_low_quality_samples(db, days=7, limit=50)
+    assert len(samples) == 1
+    s = samples[0]
+    assert s["masked_query"] == "冷门问题"
+    assert s["is_empty"] is True
+    assert s["hit_count"] == 0
+
+
+@pytest.mark.asyncio
 async def test_recall_stats_empty_table(db):
     stats = await R.recall_stats(db, days=7)
     assert stats["total"] == 0

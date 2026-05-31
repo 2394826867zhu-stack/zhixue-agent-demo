@@ -4,7 +4,7 @@
 零召回率 / score 分布 / doc_kind 命中分布，数据驱动检索与上下文迭代。
 """
 from sqlalchemy import (
-    Column, String, Integer, Boolean, Numeric, DateTime, text,
+    Column, String, Integer, Boolean, Numeric, DateTime, Text, text,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 
@@ -30,5 +30,9 @@ class RagRetrievalTrace(Base):
     score_avg = Column(Numeric(6, 4), nullable=True)
 
     kind_distribution = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+
+    # 仅低质召回（零召回 / 伪召回）采集脱敏后的 query 文本，供构建检索评估集（用户已授权）；
+    # 健康召回为 NULL。经 pii_filter.mask_pii 脱敏（身份证/手机/银行卡正则）。
+    masked_query = Column(Text, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=text("now()"), nullable=False)
