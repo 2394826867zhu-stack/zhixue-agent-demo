@@ -2,6 +2,7 @@ import asyncio
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
 from app.main import app
@@ -23,6 +24,9 @@ def event_loop():
 @pytest_asyncio.fixture(scope="function")
 async def db():
     async with test_engine.begin() as conn:
+        # 自愈：pgvector 扩展不被 metadata 管理，schema 被重置后会丢失。
+        # 建表前确保扩展存在，否则 document_embeddings 的 vector 列建表失败（审计 A-7）。
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
     async with TestSessionLocal() as session:
         yield session

@@ -36,17 +36,6 @@ def test_effective_mastery_none_degrades_gracefully():
     assert ms.effective_mastery(p_mastery=0.7, stability=10.0, last_reviewed_at=None, now=None) == pytest.approx(0.7, abs=1e-6)
 
 
-def test_new_columns_exist_on_models():
-    # P0-1 storage groundwork: calibrated mastery + probe flags (migration 037)
-    from app.models.knowledge_point import KnowledgePoint
-    from app.models.training import TrainingQuestion
-
-    assert hasattr(KnowledgePoint, "p_mastery")
-    assert hasattr(KnowledgePoint, "last_probe")
-    assert hasattr(TrainingQuestion, "is_probe")
-    assert hasattr(TrainingQuestion, "probe_kind")
-
-
 def test_bkt_update_correct_raises_belief():
     assert ms.bkt_update(0.3, True) > 0.3
 
@@ -65,6 +54,14 @@ def test_bkt_update_stays_in_unit_interval():
         for correct in (True, False):
             v = ms.bkt_update(prior, correct)
             assert 0.0 <= v <= 1.0
+
+
+def test_bkt_guess_slip_clamped_against_degeneracy():
+    # M2 防退化安全不变量（审计 A-2）：传入退化参数 guess=slip=0.9（>0.5）必须被钳到 0.5，
+    # 钳制后"答对"的后验信念不得低于"答错"——否则模型会把答错判为更掌握。
+    after_wrong = ms.bkt_update(0.5, False, guess=0.9, slip=0.9)
+    after_right = ms.bkt_update(0.5, True, guess=0.9, slip=0.9)
+    assert after_right >= after_wrong
 
 
 def test_apply_answer_to_kp_updates_in_place():

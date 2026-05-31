@@ -19,7 +19,7 @@ _FSRS_FACTOR = 19.0 / 81.0
 # BKT（贝叶斯知识追踪）参数
 _BKT_P_TRANSIT = 0.15   # P(L)：一次练习从未掌握→掌握的转移概率
 _BKT_P_SLIP = 0.10      # P(S)：已掌握却答错
-_BKT_P_GUESS = 0.25     # P(G)：未掌握却答对
+_BKT_P_GUESS = 0.25     # P(G)：未掌握却答对（知曜取 0.25 而非文献常见 0.20：知曜题库含较多选择/判断题，四选一蒙对率≈0.25 更贴合实际；仍 ≤0.5 钳制线内。见 P0 审计 A-4）
 _BKT_P_INIT = 0.30      # P(L0)：先验掌握度
 P_INIT = _BKT_P_INIT    # 公开别名（先验掌握度，供调用方/测试引用）
 _BKT_CLAMP = 0.5        # M2 防退化：guess/slip 硬钳制到 [0,0.5]
@@ -101,7 +101,11 @@ def apply_answer_to_kp(kp, correct: bool) -> None:
 
 
 async def update_mastery_on_answer(db, kp_id, correct: bool) -> None:
-    """DB 包装：取 KP → apply_answer_to_kp → flush（不 commit）。kp_id=None 安全跳过。"""
+    """DB 包装：取 KP → apply_answer_to_kp（就地更新，不 flush 不 commit，事务边界交调用方）。
+
+    kp_id=None 安全跳过；任何异常吞掉记日志，绝不拖垮答题主流程（fail-safe）。
+    与 probe_service.record_probe_result 保持一致：均不自行 flush/commit（审计 A-6）。
+    """
     if kp_id is None:
         return
     from app.models.knowledge_point import KnowledgePoint
@@ -110,6 +114,5 @@ async def update_mastery_on_answer(db, kp_id, correct: bool) -> None:
         if kp is None:
             return
         apply_answer_to_kp(kp, correct=correct)
-        await db.flush()
     except Exception:  # noqa: BLE001
         logger.exception("update_mastery_on_answer failed kp_id=%s", kp_id)
