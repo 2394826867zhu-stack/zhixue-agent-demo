@@ -60,9 +60,9 @@ async def test_training_submit_answer_correct_raises_mastery(db, monkeypatch):
     db.add(q)
     await db.flush()
 
-    # 评分层 → 固定"答对"（score≥60 → is_wrong=False），不触发 LLM / 错题归档
+    # 评分层 → 固定"答对"。_grade_answer 返回 (score, feedback, is_wrong, error_reason)
     async def _fake_grade(self, question, user_answer):
-        return 90, False, None, "对了"
+        return 90, "对了", False, None
     monkeypatch.setattr(training_service.__class__, "_grade_answer", _fake_grade)
 
     await training_service.submit_answer(
@@ -90,8 +90,9 @@ async def test_training_submit_probe_writes_last_probe_not_mistake(db, monkeypat
     db.add(q)
     await db.flush()
 
+    # _grade_answer 返回 (score, feedback, is_wrong, error_reason)：答错
     async def _fake_grade(self, question, user_answer):
-        return 10, True, "concept", "错了"
+        return 10, "错了", True, "concept"
     monkeypatch.setattr(training_service.__class__, "_grade_answer", _fake_grade)
 
     # 若探针误走错题归档，会调用 rag_index.enqueue_mistake_index → 这里探测它是否被调用
@@ -140,10 +141,10 @@ async def test_fsrs_review_good_rating_raises_mastery(db, monkeypatch):
         front="F=?", back="ma", card_type="concept",
     )
 
-    # 屏蔽 fire-and-forget 副作用（独立 session 发奖励，测试中易 flaky）
+    # 屏蔽 fire-and-forget 副作用（_post_review_side_effects 是模块级函数，独立 session 发奖励，测试中易 flaky）
     async def _noop(*a, **k):
         return None
-    monkeypatch.setattr(fsrs_service.__class__, "_post_review_side_effects", staticmethod(_noop))
+    monkeypatch.setattr("app.services.fsrs_service._post_review_side_effects", _noop)
 
     await fsrs_service.review(db, card_id=str(card.id), user_id=str(user.id), rating=4)
     refreshed = await db.get(KnowledgePoint, kp.id)
