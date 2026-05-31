@@ -47,6 +47,25 @@ async def test_recall_stats_aggregates_empty_rate_and_kinds(db):
 
 
 @pytest.mark.asyncio
+async def test_recall_stats_flags_low_score_pseudo_recall(db):
+    """伪召回：有命中但相关度低（score 偏低），比零召回更隐蔽的检索问题。"""
+    uid = uuid.uuid4()
+    # 高分召回（健康）
+    await R.record_retrieval(db, user_id=uid, session_id=None, source="auto_inject",
+                             query="q1", hits=[{"doc_kind": "note", "score": 0.85, "doc_id": "n1"}])
+    # 低分召回（伪召回）
+    await R.record_retrieval(db, user_id=uid, session_id=None, source="auto_inject",
+                             query="q2", hits=[{"doc_kind": "note", "score": 0.30, "doc_id": "n2"}])
+    # 零召回（单独计 empty，不算 low_score）
+    await R.record_retrieval(db, user_id=uid, session_id=None, source="auto_inject",
+                             query="q3", hits=[])
+
+    stats = await R.recall_stats(db, days=7, low_score_threshold=0.5)
+    assert stats["low_score_threshold"] == 0.5
+    assert stats["low_score_count"] == 1  # 仅 q2（非空且 avg < 0.5）
+
+
+@pytest.mark.asyncio
 async def test_recall_stats_empty_table(db):
     stats = await R.recall_stats(db, days=7)
     assert stats["total"] == 0

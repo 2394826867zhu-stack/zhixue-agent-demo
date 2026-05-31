@@ -304,8 +304,12 @@ async def record_retrieval(
     return row
 
 
-async def recall_stats(db: AsyncSession, *, days: int = 7) -> dict:
-    """聚合最近 days 天召回质量：零召回率 / 平均 score / doc_kind 命中分布。"""
+async def recall_stats(db: AsyncSession, *, days: int = 7, low_score_threshold: float = 0.5) -> dict:
+    """聚合最近 days 天召回质量：零召回率 / 平均 score / doc_kind 命中分布 / 伪召回数。
+
+    伪召回（low_score）= 有命中但平均 score 低于 low_score_threshold，
+    比零召回更隐蔽——召回了但都不相关，是检索质量问题的早期信号。
+    """
     from datetime import datetime, timedelta, timezone
     from app.models.rag_retrieval_trace import RagRetrievalTrace as T
 
@@ -322,6 +326,7 @@ async def recall_stats(db: AsyncSession, *, days: int = 7) -> dict:
         float(r.score_avg) for r in rows if not r.is_empty and r.score_avg is not None
     ]
     avg_score = (sum(non_empty_scores) / len(non_empty_scores)) if non_empty_scores else None
+    low_score_count = sum(1 for s in non_empty_scores if s < low_score_threshold)
 
     kind_totals: dict[str, int] = {}
     for r in rows:
@@ -334,6 +339,8 @@ async def recall_stats(db: AsyncSession, *, days: int = 7) -> dict:
         "empty_count": empty_count,
         "empty_rate": (empty_count / total) if total else 0.0,
         "avg_score": avg_score,
+        "low_score_threshold": low_score_threshold,
+        "low_score_count": low_score_count,
         "kind_totals": kind_totals,
     }
 
