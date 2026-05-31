@@ -111,6 +111,26 @@
 
 ---
 
+## ✅ 修复完成（2026-06-01，commit a1cf293，全套 139 pass）
+
+用户拍板"修 P1+P2 全部 + p_guess 保留 0.25"，已全部落地：
+
+| # | 处置 | 验证 |
+|---|---|---|
+| A-1 | 新增 `tests/integration/test_mastery_hooks_e2e.py` 4 例：经 `training.submit_answer`(答对升 / 探针写 last_probe 且不归错题)、`feynman.submit`(total≥70 升)、`fsrs.review`(rating≥3 升) 真实入口触发 | 4 passed |
+| A-2 | 补回 `test_bkt_guess_slip_clamped_against_degeneracy`（guess=slip=0.9→钳到0.5，答对不劣于答错） | passed |
+| A-3 | 删除重复的 `test_new_columns_exist_on_models` | — |
+| A-4 | `_BKT_P_GUESS=0.25` 加注释说明（知曜题库含较多选择/判断题，四选一蒙对率≈0.25），保留 0.25 | — |
+| A-5 | `submit_answer` 改用局部 `is_correct = not is_wrong`，删除瞬态伪列 `question.is_correct` 赋值 | 回归绿 |
+| A-6 | `update_mastery_on_answer` 去掉自带 `db.flush()`，与 `record_probe_result` 一致（事务边界交调用方） | 回归绿 |
+| A-7 | conftest `db` fixture 建表前 `CREATE EXTENSION IF NOT EXISTS vector`（schema 被重置后自愈） | 回归绿 |
+
+**重要排障记录**：A-1 的 feynman 测试一度失败显示 `p_mastery` 未更新，独立诊断脚本证明钩子代码正确（直接调用 0.3→0.5125），根因是**混乱编辑期残留的陈旧 .pyc 字节码**；清 `__pycache__` 后 4 例全绿。教训：多次快速改同一模块后，验证前先清 pycache。
+
+全套从 134 → **139 passed**（+4 e2e +1 钳制，-0；删的重复测试原与另一同名函数互相遮蔽）。main HEAD=a1cf293。
+
+---
+
 ## 五、审计结论
 
 P0 作为"度量地基"是**扎实且正确**的：数学对、迁移稳、探针隔离逻辑严谨、错题链路无损、全套绿。唯一的实质风险是 **A-1 集成测试盲区**——它恰好是本会话反复出问题（钩子丢失）却没被自动拦截的根因，建议在推进 P1 前补齐这张安全网。其余均为卫生级、不阻断。
