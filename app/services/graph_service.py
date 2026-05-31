@@ -77,6 +77,18 @@ def root_cause(node, mastery: dict, edges: list[tuple], *, threshold: float = 0.
         cur = min(weak, key=lambda p: mastery.get(p, 0.0))
 
 
+def mastery_value(p_mastery: float | None, mastery_status: str | None) -> float:
+    """统一掌握度取值：优先 p_mastery（P0 校准概率）；为空时按 mastery_status 兜底映射。
+
+    兼容 P0 前存量 KP（无 p_mastery）。映射：mastered→0.9 / reviewing→0.6 / learning→0.3 / new→0.0。
+    """
+    if p_mastery is not None:
+        return float(p_mastery)
+    return {"mastered": 0.9, "reviewing": 0.6, "learning": 0.3, "new": 0.0}.get(
+        mastery_status or "new", 0.0
+    )
+
+
 # ============ DB 建边（生成即建边，P1-2）============
 
 async def add_edges(db, user_id, edges_with_conf: list[dict]) -> int:
