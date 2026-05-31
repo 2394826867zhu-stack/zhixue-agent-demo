@@ -36,6 +36,17 @@ def test_effective_mastery_none_degrades_gracefully():
     assert ms.effective_mastery(p_mastery=0.7, stability=10.0, last_reviewed_at=None, now=None) == pytest.approx(0.7, abs=1e-6)
 
 
+def test_new_columns_exist_on_models():
+    # P0-1 storage groundwork: calibrated mastery + probe flags (migration 037)
+    from app.models.knowledge_point import KnowledgePoint
+    from app.models.training import TrainingQuestion
+
+    assert hasattr(KnowledgePoint, "p_mastery")
+    assert hasattr(KnowledgePoint, "last_probe")
+    assert hasattr(TrainingQuestion, "is_probe")
+    assert hasattr(TrainingQuestion, "probe_kind")
+
+
 def test_bkt_update_correct_raises_belief():
     assert ms.bkt_update(0.3, True) > 0.3
 
