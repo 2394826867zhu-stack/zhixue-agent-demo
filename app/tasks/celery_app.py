@@ -15,6 +15,7 @@ celery_app = Celery(
         "app.tasks.first_review_tasks",  # v0.33 P0-1 · 24h 首次复习推送
         "app.tasks.weekly_reflection_tasks",  # v0.33 P0-3 · 周复盘自动生成
         "app.tasks.dead_letter",  # F-11 · task_failure → 死信队列 + 告警
+        "app.tasks.learning_kernel_tasks",  # 学习内核 P0-7 · 掌握度校准监控
     ],
 )
 
@@ -78,6 +79,11 @@ celery_app.conf.update(
         "scan-focus-overload": {
             "task": "app.tasks.focus_overload_tasks.scan_overload",
             "schedule": crontab(minute=45) if settings.APP_ENV != "development" else 3600.0,
+        },
+        # 学习内核 P0-7 · 掌握度校准监控（ECE>0.2 告警）
+        "mastery-calibration-monitor": {
+            "task": "app.tasks.learning_kernel_tasks.mastery_calibration_check",
+            "schedule": 600.0 if settings.APP_ENV == "development" else crontab(hour=2, minute=0),
         },
     },
 )
