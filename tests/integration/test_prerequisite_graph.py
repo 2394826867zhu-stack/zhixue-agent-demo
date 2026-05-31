@@ -149,3 +149,37 @@ async def test_diagnose_annotates_root_cause(db, monkeypatch):
     # recent_mistakes 中该错题应带 root_cause 指向"整式运算"
     rc = [m.get("root_cause") for m in result.get("recent_mistakes", [])]
     assert "整式运算" in rc
+
+
+# ---------- T5 learner_state 聚合 ----------
+
+async def test_learner_state_aggregates_graph(db):
+    from app.services import learner_state_service as lss
+    user = await _make_user(db)
+    a = await _kp_m(db, user, "基础A", 0.9)  # mastered
+    b = await _kp_m(db, user, "前沿B", 0.2)  # 未掌握、先修A齐 → frontier
+    await graph_service.add_edges(db, user.id, [
+        {"from_kp_id": a.id, "to_kp_id": b.id, "confidence": 0.9, "source": "llm"},
+    ])
+    await db.flush()
+
+    state = await lss.get_learner_state(db, str(user.id))
+    kg = state["knowledge_graph"]
+    assert kg["total"] == 2
+    assert kg["mastered"] == 1
+    frontier_names = {f["name"] for f in kg["frontier"]}
+    assert "前沿B" in frontier_names
+    # 必备聚合块都在
+    assert "review_due" in state
+    assert "exams" in state
+    assert "streak" in state
+
+
+async def test_learner_state_empty_user_degrades(db):
+    from app.services import learner_state_service as lss
+    user = await _make_user(db)
+    # 无 KP / 无边 / 无考试 → 不崩，返回零值结构
+    state = await lss.get_learner_state(db, str(user.id))
+    assert state["knowledge_graph"]["total"] == 0
+    assert state["knowledge_graph"]["frontier"] == []
+    assert state["exams"]["next"] is None
