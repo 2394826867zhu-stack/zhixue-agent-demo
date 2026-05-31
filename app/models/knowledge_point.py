@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, DateTime, JSON, ForeignKey
+from sqlalchemy import String, Text, DateTime, JSON, Float, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID, ENUM as PgEnum
+from sqlalchemy.dialects.postgresql import UUID, ENUM as PgEnum, JSONB
 from app.core.database import Base
 
 NOTEBOOK_ORIGIN = PgEnum("official", "user_project", name="project_source", create_type=False)
@@ -38,6 +38,10 @@ class KnowledgePoint(Base):
     )
     notebook_origin: Mapped[str] = mapped_column(NOTEBOOK_ORIGIN, nullable=False, server_default="user_project")
     difficulty_tier: Mapped[str] = mapped_column(DIFFICULTY_TIER, nullable=False, server_default="blue", index=True)
+
+    # 学习内核 P0 · 校准化掌握度（migration 037）
+    p_mastery: Mapped[float | None] = mapped_column(Float, nullable=True)        # BKT P(已掌握)，None=未测
+    last_probe: Mapped[dict | None] = mapped_column(JSONB, nullable=True)        # {"kind","correct","at","p_after"}
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

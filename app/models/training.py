@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, DateTime, Integer, Boolean, Float, ForeignKey
+from sqlalchemy import String, Text, DateTime, Integer, Boolean, Float, ForeignKey, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, ENUM as PgEnum
 from app.core.database import Base
@@ -71,6 +71,10 @@ class TrainingQuestion(Base):
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True,
     )
     notebook_origin: Mapped[str] = mapped_column(NOTEBOOK_ORIGIN, nullable=False, server_default="user_project")
+
+    # 学习内核 P0 · 探针题标记（migration 037）
+    is_probe: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default=text("false"))  # 是否探针题
+    probe_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)        # 探针类型（later tasks 定义取值）
 
     answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

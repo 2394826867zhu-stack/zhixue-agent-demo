@@ -357,6 +357,21 @@ class TrainingService:
         question.error_reason = error_reason  # v0.34 P1-5
         question.answered_at = datetime.now(timezone.utc)
 
+        # G-P0-4/5 · 答题落掌握度。先标 is_correct，再按是否探针分支：
+        #   探针 → 只更新掌握度信念 + 写 KP.last_probe，不计练习；
+        #   普通题 → BKT 落 p_mastery。
+        question.is_correct = not is_wrong
+        from app.services import measurement_service, probe_service
+        if question.is_probe:
+            await probe_service.record_probe_result(
+                db, kp_id=question.knowledge_point_id,
+                kind=(question.probe_kind or "retention"), correct=question.is_correct,
+            )
+        else:
+            await measurement_service.update_mastery_on_answer(
+                db, kp_id=question.knowledge_point_id, correct=question.is_correct
+            )
+
         session.answered_count += 1
 
         # v0.34 P1-2 · 自适应难度：更新用户技能等级（按学科）
@@ -394,7 +409,8 @@ class TrainingService:
         await db.commit()
 
         # F 业务联动：答错 → 错题入向量库（供出题/错题场景召回）
-        if is_wrong:
+        # G-P0-5 · 探针不归档为错题（不入 RAG 错题库）。
+        if is_wrong and not question.is_probe:
             from app.services import rag_index
             rag_index.enqueue_mistake_index(str(question.id))
 
@@ -426,7 +442,8 @@ class TrainingService:
                     ref_kp_id=question.knowledge_point_id,
                 )
                 # 若答错，再写 mistake 节点
-                if is_wrong:
+                # G-P0-5 · 探针不写 mistake 时间线节点（仍保留上面 training_result 节点）。
+                if is_wrong and not question.is_probe:
                     await ss_timeline_service.append_system_node(
                         db,
                         session_id=ss_id,
