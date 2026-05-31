@@ -230,6 +230,7 @@ async def _diagnose_learning(db: AsyncSession, uid: uuid.UUID, subject: str | No
             TrainingQuestion.question_text,
             TrainingQuestion.error_reason,
             KnowledgePoint.subject,
+            TrainingQuestion.knowledge_point_id,
         )
         .join(KnowledgePoint, TrainingQuestion.knowledge_point_id == KnowledgePoint.id)
         .where(TrainingQuestion.user_id == uid, TrainingQuestion.is_wrong.is_(True))
@@ -239,11 +240,61 @@ async def _diagnose_learning(db: AsyncSession, uid: uuid.UUID, subject: str | No
     ms_q = ms_q.order_by(TrainingQuestion.answered_at.desc().nullslast()).limit(5)
     ms_rows = await db.execute(ms_q)
     recent_mistakes = [
-        {"question": qt[:80], "error_reason": er, "subject": subj}
-        for qt, er, subj in ms_rows.all()
+        {"question": qt[:80], "error_reason": er, "subject": subj, "_kp_id": str(kid) if kid else None}
+        for qt, er, subj, kid in ms_rows.all()
     ]
 
-    return {"diagnosis": report, "recent_mistakes": recent_mistakes}
+    # 学习内核 P1-4/5 · 先修图谱增强：可学习前沿 + 根因诊断（fail-safe，不破坏原诊断）
+    learning_frontier: list[dict] = []
+    try:
+        from app.services import graph_service
+        from app.models.prerequisite_edge import PrerequisiteEdge
+
+        kp_rows = await db.execute(
+            select(
+                KnowledgePoint.id, KnowledgePoint.name,
+                KnowledgePoint.p_mastery, KnowledgePoint.mastery_status,
+            ).where(KnowledgePoint.user_id == uid)
+        )
+        mastery: dict[str, float] = {}
+        id_to_name: dict[str, str] = {}
+        for kid, name, pm, status in kp_rows.all():
+            sid = str(kid)
+            mastery[sid] = graph_service.mastery_value(pm, status)
+            id_to_name[sid] = name
+
+        edge_rows = await db.execute(
+            select(PrerequisiteEdge.from_kp_id, PrerequisiteEdge.to_kp_id).where(
+                PrerequisiteEdge.user_id == uid
+            )
+        )
+        edges = [(str(f), str(t)) for f, t in edge_rows.all()]
+
+        frontier_ids = graph_service.learnable_frontier(mastery, edges)
+        frontier_ids.sort(key=lambda i: mastery.get(i, 0.0))
+        for fid in frontier_ids[:5]:
+            learning_frontier.append({
+                "id": fid, "name": id_to_name.get(fid, ""),
+                "p_mastery": round(mastery.get(fid, 0.0), 3),
+            })
+
+        for m in recent_mistakes:
+            kid = m.pop("_kp_id", None)
+            if not kid or kid not in mastery:
+                continue
+            rc_id = graph_service.root_cause(kid, mastery, edges)
+            if rc_id != kid:
+                m["root_cause"] = id_to_name.get(rc_id, "")
+    except Exception:  # noqa: BLE001
+        logger.exception("diagnose graph enhancement failed uid=%s", uid)
+        for m in recent_mistakes:
+            m.pop("_kp_id", None)
+
+    return {
+        "diagnosis": report,
+        "recent_mistakes": recent_mistakes,
+        "learning_frontier": learning_frontier,
+    }
 
 
 # ── 工具 3：plan_study_schedule ─────────────────────────────────────────────
