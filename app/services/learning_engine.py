@@ -44,10 +44,22 @@ _DIFFICULTY_TIERS = ("blue", "purple", "gold")
 
 def recommend_actions(learner_state: dict) -> list[RecommendedAction]:
     """给定学习者状态，返回有序动作队列（纯函数，不含 DB）。"""
+    if not isinstance(learner_state, dict):
+        learner_state = {}
+
+    due_count = learner_state.get("review_due", {}).get("due", 0)
+    frontier = learner_state.get("knowledge_graph", {}).get("frontier", [])
+    weak = [n for n in frontier if n.get("p_mastery", 0.0) < _WEAK_THRESHOLD]
+    non_weak = [n for n in frontier if n.get("p_mastery", 0.0) >= _WEAK_THRESHOLD]
+    # sort non_weak ascending so engine picks lowest-mastery frontier node (Fix 3)
+    non_weak.sort(key=lambda n: n.get("p_mastery", 0.0))
+
+    has_signal = due_count > 0 or bool(weak) or bool(non_weak)
+    if not has_signal:
+        return _fallback_actions(learner_state)
+
     actions: list[RecommendedAction] = []
 
-    # 1 FSRS 到期复习
-    due_count = learner_state.get("review_due", {}).get("due", 0)
     if due_count > 0:
         actions.append(RecommendedAction(
             action_type=ActionType.REVIEW_FLASHCARD,
@@ -56,9 +68,6 @@ def recommend_actions(learner_state: dict) -> list[RecommendedAction]:
             priority=1,
         ))
 
-    # 2 根因补漏（弱节点 p_mastery < WEAK_THRESHOLD）
-    frontier = learner_state.get("knowledge_graph", {}).get("frontier", [])
-    weak = [n for n in frontier if n.get("p_mastery", 0.0) < _WEAK_THRESHOLD]
     if weak:
         target = min(weak, key=lambda n: n.get("p_mastery", 0.0))
         actions.append(RecommendedAction(
@@ -68,10 +77,8 @@ def recommend_actions(learner_state: dict) -> list[RecommendedAction]:
             priority=2,
         ))
 
-    # 3 前沿新点（先修就绪，自身未掌握）
-    non_weak = [n for n in frontier if n.get("p_mastery", 0.0) >= _WEAK_THRESHOLD]
     if non_weak:
-        target = non_weak[0]  # frontier 已按 p_mastery 升序
+        target = non_weak[0]
         actions.append(RecommendedAction(
             action_type=ActionType.EXPLORE_FRONTIER,
             reason=f"推荐学习「{target.get('name', '')}」，你的先修知识已就绪",
@@ -79,17 +86,12 @@ def recommend_actions(learner_state: dict) -> list[RecommendedAction]:
             priority=3,
         ))
 
-    # 4 提取练习（M4：做题 > 重读；EXPAND 若存在会被 _apply_retrieval_preference 排后）
     actions.append(RecommendedAction(
         action_type=ActionType.PRACTICE,
         reason="做一组练习题，用提取练习强化已学内容",
         params={},
         priority=4,
     ))
-
-    # 仅有 PRACTICE 说明 state 为空 → 走兜底
-    if len(actions) == 1 and actions[0].action_type == ActionType.PRACTICE:
-        actions = _fallback_actions(learner_state)
 
     _apply_retrieval_preference(actions)
     return sorted(actions, key=lambda a: a.priority)
