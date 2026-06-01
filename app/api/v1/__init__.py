@@ -14,6 +14,8 @@ from app.api.v1 import (
     learning_engine,
     # D-11 reports
     reports,
+    # D-06 知识库文件管理
+    knowledge_base,
 )
 
 router = APIRouter(prefix="/v1")
@@ -52,3 +54,5 @@ router.include_router(feynman.router)
 router.include_router(learning_engine.router)
 # D-11 reports
 router.include_router(reports.router)
+# D-06 knowledge base
+router.include_router(knowledge_base.router)
