@@ -18,6 +18,7 @@ celery_app = Celery(
         "app.tasks.learning_kernel_tasks",  # 学习内核 P0-7 · 掌握度校准监控
         "app.tasks.review_due_tasks",    # C-17/C-19 · FSRS 到期复习推送
         "app.tasks.checkin_reminder_tasks",  # C-20 · 每日打卡提醒
+        "app.tasks.kb_embedding_tasks",      # D-06 · 知识库文件提取 + RAG 嵌入
     ],
 )
 

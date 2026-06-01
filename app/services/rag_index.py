@@ -66,3 +66,18 @@ async def reindex_kp(db, kp_id: str) -> None:
     """KP 内容变更：先失效旧向量，再异步重建。"""
     await purge_doc(db, doc_kind="kp", doc_id=kp_id)
     enqueue_kp_index(str(kp_id))
+
+
+def enqueue_kb_file_index(kb_file_id: str) -> None:
+    """Queue extract_and_embed_kb_file task after KB file upload."""
+    try:
+        from app.tasks.kb_embedding_tasks import extract_and_embed_kb_file
+
+        extract_and_embed_kb_file.apply_async(args=[kb_file_id], countdown=5)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("enqueue_kb_file_index failed for %s: %s", kb_file_id, e)
+
+
+async def purge_kb_file(db, kb_file_id: str) -> None:
+    """Remove all vector chunks for a KB file from the RAG index."""
+    await purge_doc(db, doc_kind="kb_file", doc_id=kb_file_id)
