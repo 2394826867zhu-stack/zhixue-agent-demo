@@ -16,6 +16,7 @@ celery_app = Celery(
         "app.tasks.weekly_reflection_tasks",  # v0.33 P0-3 · 周复盘自动生成
         "app.tasks.dead_letter",  # F-11 · task_failure → 死信队列 + 告警
         "app.tasks.learning_kernel_tasks",  # 学习内核 P0-7 · 掌握度校准监控
+        "app.tasks.review_due_tasks",    # C-17/C-19 · FSRS 到期复习推送
     ],
 )
 
@@ -84,6 +85,11 @@ celery_app.conf.update(
         "mastery-calibration-monitor": {
             "task": "app.tasks.learning_kernel_tasks.mastery_calibration_check",
             "schedule": 600.0 if settings.APP_ENV == "development" else crontab(hour=2, minute=0),
+        },
+        # C-17/C-19 · FSRS 复习到期推送（每小时 :30 分）
+        "scan-review-due": {
+            "task": "app.tasks.review_due_tasks.scan_review_due",
+            "schedule": crontab(minute=30) if settings.APP_ENV != "development" else 3600.0,
         },
     },
 )
