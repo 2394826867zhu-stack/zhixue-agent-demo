@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     # 学习内核 P2：引擎驱动模式（feature flag，可一键回退旧 ReAct）
     LEARNING_ENGINE_ENABLED: bool = True
 
+    # Subscription (RevenueCat)
+    REVENUECAT_WEBHOOK_SECRET: str = ""  # Set in .env for production; empty = webhook disabled
+
     @property
     def origins_list(self) -> list[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
