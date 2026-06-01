@@ -1,0 +1,46 @@
+"""Add kb_files table for D-06 knowledge base file management.
+
+Revision ID: 040
+Revises: 039
+Create Date: 2026-06-01
+"""
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import UUID
+
+revision = "040"
+down_revision = "039"
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    op.execute("CREATE TYPE kb_file_type AS ENUM ('pdf', 'docx', 'txt')")
+    op.execute("CREATE TYPE kb_file_status AS ENUM ('pending', 'processing', 'done', 'failed')")
+    op.create_table(
+        "kb_files",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column("user_id", UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("project_id", UUID(as_uuid=True), sa.ForeignKey("projects.id", ondelete="SET NULL"), nullable=True),
+        sa.Column("original_name", sa.String(255), nullable=False),
+        sa.Column("stored_filename", sa.String(255), nullable=False),
+        sa.Column("file_type", sa.Enum(name="kb_file_type", create_type=False), nullable=False),
+        sa.Column("file_size_bytes", sa.Integer(), nullable=False),
+        sa.Column("processing_status", sa.Enum(name="kb_file_status", create_type=False), nullable=False, server_default="pending"),
+        sa.Column("chunk_count", sa.Integer(), nullable=True),
+        sa.Column("error_message", sa.Text(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+    op.create_index("ix_kb_files_user_id", "kb_files", ["user_id"])
+    op.create_index("ix_kb_files_project_id", "kb_files", ["project_id"])
+    op.create_index("ix_kb_files_processing_status", "kb_files", ["processing_status"])
+
+
+def downgrade() -> None:
+    op.drop_index("ix_kb_files_processing_status", table_name="kb_files")
+    op.drop_index("ix_kb_files_project_id", table_name="kb_files")
+    op.drop_index("ix_kb_files_user_id", table_name="kb_files")
+    op.drop_table("kb_files")
+    op.execute("DROP TYPE IF EXISTS kb_file_status")
+    op.execute("DROP TYPE IF EXISTS kb_file_type")

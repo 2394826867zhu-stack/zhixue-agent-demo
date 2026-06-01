@@ -34,6 +34,8 @@ from app.models.user_skill_level import UserSkillLevel
 from app.models.feynman_attempt import FeynmanAttempt
 # F-11 · Celery 死信队列
 from app.models.dead_letter import DeadLetterTask
+# D-06 · 知识库文件管理
+from app.models.kb_file import KnowledgeBaseFile
 
 __all__ = [
     "User", "Note", "KnowledgePoint", "Flashcard",
@@ -57,4 +59,5 @@ __all__ = [
     "RagRetrievalTrace",
     "UserSkillLevel",
     "FeynmanAttempt",
+    "KnowledgeBaseFile",
 ]
