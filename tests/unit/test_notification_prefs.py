@@ -1,3 +1,5 @@
+import pytest
+from pydantic import ValidationError
 from app.schemas.user_prefs import UserPrefsOut, UserPrefsUpdate
 
 
@@ -14,13 +16,12 @@ def test_prefs_out_includes_notification_fields():
         daily_reminder_time=None,
     )
     assert out.push_enabled is True
+    assert out.flashcard_reminder_enabled is True
     assert out.daily_reminder_enabled is False
     assert out.daily_reminder_time is None
 
 
 def test_prefs_update_daily_reminder_time_format():
-    from pydantic import ValidationError
-    import pytest
     # valid
     u = UserPrefsUpdate(daily_reminder_time="20:00")
     assert u.daily_reminder_time == "20:00"
