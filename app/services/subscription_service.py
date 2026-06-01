@@ -7,9 +7,16 @@ plan_type values: "free" | "pro" | "edu"
 """
 from __future__ import annotations
 
+import hmac
 import logging
+import uuid
 from datetime import datetime, timezone
 from typing import Any
+
+from sqlalchemy import select
+
+from app.models.subscription_event import SubscriptionEvent
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +69,7 @@ def verify_webhook_auth(authorization_header: str | None, secret: str) -> bool:
     parts = authorization_header.split(" ", 1)
     if len(parts) != 2 or parts[0].lower() != "bearer":
         return False
-    return parts[1] == secret
+    return hmac.compare_digest(parts[1], secret)
 
 
 async def apply_revenuecat_event(db, payload: dict) -> None:
@@ -70,10 +77,6 @@ async def apply_revenuecat_event(db, payload: dict) -> None:
 
     Idempotent: duplicate events (same revenuecat_event_id) are silently ignored.
     """
-    from sqlalchemy import select
-    from app.models.user import User
-    from app.models.subscription_event import SubscriptionEvent
-
     event = payload.get("event", {})
     event_id = event.get("id", "")
     event_type = event.get("type", "")
@@ -99,9 +102,8 @@ async def apply_revenuecat_event(db, payload: dict) -> None:
         expires_at = datetime.fromtimestamp(expiration_at_ms / 1000, tz=timezone.utc)
 
     # Resolve user by app_user_id (we set this to user UUID in the mobile SDK)
-    import uuid as _uuid
     try:
-        uid = _uuid.UUID(app_user_id)
+        uid = uuid.UUID(app_user_id)
     except ValueError:
         logger.warning("RevenueCat app_user_id is not a UUID: %s", app_user_id)
         uid = None
@@ -119,6 +121,8 @@ async def apply_revenuecat_event(db, payload: dict) -> None:
         elif event_type in _REVOKE_EVENTS:
             user.plan_type = "free"
             user.plan_expires_at = None
+        else:
+            logger.debug("Unrecognized event_type %s — no plan change applied", event_type)
 
     # Record audit event
     se = SubscriptionEvent(
@@ -130,5 +134,9 @@ async def apply_revenuecat_event(db, payload: dict) -> None:
         raw_payload=payload,
     )
     db.add(se)
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
     logger.info("Processed RevenueCat event %s (%s) for user %s", event_id, event_type, app_user_id)
