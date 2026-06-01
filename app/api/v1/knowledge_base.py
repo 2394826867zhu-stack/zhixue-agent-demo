@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_pro
 from app.config import settings
 from app.core.database import get_db
 from app.core.exceptions import AppError, NotFoundError
@@ -90,7 +90,7 @@ def _resolve_file_type(ext: str, content_type: str | None, content: bytes) -> st
 async def upload_kb_file(
     file: UploadFile = File(...),
     project_id: uuid.UUID | None = Query(None),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_pro),
     db: AsyncSession = Depends(get_db),
 ):
     # --- content-type pre-check (not the final word; magic bytes below) ---

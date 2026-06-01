@@ -73,3 +73,40 @@ def test_get_status_pro_user_with_expiry():
     assert status["days_remaining"] == 15
     assert status["features"]["advanced_reports"] is True
     assert status["features"]["knowledge_base_upload"] is True
+
+
+import pytest
+from unittest.mock import patch
+from app.core.exceptions import SubscriptionRequiredError
+
+
+def test_subscription_required_error_has_code_4031():
+    err = SubscriptionRequiredError()
+    assert err.code == 4031
+    assert err.status_http == 403
+
+
+@pytest.mark.asyncio
+async def test_require_pro_raises_for_free_user():
+    from app.api.deps import require_pro
+    free_user = _user("free")
+    with pytest.raises(SubscriptionRequiredError):
+        await require_pro(user=free_user)
+
+
+@pytest.mark.asyncio
+async def test_require_pro_raises_for_expired_pro_user():
+    from app.api.deps import require_pro
+    past = datetime.now(timezone.utc) - timedelta(seconds=1)
+    expired_user = _user("pro", past)
+    with pytest.raises(SubscriptionRequiredError):
+        await require_pro(user=expired_user)
+
+
+@pytest.mark.asyncio
+async def test_require_pro_passes_for_pro_user():
+    from app.api.deps import require_pro
+    future = datetime.now(timezone.utc) + timedelta(days=10)
+    pro_user = _user("pro", future)
+    result = await require_pro(user=pro_user)
+    assert result is pro_user

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import decode_token
-from app.core.exceptions import TokenExpiredError, PermissionDeniedError
+from app.core.exceptions import TokenExpiredError, PermissionDeniedError, SubscriptionRequiredError
 from app.models.user import User
 from app.services.auth_service import auth_service
 
@@ -32,6 +32,7 @@ async def get_current_user(
 
 
 async def require_pro(user: User = Depends(get_current_user)) -> User:
-    if user.plan_type == "free":
-        raise PermissionDeniedError()
+    from app.services.subscription_service import is_pro
+    if not is_pro(user):
+        raise SubscriptionRequiredError()
     return user

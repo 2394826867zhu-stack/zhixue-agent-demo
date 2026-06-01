@@ -20,6 +20,11 @@ class PermissionDeniedError(AppError):
         super().__init__(4002, message, 403)
 
 
+class SubscriptionRequiredError(AppError):
+    def __init__(self, message: str = "升级 Pro 才能使用这个功能"):
+        super().__init__(4031, message, 403)
+
+
 class ValidationError(AppError):
     def __init__(self, message: str = "参数校验失败"):
         super().__init__(4003, message, 422)
