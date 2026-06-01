@@ -48,6 +48,12 @@ class User(Base):
     # 推送通知
     expo_push_token: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
+    # C-21 · 通知偏好
+    push_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    flashcard_reminder_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    daily_reminder_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    daily_reminder_time: Mapped[str | None] = mapped_column(String(5), nullable=True)  # "HH:MM"
+
     # 多租户（F/企业隔离层）：所属机构；个人用户为 NULL。先不加 FK，组织实体表后续
     org_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
 
