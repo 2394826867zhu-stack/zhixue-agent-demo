@@ -36,6 +36,8 @@ from app.models.feynman_attempt import FeynmanAttempt
 from app.models.dead_letter import DeadLetterTask
 # D-06 · 知识库文件管理
 from app.models.kb_file import KnowledgeBaseFile
+# E-01 · 订阅事件
+from app.models.subscription_event import SubscriptionEvent  # noqa: F401
 
 __all__ = [
     "User", "Note", "KnowledgePoint", "Flashcard",
@@ -60,4 +62,5 @@ __all__ = [
     "UserSkillLevel",
     "FeynmanAttempt",
     "KnowledgeBaseFile",
+    "SubscriptionEvent",
 ]
