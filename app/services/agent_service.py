@@ -298,16 +298,22 @@ async def run(
                     _tool_result = await dispatch_tool(
                         db, user_id, _tool_nm, json.dumps(_tool_av, ensure_ascii=False)
                     )
-                    tools_called.append(_tool_nm)
-                    _engine_decision = {"action": _act.action_type, "reason": _act.reason}
-                    _res_txt = json.dumps(_tool_result, ensure_ascii=False)[:2000]
-                    system = (
-                        system
-                        + f"\n\n[引擎决策] {_act.reason}\n"
-                        + f"工具执行结果：{_res_txt}\n"
-                        + "请基于结果用自然语言引导学生，说明为什么这对他有帮助。"
-                    )
-                    _react_max = 0  # 跳过 ReAct 循环
+                    if isinstance(_tool_result, dict) and "error" in _tool_result:
+                        logger.warning(
+                            "learning_engine dispatch_tool error (fallback to ReAct): %s",
+                            _tool_result,
+                        )
+                    else:
+                        tools_called.append(_tool_nm)
+                        _engine_decision = {"action": _act.action_type, "reason": _act.reason}
+                        _res_txt = json.dumps(_tool_result, ensure_ascii=False)[:2000]
+                        system = (
+                            system
+                            + f"\n\n[引擎决策] {_act.reason}\n"
+                            + f"工具执行结果：{_res_txt}\n"
+                            + "请基于结果用自然语言引导学生，说明为什么这对他有帮助。"
+                        )
+                        _react_max = 0  # 跳过 ReAct 循环
     except Exception as _engine_err:
         logger.warning("learning_engine branch failed (fallback to ReAct): %s", _engine_err)
 

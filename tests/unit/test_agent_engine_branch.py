@@ -73,6 +73,11 @@ def _base_patches(monkeypatch):
 
     monkeypatch.setattr("app.services.tts_service.synthesize", fake_tts)
 
+    async def fake_dispatch(db, user_id, tool_name, arguments_json, **kw):
+        return {"status": "ok", "tool": tool_name}
+
+    monkeypatch.setattr("app.services.agent_service.dispatch_tool", fake_dispatch)
+
 
 async def _collect_done(monkeypatch, message="帮我安排复习", extra_patches=None):
     from app.services import agent_service
