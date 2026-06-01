@@ -21,6 +21,7 @@ def _run(coro):
     bind=True,
     soft_time_limit=300,
     time_limit=400,
+    acks_late=True,
 )
 def extract_and_embed_kb_file(self, kb_file_id: str) -> dict:
     """Extract text from uploaded KB file and embed into RAG vector store."""
@@ -61,11 +62,33 @@ async def _process_async(kb_file_id: str) -> dict:
         if not chunks:
             raise ValueError(f"No text extracted from {original_name}")
 
-        # Purge existing chunks first (idempotent re-embed)
+        # Safe re-embed strategy:
+        # 1. Upsert all new chunks FIRST (ON CONFLICT DO UPDATE replaces
+        #    same-index chunks atomically).  If this fails mid-loop, old
+        #    vectors for not-yet-overwritten indexes are still intact — far
+        #    better than the old "delete-all-then-upsert" which left the
+        #    index empty on any mid-loop failure.
+        # 2. Only after ALL new chunks are safely written do we purge old
+        #    vectors and re-upsert — this removes stale high-index chunks
+        #    from a previous embed that had more chunks than the current one.
+        for i, chunk in enumerate(chunks):
+            async with AsyncSessionLocal() as db:
+                await upsert_doc(
+                    db,
+                    doc_kind="kb_file",
+                    doc_id=uid,
+                    chunk_index=i,
+                    content=chunk,
+                    user_id=user_id,
+                    project_id=project_id,
+                    metadata={"title": original_name, "file_type": file_type},
+                )
+
+        # All new chunks written successfully — now purge ALL old vectors
+        # (including any stale high-index chunks from a previous larger embed)
+        # then re-insert the current chunks so the index is clean.
         async with AsyncSessionLocal() as db:
             await delete_doc(db, doc_kind="kb_file", doc_id=uid)
-
-        # Upsert each chunk into document_embeddings
         for i, chunk in enumerate(chunks):
             async with AsyncSessionLocal() as db:
                 await upsert_doc(

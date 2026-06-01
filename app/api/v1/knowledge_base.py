@@ -63,14 +63,15 @@ def _resolve_file_type(ext: str, content_type: str | None, content: bytes) -> st
             # PDF: filetype returns "application/pdf"
             if ext == "pdf" and kind.mime == "application/pdf":
                 return "pdf"
-            # DOCX: modern Office Open XML is a ZIP; filetype may return
-            # "application/zip" or the full OOXML mime.
-            if ext == "docx" and kind.mime in (
-                "application/zip",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                "application/x-zip-compressed",
-            ):
+            # DOCX: require filetype to identify it as the exact OOXML MIME.
+            # Accepting "application/zip" or "application/x-zip-compressed"
+            # would allow any ZIP archive (including ZIP bombs or arbitrary
+            # archives with a .docx extension) to pass the check — rejected.
+            if ext == "docx" and kind.mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
                 return "docx"
+            # Reject DOCX extension + generic ZIP MIME — ambiguous, unsafe.
+            if ext == "docx" and kind.mime in ("application/zip", "application/x-zip-compressed"):
+                raise AppError(4151, "文件内容与 .docx 扩展名不符。", 415)
             # If filetype recognised something but it doesn't match, reject.
             if ext == "pdf":
                 raise AppError(4151, "文件内容与 .pdf 扩展名不符。", 415)
@@ -102,7 +103,10 @@ async def upload_kb_file(
         ):
             raise AppError(4151, "这个格式我处理不了。支持 PDF / DOCX / TXT。", 415)
 
-    content = await file.read()
+    # Read at most MAX+1 bytes — avoids loading a multi-GB upload into memory
+    # before the size check.  If the file is exactly 20 MB, read returns 20 MB
+    # (under limit).  If larger, read returns 20 MB + 1 bytes (over limit).
+    content = await file.read(_MAX_FILE_BYTES + 1)
 
     # --- size check ---
     if len(content) > _MAX_FILE_BYTES:
@@ -119,15 +123,15 @@ async def upload_kb_file(
     # --- resolve file type (includes magic-bytes check for pdf/docx) ---
     file_type = _resolve_file_type(ext, file.content_type, content)
 
-    # --- save to disk ---
+    # --- prepare storage path (do NOT write yet) ---
     stored_hex = uuid.uuid4().hex
     stored_filename = f"{stored_hex}.{file_type}"
     upload_dir = Path(settings.LOCAL_UPLOAD_DIR)
     upload_dir.mkdir(parents=True, exist_ok=True)
     filepath = upload_dir / stored_filename
-    filepath.write_bytes(content)
 
-    # --- create DB record ---
+    # --- create DB record FIRST so a failed disk write leaves no orphan row ---
+    # (a failed DB commit leaves no orphan disk file either)
     kb_file = KnowledgeBaseFile(
         user_id=user.id,
         project_id=project_id,
@@ -140,6 +144,15 @@ async def upload_kb_file(
     db.add(kb_file)
     await db.commit()
     await db.refresh(kb_file)
+
+    # --- write file to disk; roll back the DB record if this fails ---
+    try:
+        filepath.write_bytes(content)
+    except Exception as exc:
+        logger.error("upload_kb_file: disk write failed for %s: %s", stored_filename, exc)
+        await db.delete(kb_file)
+        await db.commit()
+        raise AppError(5000, "文件保存失败，请重试", 500) from exc
 
     # --- enqueue embedding task ---
     rag_index.enqueue_kb_file_index(str(kb_file.id))
