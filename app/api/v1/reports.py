@@ -5,7 +5,7 @@ from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.schemas.reports import WeeklyReportOut
-from app.services.reports_service import ReportsService
+from app.services.reports_service import reports_service
 
 router = APIRouter(prefix="/reports", tags=["报告"])
 
@@ -20,6 +20,5 @@ async def get_weekly_report(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    svc = ReportsService()
-    data = await svc.get_weekly_report(db, str(user.id), offset_weeks)
+    data = await reports_service.get_weekly_report(db, str(user.id), offset_weeks)
     return ok(data)

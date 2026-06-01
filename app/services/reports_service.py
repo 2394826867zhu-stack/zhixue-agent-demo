@@ -83,7 +83,7 @@ class ReportsService:
 
         # 2. New knowledge points this week
         new_kp_result = await db.execute(
-            select(func.count()).where(
+            select(func.count()).select_from(KnowledgePoint).where(
                 KnowledgePoint.user_id == uid,
                 func.date(KnowledgePoint.created_at) >= week_start,
                 func.date(KnowledgePoint.created_at) <= week_end,
@@ -92,29 +92,32 @@ class ReportsService:
         new_kps = new_kp_result.scalar() or 0
 
         # 3. Flashcard completion rate
+        # due_cnt = cards with due_date in this week
+        # reviewed_cnt = cards that were BOTH due this week AND reviewed this week
         due_result = await db.execute(
-            select(func.count()).where(
+            select(func.count()).select_from(Flashcard).where(
                 Flashcard.user_id == uid,
                 Flashcard.due_date >= week_start,
                 Flashcard.due_date <= week_end,
             )
         )
+        due_cnt = due_result.scalar_one() or 0
+
         reviewed_result = await db.execute(
-            select(func.count()).where(
+            select(func.count()).select_from(Flashcard).where(
                 Flashcard.user_id == uid,
+                Flashcard.due_date >= week_start,
+                Flashcard.due_date <= week_end,
                 func.date(Flashcard.last_review) >= week_start,
                 func.date(Flashcard.last_review) <= week_end,
             )
         )
-        due_count = due_result.scalar() or 0
-        reviewed_count = reviewed_result.scalar() or 0
-        flashcard_completion_rate = (
-            round(reviewed_count / due_count * 100, 1) if due_count > 0 else 0.0
-        )
+        reviewed_cnt = reviewed_result.scalar_one() or 0
+        flashcard_completion_rate = round(reviewed_cnt / due_cnt * 100, 1) if due_cnt else 0.0
 
         # 4. Training avg score this week
         score_result = await db.execute(
-            select(func.avg(TrainingQuestion.ai_score)).where(
+            select(func.avg(TrainingQuestion.ai_score)).select_from(TrainingQuestion).where(
                 TrainingQuestion.user_id == uid,
                 TrainingQuestion.ai_score.isnot(None),
                 func.date(TrainingQuestion.answered_at) >= week_start,
@@ -124,19 +127,23 @@ class ReportsService:
         avg_score_raw = score_result.scalar()
         training_avg_score = round(float(avg_score_raw), 1) if avg_score_raw is not None else None
 
-        # 5. Wrong count (all-time, not-retried)
+        # 5. Wrong count this week (not-retried)
         wrong_result = await db.execute(
-            select(func.count()).where(
+            select(func.count()).select_from(TrainingQuestion).where(
                 TrainingQuestion.user_id == uid,
-                TrainingQuestion.is_wrong == True,
-                TrainingQuestion.is_retry == False,
+                TrainingQuestion.is_wrong.is_(True),
+                TrainingQuestion.is_retry.is_(False),
+                func.date(TrainingQuestion.answered_at) >= week_start,
+                func.date(TrainingQuestion.answered_at) <= week_end,
             )
         )
         wrong_count = wrong_result.scalar() or 0
 
         # 6. Pomodoro this week
         pomo_result = await db.execute(
-            select(func.count(), func.sum(PomodoroRecord.duration_minutes)).where(
+            select(func.count(), func.sum(PomodoroRecord.duration_minutes))
+            .select_from(PomodoroRecord)
+            .where(
                 PomodoroRecord.user_id == uid,
                 PomodoroRecord.record_date >= week_start,
                 PomodoroRecord.record_date <= week_end,
