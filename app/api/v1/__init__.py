@@ -10,6 +10,8 @@ from app.api.v1 import (
     canvas, user_prefs,
     # v0.34 P1-4
     feynman,
+    # G-P2-7 决策可解释端点
+    learning_engine,
 )
 
 router = APIRouter(prefix="/v1")
@@ -44,3 +46,5 @@ router.include_router(canvas.router)
 router.include_router(user_prefs.router)
 # v0.34 P1-4
 router.include_router(feynman.router)
+# G-P2-7 决策可解释端点
+router.include_router(learning_engine.router)
