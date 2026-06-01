@@ -111,7 +111,7 @@ async def _scan_async() -> dict:
                     else None
                 )
 
-                if not should_send_review_reminder(due_count, True, hours_since):
+                if not should_send_review_reminder(due_count, user.flashcard_reminder_enabled, hours_since):
                     skipped += 1
                     continue
 
