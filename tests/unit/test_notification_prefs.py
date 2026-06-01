@@ -64,6 +64,6 @@ async def test_push_skipped_when_push_disabled(monkeypatch):
     monkeypatch.setattr("app.services.notification_service._push_svc.send_push", fake_send)
 
     svc = notification_service.NotificationService()
-    await svc.create(fake_db, str(fake_user.id), "测试", "test_type")
+    await svc.create(fake_db, str(fake_user.id), "测试", "test_type", force_push=True)
 
     assert push_called == [], "push should NOT be called when push_enabled=False"

@@ -26,6 +26,7 @@ async def send_push(token: str, body: str) -> str | None:
                 json={"to": token, "title": "知曜", "body": body, "sound": "default"},
                 headers={"Accept": "application/json", "Content-Type": "application/json"},
             )
+            resp.raise_for_status()
             tickets = resp.json().get("data", [])
             ticket = tickets[0] if tickets else {}
             if ticket.get("status") == "error":
