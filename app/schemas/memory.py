@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -13,7 +12,7 @@ class MemoryItemOut(BaseModel):
     event_kind: str
     summary: str
     importance: int
-    emotional_tone: Optional[str]
+    emotional_tone: str | None
     occurred_at: datetime
     created_at: datetime
 

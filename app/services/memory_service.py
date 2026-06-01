@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError, PermissionDeniedError
@@ -55,5 +55,5 @@ async def delete_memory(
     if episode.user_id != current_user_id:
         raise PermissionDeniedError("无权删除他人记忆")
 
-    await db.execute(delete(AgentEpisode).where(AgentEpisode.id == episode_id))
+    await db.delete(episode)
     await db.commit()

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """C-15 · 记忆面板路由"""
 import uuid
 
