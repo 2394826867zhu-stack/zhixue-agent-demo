@@ -36,3 +36,11 @@ def test_why_question_not_learning():
 
 def test_empty_message_not_learning():
     assert classify_learning_intent("") is False
+
+
+def test_negative_sentiment_review_not_learning():
+    assert classify_learning_intent("我不想复习") is False
+
+
+def test_complaint_review_not_learning():
+    assert classify_learning_intent("复习好累啊") is False

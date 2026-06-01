@@ -284,7 +284,7 @@ async def run(
     _engine_decision: dict | None = None
     try:
         from app.config import settings as _s
-        if _s.LEARNING_ENGINE_ENABLED:
+        if _s.LEARNING_ENGINE_ENABLED and not plan_summary:
             from app.services.learning_intent import classify_learning_intent
             if classify_learning_intent(message):
                 from app.services.learner_state_service import get_learner_state
