@@ -11,22 +11,9 @@ from app.models.exam import Exam
 from app.models.user import User
 from app.schemas.notification import NotificationOut, NotificationListResponse
 from app.core.exceptions import NotFoundError
+from app.services import push_service as _push_svc
 
 logger = logging.getLogger(__name__)
-
-
-async def _send_expo_push(token: str, body: str) -> None:
-    """Fire-and-forget Expo push. Failures are logged, never raised."""
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=5) as client:
-            await client.post(
-                "https://exp.host/--/api/v2/push/send",
-                json={"to": token, "title": "知曜", "body": body, "sound": "default"},
-                headers={"Accept": "application/json", "Content-Type": "application/json"},
-            )
-    except Exception as e:
-        logger.debug(f"Expo push failed: {e}")
 
 
 class NotificationService:
@@ -125,11 +112,14 @@ class NotificationService:
             # 静默期：只入库不推 Expo，用户次日 06:00 后看到
             return notif
 
-        # Attempt Expo push (non-blocking)
+        # Attempt Expo push — gated on push_enabled (C-21) + token present
         user_row = await db.execute(select(User).where(User.id == uid))
         user = user_row.scalar_one_or_none()
-        if user and user.expo_push_token:
-            await _send_expo_push(user.expo_push_token, content)
+        if user and user.expo_push_token and user.push_enabled:
+            error = await _push_svc.send_push(user.expo_push_token, content)
+            if error == "DeviceNotRegistered":
+                user.expo_push_token = None
+                await db.commit()
 
         return notif
 
