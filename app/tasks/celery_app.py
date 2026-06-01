@@ -17,6 +17,7 @@ celery_app = Celery(
         "app.tasks.dead_letter",  # F-11 · task_failure → 死信队列 + 告警
         "app.tasks.learning_kernel_tasks",  # 学习内核 P0-7 · 掌握度校准监控
         "app.tasks.review_due_tasks",    # C-17/C-19 · FSRS 到期复习推送
+        "app.tasks.checkin_reminder_tasks",  # C-20 · 每日打卡提醒
     ],
 )
 
@@ -90,6 +91,11 @@ celery_app.conf.update(
         "scan-review-due": {
             "task": "app.tasks.review_due_tasks.scan_review_due",
             "schedule": crontab(minute=30) if settings.APP_ENV != "development" else 3600.0,
+        },
+        # C-20 · 每日打卡提醒（每小时 :50 分）
+        "scan-checkin-reminder": {
+            "task": "app.tasks.checkin_reminder_tasks.scan_checkin_reminder",
+            "schedule": crontab(minute=50) if settings.APP_ENV != "development" else 3600.0,
         },
     },
 )
