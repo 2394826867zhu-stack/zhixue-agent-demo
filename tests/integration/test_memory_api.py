@@ -1,5 +1,6 @@
 import uuid
 import pytest
+from datetime import datetime, timedelta, timezone
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,8 +26,19 @@ async def _user_id(client: AsyncClient, token: str) -> uuid.UUID:
     return uuid.UUID(resp.json()["data"]["id"])
 
 
-async def _insert_episode(db: AsyncSession, user_id: uuid.UUID, summary: str = "测试记忆") -> AgentEpisode:
-    episode = AgentEpisode(user_id=user_id, event_kind="streak", summary=summary, importance=5)
+async def _insert_episode(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    summary: str = "测试记忆",
+    occurred_at: datetime | None = None,
+) -> AgentEpisode:
+    episode = AgentEpisode(
+        user_id=user_id,
+        event_kind="streak",
+        summary=summary,
+        importance=5,
+        **({"occurred_at": occurred_at} if occurred_at is not None else {}),
+    )
     db.add(episode)
     await db.commit()
     await db.refresh(episode)
@@ -46,15 +58,17 @@ async def test_list_returns_own_episodes(client: AsyncClient, db: AsyncSession):
     token = await _register(client, "mem_list@zhiyao.ai")
     uid = await _user_id(client, token)
 
-    await _insert_episode(db, uid, "连续学习 3 天")
-    await _insert_episode(db, uid, "知识点复习完成")
+    now = datetime.now(timezone.utc)
+    await _insert_episode(db, uid, "连续学习 3 天", occurred_at=now)
+    await _insert_episode(db, uid, "知识点复习完成", occurred_at=now + timedelta(seconds=1))
 
     resp = await client.get("/v1/memory", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["total"] == 2
     assert len(data["items"]) == 2
-    assert data["items"][0]["summary"] == "知识点复习完成"  # occurred_at DESC
+    assert data["items"][0]["summary"] == "知识点复习完成"  # occurred_at DESC (newer item first)
+    assert data["items"][0]["importance"] == 5
 
 
 @pytest.mark.asyncio
@@ -83,6 +97,7 @@ async def test_delete_own_episode(client: AsyncClient, db: AsyncSession):
 
     list_resp = await client.get("/v1/memory", headers={"Authorization": f"Bearer {token}"})
     assert list_resp.json()["data"]["total"] == 0
+    assert len(list_resp.json()["data"]["items"]) == 0
 
 
 @pytest.mark.asyncio
