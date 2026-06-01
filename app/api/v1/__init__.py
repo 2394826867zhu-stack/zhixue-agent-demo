@@ -12,6 +12,8 @@ from app.api.v1 import (
     feynman,
     # G-P2-7 决策可解释端点
     learning_engine,
+    # D-11 reports
+    reports,
 )
 
 router = APIRouter(prefix="/v1")
@@ -48,3 +50,5 @@ router.include_router(user_prefs.router)
 router.include_router(feynman.router)
 # G-P2-7 决策可解释端点
 router.include_router(learning_engine.router)
+# D-11 reports
+router.include_router(reports.router)
