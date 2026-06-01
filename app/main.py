@@ -75,8 +75,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+def _assert_cors_safe() -> None:
+    """Prevent wildcard CORS in production (F-12)."""
+    if settings.APP_ENV == "production" and "*" in settings.origins_list:
+        raise RuntimeError(
+            "CORS misconfiguration: ALLOWED_ORIGINS contains '*' in production. "
+            "Set ALLOWED_ORIGINS to explicit domain(s) before deploying."
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _assert_cors_safe()
+
     from app.data.seed_curriculum import seed_curriculum
     from app.data.seed_immersion_scenes import seed_immersion_scenes
     from sqlalchemy.ext.asyncio import async_sessionmaker
