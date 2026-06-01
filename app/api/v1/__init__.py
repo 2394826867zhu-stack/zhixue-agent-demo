@@ -16,6 +16,8 @@ from app.api.v1 import (
     reports,
     # D-06 知识库文件管理
     knowledge_base,
+    # E-02/E-03 订阅系统
+    subscription,
 )
 
 router = APIRouter(prefix="/v1")
@@ -56,3 +58,5 @@ router.include_router(learning_engine.router)
 router.include_router(reports.router)
 # D-06 knowledge base
 router.include_router(knowledge_base.router)
+# E-02/E-03 订阅
+router.include_router(subscription.router)
