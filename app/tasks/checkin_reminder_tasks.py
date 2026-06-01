@@ -9,7 +9,7 @@
 """
 import asyncio
 import logging
-from datetime import datetime, timezone, timedelta, date
+from datetime import datetime, timezone, timedelta
 
 from app.tasks.celery_app import celery_app
 
@@ -106,11 +106,12 @@ async def _scan_async() -> dict:
                     )
                 )
                 last_at = last_result.scalar_one()
-                hours_since = (
-                    (now - last_at).total_seconds() / 3600
-                    if last_at and last_at.tzinfo
-                    else None
-                )
+                if last_at is not None:
+                    if last_at.tzinfo is None:
+                        last_at = last_at.replace(tzinfo=timezone.utc)
+                    hours_since = (now - last_at).total_seconds() / 3600
+                else:
+                    hours_since = None
 
                 if not should_send_checkin_reminder(
                     user.daily_reminder_enabled,

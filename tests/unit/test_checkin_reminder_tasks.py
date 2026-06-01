@@ -80,3 +80,13 @@ def test_handles_invalid_time_format():
         hours_since_last_reminder=None,
     )
     assert result is False
+
+
+def test_dedup_boundary_exactly_23h_allows():
+    assert should_send_checkin_reminder(
+        daily_reminder_enabled=True,
+        daily_reminder_time="20:00",
+        current_bj_hour=20,
+        checked_in_today=False,
+        hours_since_last_reminder=23.0,
+    ) is True
