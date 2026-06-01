@@ -18,6 +18,8 @@ from app.api.v1 import (
     knowledge_base,
     # E-02/E-03 订阅系统
     subscription,
+    # C-15 记忆面板
+    memory,
 )
 
 router = APIRouter(prefix="/v1")
@@ -60,3 +62,5 @@ router.include_router(reports.router)
 router.include_router(knowledge_base.router)
 # E-02/E-03 订阅
 router.include_router(subscription.router)
+# C-15 记忆面板
+router.include_router(memory.router)
