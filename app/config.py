@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "http://localhost:3000"
     ALLOWED_ORIGIN_REGEX: str | None = None
 
+    # 学习内核 P2：引擎驱动模式（feature flag，可一键回退旧 ReAct）
+    LEARNING_ENGINE_ENABLED: bool = True
+
     @property
     def origins_list(self) -> list[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]

@@ -278,6 +278,39 @@ async def run(
     # 2. 工具调用轮（最多 MAX_TOOL_ROUNDS 次）
     # v0.30 · 如果走了 Plan-Execute，跳过 ReAct 循环直接进入最终流式回答
     _react_max = 0 if (complexity == "complex" and plan_summary) else MAX_TOOL_ROUNDS
+
+    # G-P2-4 · 学习引擎分支（feature flag: LEARNING_ENGINE_ENABLED）
+    # 意图=学习推进 → 引擎决策 → 直接 dispatch 工具 → LLM 只格式化回复
+    _engine_decision: dict | None = None
+    try:
+        from app.config import settings as _s
+        if _s.LEARNING_ENGINE_ENABLED:
+            from app.services.learning_intent import classify_learning_intent
+            if classify_learning_intent(message):
+                from app.services.learner_state_service import get_learner_state
+                from app.services.learning_engine import recommend_actions, action_to_tool_call
+                _state = await get_learner_state(db, user_id)
+                _actions = recommend_actions(_state)
+                if _actions:
+                    _act = _actions[0]
+                    _tool_nm, _tool_av = action_to_tool_call(_act)
+                    yield f'data: {json.dumps({"thinking": _act.reason}, ensure_ascii=False)}\n\n'
+                    _tool_result = await dispatch_tool(
+                        db, user_id, _tool_nm, json.dumps(_tool_av, ensure_ascii=False)
+                    )
+                    tools_called.append(_tool_nm)
+                    _engine_decision = {"action": _act.action_type, "reason": _act.reason}
+                    _res_txt = json.dumps(_tool_result, ensure_ascii=False)[:2000]
+                    system = (
+                        system
+                        + f"\n\n[引擎决策] {_act.reason}\n"
+                        + f"工具执行结果：{_res_txt}\n"
+                        + "请基于结果用自然语言引导学生，说明为什么这对他有帮助。"
+                    )
+                    _react_max = 0  # 跳过 ReAct 循环
+    except Exception as _engine_err:
+        logger.warning("learning_engine branch failed (fallback to ReAct): %s", _engine_err)
+
     for _ in range(_react_max):
         try:
             choice = await llm_client.call_with_tools(
@@ -348,6 +381,8 @@ async def run(
         "tools_called": tools_called,
         "sources": format_citations(rag_hits),
     }
+    if _engine_decision:
+        done_payload["decision"] = _engine_decision
     if audio_url:
         done_payload["audio_url"] = audio_url
     yield f'data: {json.dumps(done_payload, ensure_ascii=False)}\n\n'
