@@ -15,6 +15,8 @@ from app.schemas.training import (
     AnswerResult,
     ComposeQuizRequest,
 )
+from app.schemas.envelope import Envelope
+from app.schemas.common import PaginatedResponse
 from app.services.training_service import training_service
 
 router = APIRouter(prefix="/training", tags=["训练"])
@@ -24,7 +26,7 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.post("/start", summary="开始训练（single_kp 或 subject 模式）")
+@router.post("/start", summary="开始训练（single_kp 或 subject 模式）", response_model=Envelope[TrainingSessionDetail])
 async def start_training(
     body: TrainingStartRequest,
     user: User = Depends(get_current_user),
@@ -60,7 +62,7 @@ async def start_training(
     return ok(resp)
 
 
-@router.post("/{session_id}/answer/{question_id}", summary="提交答案（AI实时评分）")
+@router.post("/{session_id}/answer/{question_id}", summary="提交答案（AI实时评分）", response_model=Envelope[AnswerResult])
 async def submit_answer(
     session_id: str,
     question_id: str,
@@ -73,7 +75,7 @@ async def submit_answer(
 
 
 # v0.26 · 组卷模式（PRD 9.4 行 645）
-@router.post("/compose-quiz", summary="组卷模式：选题型/题量/难度/范围 生成混合题型")
+@router.post("/compose-quiz", summary="组卷模式：选题型/题量/难度/范围 生成混合题型", response_model=Envelope[TrainingSessionDetail])
 async def compose_quiz(
     body: ComposeQuizRequest,
     user: User = Depends(get_current_user),
@@ -107,7 +109,7 @@ async def compose_quiz(
     return ok(resp)
 
 
-@router.get("", summary="训练历史列表")
+@router.get("", summary="训练历史列表", response_model=Envelope[PaginatedResponse[TrainingSessionOut]])
 async def list_sessions(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
@@ -119,7 +121,7 @@ async def list_sessions(
     return ok({"items": items, "total": result["total"], "page": result["page"], "page_size": result["page_size"]})
 
 
-@router.get("/{session_id}", summary="训练会话详情（含所有题目和答题结果）")
+@router.get("/{session_id}", summary="训练会话详情（含所有题目和答题结果）", response_model=Envelope[TrainingSessionDetail])
 async def get_session(
     session_id: str,
     user: User = Depends(get_current_user),
