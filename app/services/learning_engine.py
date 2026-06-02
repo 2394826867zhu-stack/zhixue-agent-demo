@@ -23,6 +23,7 @@ class ActionType:
     REVIEW_FLASHCARD = "review_flashcard"
     FILL_PREREQUISITE = "fill_prerequisite"
     EXPLORE_FRONTIER = "explore_frontier"
+    TRANSFER_CHALLENGE = "transfer_challenge"  # G-P3-4 迁移挑战（换皮新题验证真懂）
     PRACTICE = "practice"
     EXPAND = "expand"
 
@@ -36,6 +37,7 @@ class RecommendedAction:
 
 
 _WEAK_THRESHOLD = 0.3
+_TRANSFER_THRESHOLD = 0.8  # G-P3-4 掌握度达此阈 → 候选迁移挑战（设计§4.2 迁移探针）
 _DIFFICULTY_TIERS = ("blue", "purple", "gold")
 _GAIN_EST_MINUTES = 10.0  # 前沿动作单次耗时估计（gain 接入用，分钟）
 
@@ -78,7 +80,9 @@ def recommend_actions(learner_state: dict, *, use_gain: bool = False) -> list[Re
         learner_state = {}
 
     due_count = learner_state.get("review_due", {}).get("due", 0)
-    frontier = learner_state.get("knowledge_graph", {}).get("frontier", [])
+    kg = learner_state.get("knowledge_graph", {})
+    frontier = kg.get("frontier", [])
+    transfer = kg.get("transfer_candidates", [])  # G-P3-4 已掌握待迁移验证的节点
     weak = [n for n in frontier if n.get("p_mastery", 0.0) < _WEAK_THRESHOLD]
     non_weak = [n for n in frontier if n.get("p_mastery", 0.0) >= _WEAK_THRESHOLD]
     if use_gain:
@@ -89,7 +93,7 @@ def recommend_actions(learner_state: dict, *, use_gain: bool = False) -> list[Re
         # P2：non_weak 按掌握度升序，引擎挑最低掌握的前沿（Fix 3）
         non_weak.sort(key=lambda n: n.get("p_mastery", 0.0))
 
-    has_signal = due_count > 0 or bool(weak) or bool(non_weak)
+    has_signal = due_count > 0 or bool(weak) or bool(non_weak) or bool(transfer)
     if not has_signal:
         return _fallback_actions(learner_state)
 
@@ -119,6 +123,16 @@ def recommend_actions(learner_state: dict, *, use_gain: bool = False) -> list[Re
             action_type=ActionType.EXPLORE_FRONTIER,
             reason=f"推荐学习「{target.get('name', '')}」，你的先修知识已就绪",
             params={"kp_id": target.get("id", ""), "kp_name": target.get("name", "")},
+            priority=3,
+        ))
+
+    if transfer:
+        # G-P3-4：已掌握节点出迁移挑战（换皮新题，测真懂还是背的；设计§3.2 ④）
+        t = transfer[0]
+        actions.append(RecommendedAction(
+            action_type=ActionType.TRANSFER_CHALLENGE,
+            reason=f"「{t.get('name', '')}」你已掌握得不错，来个迁移挑战——换个情境验证是真懂还是背的",
+            params={"kp_id": t.get("id", ""), "kp_name": t.get("name", "")},
             priority=3,
         ))
 
@@ -221,6 +235,15 @@ def action_to_tool_call(action: RecommendedAction) -> tuple[str, dict]:
             "difficulty_tiers": ["blue"],
             "question_count": 5,
             "note": kp_name,
+        })
+    if t == ActionType.TRANSFER_CHALLENGE:
+        # 迁移挑战：高阶 gold 难度换皮新题，少而精
+        kp_id = action.params.get("kp_id", "")
+        return ("start_training", {
+            "knowledge_point_ids": [kp_id] if kp_id else [],
+            "difficulty_tiers": ["gold"],
+            "question_count": 3,
+            "note": action.params.get("kp_name", ""),
         })
     if t == ActionType.PRACTICE:
         return ("start_training", {"question_count": 10, "difficulty_tiers": ["blue", "purple"]})

@@ -23,6 +23,7 @@ from app.services import graph_service
 logger = logging.getLogger(__name__)
 
 _MASTERED_THRESHOLD = 0.6  # 与 graph_service.learnable_frontier 默认一致
+_TRANSFER_THRESHOLD = 0.8  # G-P3-4 掌握度达此阈 → 迁移挑战候选（与 learning_engine 一致）
 
 
 async def get_learner_state(db: AsyncSession, user_id: str) -> dict:
@@ -65,6 +66,14 @@ async def get_learner_state(db: AsyncSession, user_id: str) -> dict:
         for fid in frontier_ids[:10]
     ]
 
+    # ---- P3 G-P3-4：已掌握待迁移验证的节点（掌握度高 → 换皮新题测真懂）----
+    # 注：迁移探针去重（last_probe 近期已迁移过则跳过）待 P4 真实探针回流接入。
+    transfer_candidates = [
+        {"id": sid, "name": id_to_name.get(sid, ""), "p_mastery": round(v, 3)}
+        for sid, v in sorted(mastery.items(), key=lambda kv: kv[1], reverse=True)
+        if v >= _TRANSFER_THRESHOLD
+    ][:5]
+
     # ---- 待复习闪卡 ----
     due = await db.execute(
         select(func.count(Flashcard.id)).where(
@@ -102,6 +111,7 @@ async def get_learner_state(db: AsyncSession, user_id: str) -> dict:
             "mastered": mastered,
             "learning": learning,
             "frontier": frontier,
+            "transfer_candidates": transfer_candidates,
         },
         "review_due": {"due": due_count},
         "exams": exams_block,
