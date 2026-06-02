@@ -18,8 +18,22 @@ from app.schemas.project import (
 )
 from app.services.project_service import project_service
 from app.services.project_tree_service import project_tree_service
+from app.schemas.envelope import Envelope
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/projects", tags=["项目系统"])
+
+
+class ProjectDeleteResult(BaseModel):
+    deleted: bool
+
+
+class ProjectReorderResult(BaseModel):
+    reordered: bool
+
+
+class TreeGenerateResult(BaseModel):
+    nodes_added: int
 
 
 def ok(data):
@@ -28,7 +42,7 @@ def ok(data):
 
 # ── 列表 / 详情 ─────────────────────────────────────────────────────
 
-@router.get("", summary="项目列表")
+@router.get("", summary="项目列表", response_model=Envelope[ProjectListResponse])
 async def list_projects(
     status: str | None = Query(default=None, description="active|paused|completed|archived"),
     page: int = Query(1, ge=1),
@@ -72,7 +86,7 @@ async def list_projects(
     )
 
 
-@router.get("/{project_id}", summary="项目详情（含时间线+phase+milestone）")
+@router.get("/{project_id}", summary="项目详情（含时间线+phase+milestone）", response_model=Envelope[ProjectDetail])
 async def get_project(
     project_id: str,
     user: User = Depends(get_current_user),
@@ -109,7 +123,7 @@ async def get_project(
 
 # ── 创建 ────────────────────────────────────────────────────────────
 
-@router.post("", summary="直接创建项目（结构化）")
+@router.post("", summary="直接创建项目（结构化）", response_model=Envelope[ProjectListItem])
 async def create_project(
     data: ProjectCreate,
     user: User = Depends(get_current_user),
@@ -119,7 +133,7 @@ async def create_project(
     return ok(ProjectListItem.model_validate(proj).model_dump(mode="json"))
 
 
-@router.post("/from-agent-dialog/preview", summary="Agent 对话式创建 · 计算预览卡（结构化输入）")
+@router.post("/from-agent-dialog/preview", summary="Agent 对话式创建 · 计算预览卡（结构化输入）", response_model=Envelope[ProjectPreviewCard])
 async def preview_from_dialog(
     draft: ProjectInitDraft,
     user: User = Depends(get_current_user),
@@ -130,7 +144,7 @@ async def preview_from_dialog(
     return ok(preview.model_dump(mode="json"))
 
 
-@router.post("/from-agent-dialog/llm-preview", summary="Agent 对话式创建 · LLM 整理自然语言")
+@router.post("/from-agent-dialog/llm-preview", summary="Agent 对话式创建 · LLM 整理自然语言", response_model=Envelope[ProjectPreviewCard | None])
 async def llm_preview_from_dialog(
     body: dict,
     user: User = Depends(get_current_user),
@@ -146,7 +160,7 @@ async def llm_preview_from_dialog(
     return ok(preview.model_dump(mode="json"))
 
 
-@router.post("/from-agent-dialog/confirm", summary="Agent 对话式创建 · 确认生成项目")
+@router.post("/from-agent-dialog/confirm", summary="Agent 对话式创建 · 确认生成项目", response_model=Envelope[ProjectListItem])
 async def confirm_from_dialog(
     req: ProjectConfirmRequest,
     user: User = Depends(get_current_user),
@@ -159,7 +173,7 @@ async def confirm_from_dialog(
 
 # ── 更新 / 删除 / 排序 ──────────────────────────────────────────────
 
-@router.patch("/{project_id}", summary="编辑（仅名+简介，PRD 9.1）")
+@router.patch("/{project_id}", summary="编辑（仅名+简介，PRD 9.1）", response_model=Envelope[ProjectListItem])
 async def update_project(
     project_id: str,
     data: ProjectUpdate,
@@ -170,7 +184,7 @@ async def update_project(
     return ok(ProjectListItem.model_validate(proj).model_dump(mode="json"))
 
 
-@router.delete("/{project_id}", summary="删除项目（前端走系统确认弹窗）")
+@router.delete("/{project_id}", summary="删除项目（前端走系统确认弹窗）", response_model=Envelope[ProjectDeleteResult])
 async def delete_project(
     project_id: str,
     user: User = Depends(get_current_user),
@@ -180,7 +194,7 @@ async def delete_project(
     return ok({"deleted": True})
 
 
-@router.post("/reorder", summary="拖动排序")
+@router.post("/reorder", summary="拖动排序", response_model=Envelope[ProjectReorderResult])
 async def reorder(
     req: ProjectReorderRequest,
     user: User = Depends(get_current_user),
@@ -192,7 +206,7 @@ async def reorder(
 
 # ── 数据栏 ──────────────────────────────────────────────────────────
 
-@router.get("/{project_id}/data", summary="项目数据栏（环状图）")
+@router.get("/{project_id}/data", summary="项目数据栏（环状图）", response_model=Envelope[ProjectDataSummary])
 async def get_data(
     project_id: str,
     user: User = Depends(get_current_user),
@@ -204,7 +218,7 @@ async def get_data(
 
 # ── 树状路径 ────────────────────────────────────────────────────────
 
-@router.post("/{project_id}/tree/generate", summary="LLM 生成树节点（项目创建后由 Agent 调用）")
+@router.post("/{project_id}/tree/generate", summary="LLM 生成树节点（项目创建后由 Agent 调用）", response_model=Envelope[TreeGenerateResult])
 async def generate_tree(
     project_id: str,
     user: User = Depends(get_current_user),
@@ -217,7 +231,7 @@ async def generate_tree(
     return ok({"nodes_added": count})
 
 
-@router.get("/{project_id}/tree", summary="树状路径节点（扁平列表）")
+@router.get("/{project_id}/tree", summary="树状路径节点（扁平列表）", response_model=Envelope[list[TreeNodeOut]])
 async def get_tree(
     project_id: str,
     user: User = Depends(get_current_user),
@@ -227,7 +241,7 @@ async def get_tree(
     return ok([n.model_dump(mode="json") for n in nodes])
 
 
-@router.get("/{project_id}/tree/nodes/{node_id}", summary="节点点击气泡详情")
+@router.get("/{project_id}/tree/nodes/{node_id}", summary="节点点击气泡详情", response_model=Envelope[TreeNodeBubble])
 async def get_node_bubble(
     project_id: str,
     node_id: str,
