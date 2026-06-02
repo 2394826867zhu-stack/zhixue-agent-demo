@@ -1,0 +1,74 @@
+name: backend-ci
+
+# SDD Phase 0 硬闸门：
+#  - contract-gates（无 DB）：response_model 覆盖率 + openapi.json 一致性
+#  - alembic：空库全链 upgrade（迁移可用）
+#  - pytest：全量回归（含 contract 测试）
+# 任一红即挡住合并。
+
+on:
+  push:
+    branches: [main, "sdd/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  contract-gates:
+    # 纯路由内省 + openapi 生成比对，不需要任何外部服务，最快失败。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: pip install -r requirements.txt
+      - name: response_model 覆盖率闸门
+        env:
+          PYTHONPATH: .
+        run: python -m pytest tests/contract/test_response_model_coverage.py -q
+      - name: openapi.json 一致性闸门
+        env:
+          PYTHONPATH: .
+        run: python tools/gen_openapi.py --check
+
+  tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: zhiyao
+          POSTGRES_PASSWORD: zhiyao_dev_password
+          POSTGRES_DB: zhiyao_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U zhiyao -d zhiyao_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: postgresql+asyncpg://zhiyao:zhiyao_dev_password@localhost:5432/zhiyao_test
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET_KEY: ci_dummy_secret_key_not_for_prod
+      ADMIN_JWT_SECRET: ci_dummy_admin_secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: pip install -r requirements.txt
+      - name: alembic 空库全链 upgrade
+        run: python -m alembic upgrade head
+      - name: alembic 漂移检测（模型改了必须有迁移）
+        # autogenerate diff 非空 → 说明模型与迁移漂移。允许告警不阻断，
+        # 待迁移基线稳定后改为硬失败（去掉 || true）。
+        run: python -m alembic check || echo "::warning::alembic check 发现模型/迁移漂移，请补迁移"
+      - name: pytest 全量回归（含 contract）
+        run: python -m pytest tests/unit tests/integration tests/contract -q
