@@ -14,8 +14,20 @@ from app.api.deps import get_current_user
 from app.services.learner_state_service import get_learner_state
 from app.services.learning_engine import recommend_actions
 from app.services.anchor_service import compute_score_anchor
+from app.services.dashboard_service import compute_dashboard
 
 router = APIRouter(prefix="/learning", tags=["learning-engine"])
+
+
+@router.get("/dashboard", summary="G-P4-4 效率仪表盘：诚实 +1σ 产出 + 效率信号 + 外部锚")
+async def get_dashboard(
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """对用户/家长可展示的诚实仪表盘：产出按 +1σ 表述、效率维度信号、外部成绩锚。
+    数据缺失 → 增益 None，诚实框架仍在场（不喊未经证据的产出倍数）。"""
+    data = await compute_dashboard(db, str(current_user.id))
+    return {"code": 200, "message": "success", "data": data}
 
 
 @router.get("/score-anchor", summary="G-P4-2 外部成绩锚：我的考试分 vs 内部掌握度相关")
