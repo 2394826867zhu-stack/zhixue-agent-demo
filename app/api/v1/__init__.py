@@ -28,6 +28,8 @@ from app.api.v1 import (
     support, feedback, faq,
     # E-10 邀请好友
     referral,
+    # E-12 共同专注
+    cowork,
 )
 
 router = APIRouter(prefix="/v1")
@@ -82,3 +84,5 @@ router.include_router(feedback.router)
 router.include_router(faq.router)
 # E-10 · 邀请好友
 router.include_router(referral.router)
+# E-12 · 共同专注
+router.include_router(cowork.router)
