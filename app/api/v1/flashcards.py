@@ -5,6 +5,8 @@ from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.schemas.flashcard import FlashcardResponse, FlashcardCreateRequest, ReviewRequest, ReviewResponse
+from app.schemas.envelope import Envelope
+from app.schemas.common import PaginatedResponse
 from app.services.fsrs_service import fsrs_service
 
 router = APIRouter(prefix="/flashcards", tags=["闪卡复习"])
@@ -14,7 +16,7 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.get("/due", summary="今日待复习闪卡列表")
+@router.get("/due", summary="今日待复习闪卡列表", response_model=Envelope[PaginatedResponse[FlashcardResponse]])
 async def get_due_cards(
     subject: str | None = Query(None),
     page: int = Query(1, ge=1),
@@ -30,7 +32,7 @@ async def get_due_cards(
     return ok({"items": items, "total": result["total"], "page": result["page"], "page_size": result["page_size"]})
 
 
-@router.post("", summary="手动创建闪卡")
+@router.post("", summary="手动创建闪卡", response_model=Envelope[FlashcardResponse])
 async def create_card(
     body: FlashcardCreateRequest,
     user: User = Depends(get_current_user),
@@ -43,7 +45,7 @@ async def create_card(
     return ok({**resp.model_dump(), "memory_state": card.memory_state})
 
 
-@router.get("", summary="全量闪卡列表")
+@router.get("", summary="全量闪卡列表", response_model=Envelope[PaginatedResponse[FlashcardResponse]])
 async def list_cards(
     knowledge_point_id: str | None = Query(None),
     subject: str | None = Query(None),
@@ -61,7 +63,7 @@ async def list_cards(
     return ok({"items": items, "total": result["total"], "page": result["page"], "page_size": result["page_size"]})
 
 
-@router.get("/{card_id}", summary="闪卡详情")
+@router.get("/{card_id}", summary="闪卡详情", response_model=Envelope[FlashcardResponse])
 async def get_card(
     card_id: str,
     user: User = Depends(get_current_user),
@@ -73,7 +75,7 @@ async def get_card(
     return ok(resp)
 
 
-@router.post("/{card_id}/review", summary="提交复习评分（触发FSRS调度）")
+@router.post("/{card_id}/review", summary="提交复习评分（触发FSRS调度）", response_model=Envelope[ReviewResponse])
 async def review_card(
     card_id: str,
     body: ReviewRequest,
@@ -84,7 +86,7 @@ async def review_card(
     return ok(ReviewResponse(**result))
 
 
-@router.delete("/{card_id}", summary="删除闪卡")
+@router.delete("/{card_id}", summary="删除闪卡", response_model=Envelope[None])
 async def delete_card(
     card_id: str,
     user: User = Depends(get_current_user),
