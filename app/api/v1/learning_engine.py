@@ -6,11 +6,13 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.database import get_db
 from app.api.deps import get_current_user
+from app.schemas.envelope import Envelope
 from app.services.learner_state_service import get_learner_state
 from app.services.learning_engine import recommend_actions
 from app.services.anchor_service import compute_score_anchor
@@ -19,7 +21,26 @@ from app.services.dashboard_service import compute_dashboard
 router = APIRouter(prefix="/learning", tags=["learning-engine"])
 
 
-@router.get("/dashboard", summary="G-P4-4 效率仪表盘：诚实 +1σ 产出 + 效率信号 + 外部锚")
+class RecommendedAction(BaseModel):
+    action_type: str
+    reason: str
+    params: dict
+    priority: int
+
+
+class LearnerStateSummary(BaseModel):
+    due_count: int
+    frontier_count: int
+    stress_level: str
+
+
+class RecommendedActionsOut(BaseModel):
+    actions: list[RecommendedAction]
+    learner_state_summary: LearnerStateSummary
+
+
+# TODO(SDD): 精化 compute_dashboard 的嵌套诚实仪表盘 schema（当前 Envelope[dict]）
+@router.get("/dashboard", summary="G-P4-4 效率仪表盘：诚实 +1σ 产出 + 效率信号 + 外部锚", response_model=Envelope[dict])
 async def get_dashboard(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
@@ -30,7 +51,8 @@ async def get_dashboard(
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.get("/score-anchor", summary="G-P4-2 外部成绩锚：我的考试分 vs 内部掌握度相关")
+# TODO(SDD): 精化 compute_score_anchor schema（当前 Envelope[dict]）
+@router.get("/score-anchor", summary="G-P4-2 外部成绩锚：我的考试分 vs 内部掌握度相关", response_model=Envelope[dict])
 async def get_score_anchor(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
@@ -41,7 +63,7 @@ async def get_score_anchor(
     return {"code": 200, "message": "success", "data": report}
 
 
-@router.get("/recommended-actions")
+@router.get("/recommended-actions", response_model=Envelope[RecommendedActionsOut])
 async def get_recommended_actions(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
