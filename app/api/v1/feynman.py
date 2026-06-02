@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.user import User
+from app.schemas.envelope import Envelope
 from app.services.feynman_service import feynman_service
 
 router = APIRouter(prefix="/feynman", tags=["费曼输出"])
@@ -21,7 +22,32 @@ class FeynmanSubmit(BaseModel):
     ss_session_id: str | None = None
 
 
-@router.post("", summary="提交费曼解释并自动评分")
+class FeynmanSubmitResult(BaseModel):
+    attempt_id: str
+    status: str
+    accuracy: int | None = None
+    completeness: int | None = None
+    clarity: int | None = None
+    total: int | None = None
+    gaps: list = []
+    feedback: str | None = None
+    created_at: str | None = None
+
+
+class FeynmanAttemptItem(BaseModel):
+    id: str
+    kp_id: str
+    total_score: int | None = None
+    accuracy: int | None = None
+    completeness: int | None = None
+    clarity: int | None = None
+    gaps: list = []
+    feedback: str | None = None
+    status: str
+    created_at: str | None = None
+
+
+@router.post("", summary="提交费曼解释并自动评分", response_model=Envelope[FeynmanSubmitResult])
 async def submit_feynman(
     body: FeynmanSubmit,
     user: User = Depends(get_current_user),
@@ -43,7 +69,7 @@ async def submit_feynman(
     })
 
 
-@router.get("", summary="历史费曼记录列表")
+@router.get("", summary="历史费曼记录列表", response_model=Envelope[list[FeynmanAttemptItem]])
 async def list_attempts(
     kp_id: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
