@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.admin_auth import get_current_admin
 from app.schemas.faq import FaqItemCreate, FaqItemUpdate
+from app.schemas.envelope import Envelope
 from app.services import faq_service
 
 router = APIRouter()
@@ -27,7 +28,7 @@ def _dump(item):
     }
 
 
-@router.get("/faq", summary="全部 FAQ（含未发布）")
+@router.get("/faq", summary="全部 FAQ（含未发布）", response_model=Envelope[list[dict]])
 async def list_faq(
     db: AsyncSession = Depends(get_db),
     _: dict = Depends(get_current_admin),
@@ -36,7 +37,7 @@ async def list_faq(
     return ok([_dump(i) for i in items])
 
 
-@router.post("/faq", summary="新建 FAQ 条目")
+@router.post("/faq", summary="新建 FAQ 条目", response_model=Envelope[dict])
 async def create_faq(
     body: FaqItemCreate,
     db: AsyncSession = Depends(get_db),
@@ -47,7 +48,7 @@ async def create_faq(
     return ok(_dump(item))
 
 
-@router.patch("/faq/{item_id}", summary="编辑 FAQ 条目")
+@router.patch("/faq/{item_id}", summary="编辑 FAQ 条目", response_model=Envelope[dict])
 async def update_faq(
     item_id: uuid.UUID,
     body: FaqItemUpdate,
@@ -59,7 +60,7 @@ async def update_faq(
     return ok(_dump(item))
 
 
-@router.delete("/faq/{item_id}", summary="删除 FAQ 条目")
+@router.delete("/faq/{item_id}", summary="删除 FAQ 条目", response_model=Envelope[None])
 async def delete_faq(
     item_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
