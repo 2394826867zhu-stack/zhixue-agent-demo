@@ -183,12 +183,15 @@ class MistakeService:
             raise ValidationError("该重练题已作答")
 
         from app.services.training_service import TrainingService
-        score, feedback, is_wrong = await TrainingService()._grade_answer(retry_q, user_answer)
+        # _grade_answer 返回 4 元组（score, feedback, is_wrong, error_reason）——
+        # 此前只解包 3 个 → ValueError → 错题重练提交必 500（修复）
+        score, feedback, is_wrong, error_reason = await TrainingService()._grade_answer(retry_q, user_answer)
 
         retry_q.user_answer = user_answer
         retry_q.ai_score = score
         retry_q.ai_feedback = feedback
         retry_q.is_wrong = is_wrong
+        retry_q.error_reason = error_reason if is_wrong else None
         retry_q.answered_at = datetime.now(timezone.utc)
 
         mistake_resolved = not is_wrong
