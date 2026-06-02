@@ -38,6 +38,12 @@ from app.models.dead_letter import DeadLetterTask
 from app.models.kb_file import KnowledgeBaseFile
 # E-01 · 订阅事件
 from app.models.subscription_event import SubscriptionEvent  # noqa: F401
+# E-05 · 自建客服
+from app.models.support import SupportThread, SupportMessage  # noqa: F401
+# E-07 · 用户反馈上报
+from app.models.feedback import Feedback  # noqa: F401
+# E-06 · 帮助中心 FAQ
+from app.models.faq import FaqItem  # noqa: F401
 
 __all__ = [
     "User", "Note", "KnowledgePoint", "Flashcard",
@@ -63,4 +69,7 @@ __all__ = [
     "FeynmanAttempt",
     "KnowledgeBaseFile",
     "SubscriptionEvent",
+    "SupportThread", "SupportMessage",
+    "Feedback",
+    "FaqItem",
 ]
