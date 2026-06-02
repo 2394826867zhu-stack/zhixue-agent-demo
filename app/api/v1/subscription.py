@@ -8,7 +8,9 @@ from app.core.exceptions import AppError
 from app.config import settings
 from app.models.user import User
 from app.schemas.subscription import SubscriptionStatusOut, SubscriptionFeatures
-from app.services.subscription_service import get_status, verify_webhook_auth, apply_revenuecat_event
+from app.services.subscription_service import (
+    get_status, verify_webhook_auth, apply_revenuecat_event, start_trial,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,20 +21,32 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
+def _to_out(data: dict) -> SubscriptionStatusOut:
+    return SubscriptionStatusOut(
+        plan_type=data["plan_type"],
+        is_pro=data["is_pro"],
+        plan_expires_at=data["plan_expires_at"],
+        days_remaining=data["days_remaining"],
+        is_trial=data.get("is_trial", False),
+        trial_available=data.get("trial_available", False),
+        features=SubscriptionFeatures(**data["features"]),
+    )
+
+
 @router.get("/status", summary="当前订阅状态")
 async def subscription_status(
     user: User = Depends(get_current_user),
 ):
-    data = get_status(user)
-    return ok(
-        SubscriptionStatusOut(
-            plan_type=data["plan_type"],
-            is_pro=data["is_pro"],
-            plan_expires_at=data["plan_expires_at"],
-            days_remaining=data["days_remaining"],
-            features=SubscriptionFeatures(**data["features"]),
-        )
-    )
+    return ok(_to_out(get_status(user)))
+
+
+@router.post("/trial", summary="启动 7 天 Pro 免费试用（每人仅一次）")
+async def start_pro_trial(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    data = await start_trial(db, user)
+    return ok(_to_out(data))
 
 
 @router.post("/webhook", summary="RevenueCat webhook（服务端专用）")

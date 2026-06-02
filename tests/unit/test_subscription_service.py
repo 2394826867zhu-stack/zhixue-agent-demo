@@ -8,10 +8,13 @@ from unittest.mock import MagicMock
 from app.services.subscription_service import is_pro, get_status, verify_webhook_auth
 
 
-def _user(plan_type: str, expires_at=None) -> MagicMock:
+def _user(plan_type: str, expires_at=None, trial_used: bool = False, trial_ends_at=None) -> MagicMock:
     u = MagicMock()
     u.plan_type = plan_type
     u.plan_expires_at = expires_at
+    # E-04 · 镜像真实 User 的试用字段（默认未用过试用、无试用到期）
+    u.trial_used = trial_used
+    u.trial_ends_at = trial_ends_at
     return u
 
 

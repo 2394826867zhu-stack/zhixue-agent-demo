@@ -10,15 +10,19 @@ from __future__ import annotations
 import hmac
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select
 
+from app.core.exceptions import AppError
 from app.models.subscription_event import SubscriptionEvent
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
+
+# E-04 · 免费试用天数
+TRIAL_DAYS = 7
 
 # RevenueCat event types that grant or revoke Pro access
 _GRANT_EVENTS = {"INITIAL_PURCHASE", "RENEWAL", "PRODUCT_CHANGE", "UNCANCELLATION"}
@@ -37,6 +41,20 @@ def is_pro(user) -> bool:
     return False
 
 
+def is_on_trial(user) -> bool:
+    """当前 Pro 是否来自免费试用（trial_ends_at 在未来且仍是 pro）。"""
+    return (
+        user.plan_type == "pro"
+        and getattr(user, "trial_ends_at", None) is not None
+        and user.trial_ends_at > datetime.now(timezone.utc)
+    )
+
+
+def trial_available(user) -> bool:
+    """是否还能领取免费试用：未用过 且 当前是 free。"""
+    return (not getattr(user, "trial_used", False)) and user.plan_type == "free"
+
+
 def get_status(user) -> dict[str, Any]:
     """Return subscription status dict for the /status endpoint."""
     pro = is_pro(user)
@@ -50,12 +68,50 @@ def get_status(user) -> dict[str, Any]:
         "is_pro": pro,
         "plan_expires_at": user.plan_expires_at,
         "days_remaining": days_remaining,
+        "is_trial": is_on_trial(user),
+        "trial_available": trial_available(user),
         "features": {
             "unlimited_agent": pro,
             "advanced_reports": pro,
             "knowledge_base_upload": pro,
         },
     }
+
+
+async def start_trial(db, user: User) -> dict[str, Any]:
+    """E-04 · 启动 7 天 Pro 免费试用（每人仅一次）。
+
+    守卫：已是 Pro/Edu → 拒绝；已用过试用 → 拒绝。
+    成功：plan_type=pro + plan_expires_at/trial_ends_at = now+7d + trial_used=True，
+    并写一条 TRIAL_START 审计事件。
+    """
+    if user.plan_type in ("pro", "edu") and is_pro(user):
+        raise AppError(4003, "你已经是 Pro 会员了，无需试用", 400)
+    if getattr(user, "trial_used", False):
+        raise AppError(4003, "你已经使用过免费试用啦", 400)
+
+    now = datetime.now(timezone.utc)
+    ends = now + timedelta(days=TRIAL_DAYS)
+    user.plan_type = "pro"
+    user.plan_expires_at = ends
+    user.trial_ends_at = ends
+    user.trial_used = True
+
+    db.add(SubscriptionEvent(
+        user_id=user.id,
+        revenuecat_event_id=f"trial:{user.id}",  # 唯一约束兜底防重复领取
+        event_type="TRIAL_START",
+        product_id=None,
+        expires_at=ends,
+        raw_payload={"source": "in_app_trial", "trial_days": TRIAL_DAYS},
+    ))
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+    await db.refresh(user)
+    return get_status(user)
 
 
 def verify_webhook_auth(authorization_header: str | None, secret: str) -> bool:
@@ -118,6 +174,7 @@ async def apply_revenuecat_event(db, payload: dict) -> None:
         if event_type in _GRANT_EVENTS:
             user.plan_type = "pro"
             user.plan_expires_at = expires_at
+            user.trial_ends_at = None  # 付费订阅取代试用，状态不再显示「试用中」
         elif event_type in _REVOKE_EVENTS:
             user.plan_type = "free"
             user.plan_expires_at = None

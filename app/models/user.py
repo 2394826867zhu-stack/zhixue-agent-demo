@@ -62,6 +62,12 @@ class User(Base):
     plan_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # E-04 · 7 天 Pro 试用：每人仅一次。trial_used 防重复领取；
+    # trial_ends_at 在未来则当前 Pro 来自试用（状态区分试用 vs 付费）。
+    trial_used: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    trial_ends_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
