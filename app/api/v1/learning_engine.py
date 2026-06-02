@@ -13,8 +13,20 @@ from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.services.learner_state_service import get_learner_state
 from app.services.learning_engine import recommend_actions
+from app.services.anchor_service import compute_score_anchor
 
 router = APIRouter(prefix="/learning", tags=["learning-engine"])
+
+
+@router.get("/score-anchor", summary="G-P4-2 外部成绩锚：我的考试分 vs 内部掌握度相关")
+async def get_score_anchor(
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """录入真实考试分（exam.score_pct）后，与内部掌握概率做相关，验证度量不自欺。
+    数据不足（<2 / 零方差）→ correlation=None，诚实留空。"""
+    report = await compute_score_anchor(db, user_id=str(current_user.id))
+    return {"code": 200, "message": "success", "data": report}
 
 
 @router.get("/recommended-actions")

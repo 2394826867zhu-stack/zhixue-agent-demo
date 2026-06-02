@@ -3,11 +3,23 @@ from datetime import datetime, date
 from pydantic import BaseModel, field_validator, computed_field
 
 
+def _check_score_pct(v: float | None) -> float | None:
+    if v is not None and not (0.0 <= v <= 100.0):
+        raise ValueError("成绩百分比需在 0-100 之间")
+    return v
+
+
 class ExamCreate(BaseModel):
     name: str
     subject: str | None = None
     exam_date: date
     notes: str | None = None
+    score_pct: float | None = None  # G-P4-2 · 可选，考后录入
+
+    @field_validator("score_pct")
+    @classmethod
+    def _vc_score(cls, v: float | None) -> float | None:
+        return _check_score_pct(v)
 
     @field_validator("name")
     @classmethod
@@ -32,6 +44,12 @@ class ExamUpdate(BaseModel):
     subject: str | None = None
     exam_date: date | None = None
     notes: str | None = None
+    score_pct: float | None = None  # G-P4-2 · 考后录入真实成绩
+
+    @field_validator("score_pct")
+    @classmethod
+    def _vu_score(cls, v: float | None) -> float | None:
+        return _check_score_pct(v)
 
     @field_validator("name")
     @classmethod
@@ -59,6 +77,7 @@ class ExamOut(BaseModel):
     subject: str | None
     exam_date: date
     notes: str | None
+    score_pct: float | None = None
     created_at: datetime
 
     @computed_field
