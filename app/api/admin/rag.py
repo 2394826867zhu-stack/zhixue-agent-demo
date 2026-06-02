@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.admin_auth import get_current_admin
 from app.core.database import get_db
 from app.schemas.envelope import Envelope
+from app.schemas.admin_responses import RagBackfillResult, RecallStatsOut, LowQualitySamplesOut
 from app.services import rag_index, rag_service
 
 router = APIRouter()
@@ -14,7 +15,7 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.post("/rag/backfill/{user_id}", summary="触发用户 RAG 向量回填", response_model=Envelope[dict])
+@router.post("/rag/backfill/{user_id}", summary="触发用户 RAG 向量回填", response_model=Envelope[RagBackfillResult])
 async def trigger_backfill(
     user_id: str,
     _: dict = Depends(get_current_admin),
@@ -24,7 +25,7 @@ async def trigger_backfill(
     return ok({"queued": True, "user_id": user_id})
 
 
-@router.get("/rag/recall-stats", summary="RAG 召回质量聚合（E 可观测）", response_model=Envelope[dict])
+@router.get("/rag/recall-stats", summary="RAG 召回质量聚合（E 可观测）", response_model=Envelope[RecallStatsOut])
 async def recall_stats(
     days: int = Query(7, ge=1, le=90),
     low_score_threshold: float = Query(0.5, ge=0.0, le=1.0),
@@ -36,7 +37,7 @@ async def recall_stats(
     return ok(stats)
 
 
-@router.get("/rag/low-quality-samples", summary="低质召回脱敏样本（E→B 评估集沉淀）", response_model=Envelope[dict])
+@router.get("/rag/low-quality-samples", summary="低质召回脱敏样本（E→B 评估集沉淀）", response_model=Envelope[LowQualitySamplesOut])
 async def low_quality_samples(
     days: int = Query(7, ge=1, le=90),
     limit: int = Query(100, ge=1, le=500),

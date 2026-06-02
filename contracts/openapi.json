@@ -49,6 +49,54 @@
         "title": "AchievementOut",
         "type": "object"
       },
+      "AdminConfigOut": {
+        "properties": {
+          "announcement": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Announcement"
+          },
+          "feature_flags": {
+            "additionalProperties": true,
+            "title": "Feature Flags",
+            "type": "object"
+          },
+          "min_app_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min App Version"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "feature_flags"
+        ],
+        "title": "AdminConfigOut",
+        "type": "object"
+      },
       "AdminLoginRequest": {
         "properties": {
           "email": {
@@ -96,6 +144,51 @@
         "title": "AdminLoginResponse",
         "type": "object"
       },
+      "AdminQuotaOut": {
+        "properties": {
+          "daily_token_limit": {
+            "title": "Daily Token Limit",
+            "type": "integer"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "daily_token_limit",
+          "is_default"
+        ],
+        "title": "AdminQuotaOut",
+        "type": "object"
+      },
       "AdminReplyCreate": {
         "properties": {
           "content": {
@@ -109,6 +202,24 @@
           "content"
         ],
         "title": "AdminReplyCreate",
+        "type": "object"
+      },
+      "AdminSetQuotaResult": {
+        "properties": {
+          "daily_token_limit": {
+            "title": "Daily Token Limit",
+            "type": "integer"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "daily_token_limit"
+        ],
+        "title": "AdminSetQuotaResult",
         "type": "object"
       },
       "AdminSetupRequest": {
@@ -133,6 +244,324 @@
           "secret_key"
         ],
         "title": "AdminSetupRequest",
+        "type": "object"
+      },
+      "AdminSetupResult": {
+        "properties": {
+          "admin_id": {
+            "title": "Admin Id",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "admin_id",
+          "email",
+          "role"
+        ],
+        "title": "AdminSetupResult",
+        "type": "object"
+      },
+      "AdminThreadListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "AdminThreadListResponse",
+        "type": "object"
+      },
+      "AdminUpdateResult": {
+        "properties": {
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "title": "AdminUpdateResult",
+        "type": "object"
+      },
+      "AdminUserDetail": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "daily_token_limit": {
+            "title": "Daily Token Limit",
+            "type": "integer"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "last_active_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Active At"
+          },
+          "learning_profile": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Learning Profile"
+          },
+          "nickname": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nickname"
+          },
+          "onboarding_completed": {
+            "title": "Onboarding Completed",
+            "type": "boolean"
+          },
+          "plan_type": {
+            "title": "Plan Type",
+            "type": "string"
+          },
+          "token_usage_7d": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Token Usage 7D",
+            "type": "array"
+          },
+          "total_flashcard_reviews": {
+            "title": "Total Flashcard Reviews",
+            "type": "integer"
+          },
+          "total_notes": {
+            "title": "Total Notes",
+            "type": "integer"
+          },
+          "total_tokens_30d": {
+            "title": "Total Tokens 30D",
+            "type": "integer"
+          },
+          "total_tokens_today": {
+            "title": "Total Tokens Today",
+            "type": "integer"
+          },
+          "total_training_sessions": {
+            "title": "Total Training Sessions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "nickname",
+          "grade",
+          "plan_type",
+          "is_active",
+          "created_at",
+          "last_active_at",
+          "total_notes",
+          "total_tokens_today",
+          "total_tokens_30d",
+          "daily_token_limit",
+          "onboarding_completed",
+          "learning_profile",
+          "total_flashcard_reviews",
+          "total_training_sessions",
+          "token_usage_7d"
+        ],
+        "title": "AdminUserDetail",
+        "type": "object"
+      },
+      "AdminUserListItem": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "daily_token_limit": {
+            "title": "Daily Token Limit",
+            "type": "integer"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "last_active_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Active At"
+          },
+          "nickname": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nickname"
+          },
+          "plan_type": {
+            "title": "Plan Type",
+            "type": "string"
+          },
+          "total_notes": {
+            "title": "Total Notes",
+            "type": "integer"
+          },
+          "total_tokens_30d": {
+            "title": "Total Tokens 30D",
+            "type": "integer"
+          },
+          "total_tokens_today": {
+            "title": "Total Tokens Today",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "nickname",
+          "grade",
+          "plan_type",
+          "is_active",
+          "created_at",
+          "last_active_at",
+          "total_notes",
+          "total_tokens_today",
+          "total_tokens_30d",
+          "daily_token_limit"
+        ],
+        "title": "AdminUserListItem",
+        "type": "object"
+      },
+      "AdminUserListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminUserListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "AdminUserListResponse",
         "type": "object"
       },
       "AgentChatRequest": {
@@ -1376,6 +1805,192 @@
         "title": "DailyTaskUpdate",
         "type": "object"
       },
+      "DashboardOut": {
+        "properties": {
+          "active_projects": {
+            "title": "Active Projects",
+            "type": "integer"
+          },
+          "active_users_7d": {
+            "title": "Active Users 7D",
+            "type": "integer"
+          },
+          "active_users_today": {
+            "title": "Active Users Today",
+            "type": "integer"
+          },
+          "top_token_users": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Top Token Users",
+            "type": "array"
+          },
+          "total_cost_7d_usd": {
+            "title": "Total Cost 7D Usd",
+            "type": "number"
+          },
+          "total_cost_today_usd": {
+            "title": "Total Cost Today Usd",
+            "type": "number"
+          },
+          "total_focus_minutes": {
+            "title": "Total Focus Minutes",
+            "type": "integer"
+          },
+          "total_immersion_sessions": {
+            "title": "Total Immersion Sessions",
+            "type": "integer"
+          },
+          "total_notes": {
+            "title": "Total Notes",
+            "type": "integer"
+          },
+          "total_projects": {
+            "title": "Total Projects",
+            "type": "integer"
+          },
+          "total_ss_timeline_nodes": {
+            "title": "Total Ss Timeline Nodes",
+            "type": "integer"
+          },
+          "total_tokens_7d": {
+            "title": "Total Tokens 7D",
+            "type": "integer"
+          },
+          "total_tokens_today": {
+            "title": "Total Tokens Today",
+            "type": "integer"
+          },
+          "total_users": {
+            "title": "Total Users",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_users",
+          "active_users_today",
+          "active_users_7d",
+          "total_notes",
+          "total_tokens_today",
+          "total_tokens_7d",
+          "total_cost_today_usd",
+          "total_cost_7d_usd",
+          "top_token_users",
+          "total_projects",
+          "active_projects",
+          "total_immersion_sessions",
+          "total_focus_minutes",
+          "total_ss_timeline_nodes"
+        ],
+        "title": "DashboardOut",
+        "type": "object"
+      },
+      "DeadLetterItem": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "resolved": {
+            "title": "Resolved",
+            "type": "boolean"
+          },
+          "retries": {
+            "title": "Retries",
+            "type": "integer"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "task_name": {
+            "title": "Task Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "task_name",
+          "task_id",
+          "error",
+          "retries",
+          "resolved",
+          "created_at"
+        ],
+        "title": "DeadLetterItem",
+        "type": "object"
+      },
+      "DeadLetterResolveResult": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "resolved": {
+            "title": "Resolved",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "resolved"
+        ],
+        "title": "DeadLetterResolveResult",
+        "type": "object"
+      },
+      "Envelope_AdminConfigOut_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AdminConfigOut"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[AdminConfigOut]",
+        "type": "object"
+      },
       "Envelope_AdminLoginResponse_": {
         "properties": {
           "code": {
@@ -1396,6 +2011,160 @@
           "data"
         ],
         "title": "Envelope[AdminLoginResponse]",
+        "type": "object"
+      },
+      "Envelope_AdminQuotaOut_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AdminQuotaOut"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[AdminQuotaOut]",
+        "type": "object"
+      },
+      "Envelope_AdminSetQuotaResult_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AdminSetQuotaResult"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[AdminSetQuotaResult]",
+        "type": "object"
+      },
+      "Envelope_AdminSetupResult_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AdminSetupResult"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[AdminSetupResult]",
+        "type": "object"
+      },
+      "Envelope_AdminThreadListResponse_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AdminThreadListResponse"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[AdminThreadListResponse]",
+        "type": "object"
+      },
+      "Envelope_AdminUpdateResult_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AdminUpdateResult"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[AdminUpdateResult]",
+        "type": "object"
+      },
+      "Envelope_AdminUserDetail_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AdminUserDetail"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[AdminUserDetail]",
+        "type": "object"
+      },
+      "Envelope_AdminUserListResponse_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AdminUserListResponse"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[AdminUserListResponse]",
         "type": "object"
       },
       "Envelope_AgentHistorySearchResponse_": {
@@ -1706,6 +2475,50 @@
         "title": "Envelope[DailyTaskOut]",
         "type": "object"
       },
+      "Envelope_DashboardOut_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/DashboardOut"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[DashboardOut]",
+        "type": "object"
+      },
+      "Envelope_DeadLetterResolveResult_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/DeadLetterResolveResult"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[DeadLetterResolveResult]",
+        "type": "object"
+      },
       "Envelope_EquipOutfitResult_": {
         "properties": {
           "code": {
@@ -1770,6 +2583,28 @@
           "data"
         ],
         "title": "Envelope[ExamOut]",
+        "type": "object"
+      },
+      "Envelope_FaqItemAdminOut_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/FaqItemAdminOut"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[FaqItemAdminOut]",
         "type": "object"
       },
       "Envelope_FaqListResponse_": {
@@ -2056,6 +2891,28 @@
           "data"
         ],
         "title": "Envelope[KnowledgePointStats]",
+        "type": "object"
+      },
+      "Envelope_LowQualitySamplesOut_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/LowQualitySamplesOut"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[LowQualitySamplesOut]",
         "type": "object"
       },
       "Envelope_MistakeOut_": {
@@ -2387,6 +3244,28 @@
           "data"
         ],
         "title": "Envelope[PaginatedResponse[ExamOut]]",
+        "type": "object"
+      },
+      "Envelope_PaginatedResponse_FeedbackOut__": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PaginatedResponse_FeedbackOut_"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[PaginatedResponse[FeedbackOut]]",
         "type": "object"
       },
       "Envelope_PaginatedResponse_FlashcardResponse__": {
@@ -2783,6 +3662,50 @@
           "data"
         ],
         "title": "Envelope[ProjectReorderResult]",
+        "type": "object"
+      },
+      "Envelope_RagBackfillResult_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/RagBackfillResult"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[RagBackfillResult]",
+        "type": "object"
+      },
+      "Envelope_RecallStatsOut_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/RecallStatsOut"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[RecallStatsOut]",
         "type": "object"
       },
       "Envelope_RecommendedActionsOut_": {
@@ -3225,6 +4148,28 @@
         "title": "Envelope[TokenResponse]",
         "type": "object"
       },
+      "Envelope_TokenStatsOut_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/TokenStatsOut"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[TokenStatsOut]",
+        "type": "object"
+      },
       "Envelope_TrainingSessionDetail_": {
         "properties": {
           "code": {
@@ -3609,6 +4554,58 @@
         "title": "Envelope[list[DailyTaskOut]]",
         "type": "object"
       },
+      "Envelope_list_DeadLetterItem__": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/DeadLetterItem"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[list[DeadLetterItem]]",
+        "type": "object"
+      },
+      "Envelope_list_FaqItemAdminOut__": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/FaqItemAdminOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[list[FaqItemAdminOut]]",
+        "type": "object"
+      },
       "Envelope_list_FeedbackOut__": {
         "properties": {
           "code": {
@@ -3947,6 +4944,32 @@
         "title": "Envelope[list[TimelineNodeOut]]",
         "type": "object"
       },
+      "Envelope_list_TokenHistoryItem__": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/TokenHistoryItem"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[list[TokenHistoryItem]]",
+        "type": "object"
+      },
       "Envelope_list_TreeNodeOut__": {
         "properties": {
           "code": {
@@ -3997,33 +5020,6 @@
           "data"
         ],
         "title": "Envelope[list[WidgetOut]]",
-        "type": "object"
-      },
-      "Envelope_list_dict__": {
-        "properties": {
-          "code": {
-            "default": 200,
-            "title": "Code",
-            "type": "integer"
-          },
-          "data": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Data",
-            "type": "array"
-          },
-          "message": {
-            "default": "success",
-            "title": "Message",
-            "type": "string"
-          }
-        },
-        "required": [
-          "data"
-        ],
-        "title": "Envelope[list[dict]]",
         "type": "object"
       },
       "Envelope_list_str__": {
@@ -4327,6 +5323,55 @@
           "items"
         ],
         "title": "FaqCategoryGroup",
+        "type": "object"
+      },
+      "FaqItemAdminOut": {
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_published": {
+            "title": "Is Published",
+            "type": "boolean"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "question",
+          "answer",
+          "sort_order",
+          "is_published"
+        ],
+        "title": "FaqItemAdminOut",
         "type": "object"
       },
       "FaqItemCreate": {
@@ -5979,6 +7024,28 @@
         "title": "LoginRequest",
         "type": "object"
       },
+      "LowQualitySamplesOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "samples": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Samples",
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "samples"
+        ],
+        "title": "LowQualitySamplesOut",
+        "type": "object"
+      },
       "MasteryDistribution": {
         "properties": {
           "learning": {
@@ -6899,6 +7966,37 @@
           "page_size"
         ],
         "title": "PaginatedResponse[ExamOut]",
+        "type": "object"
+      },
+      "PaginatedResponse_FeedbackOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "PaginatedResponse[FeedbackOut]",
         "type": "object"
       },
       "PaginatedResponse_FlashcardResponse_": {
@@ -8203,6 +9301,80 @@
           "daily_token_limit"
         ],
         "title": "QuotaUpdateRequest",
+        "type": "object"
+      },
+      "RagBackfillResult": {
+        "properties": {
+          "queued": {
+            "title": "Queued",
+            "type": "boolean"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "queued",
+          "user_id"
+        ],
+        "title": "RagBackfillResult",
+        "type": "object"
+      },
+      "RecallStatsOut": {
+        "properties": {
+          "avg_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Score"
+          },
+          "empty_count": {
+            "title": "Empty Count",
+            "type": "integer"
+          },
+          "empty_rate": {
+            "title": "Empty Rate",
+            "type": "number"
+          },
+          "kind_totals": {
+            "additionalProperties": true,
+            "title": "Kind Totals",
+            "type": "object"
+          },
+          "low_score_count": {
+            "title": "Low Score Count",
+            "type": "integer"
+          },
+          "low_score_threshold": {
+            "title": "Low Score Threshold",
+            "type": "number"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "window_days": {
+            "title": "Window Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_days",
+          "total",
+          "empty_count",
+          "empty_rate",
+          "avg_score",
+          "low_score_threshold",
+          "low_score_count",
+          "kind_totals"
+        ],
+        "title": "RecallStatsOut",
         "type": "object"
       },
       "RecommendedAction": {
@@ -9848,6 +11020,69 @@
         "title": "TimelineUserAddRequest",
         "type": "object"
       },
+      "TokenHistoryItem": {
+        "properties": {
+          "completion_tokens": {
+            "title": "Completion Tokens",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "prompt_tokens": {
+            "title": "Prompt Tokens",
+            "type": "integer"
+          },
+          "total_tokens": {
+            "title": "Total Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "model",
+          "endpoint",
+          "prompt_tokens",
+          "completion_tokens",
+          "total_tokens",
+          "cost_usd",
+          "created_at"
+        ],
+        "title": "TokenHistoryItem",
+        "type": "object"
+      },
       "TokenQuotaOut": {
         "description": "F-10 · 今日 token 配额余量（profile_service.get_token_quota）。",
         "properties": {
@@ -9903,6 +11138,56 @@
           "refresh_token"
         ],
         "title": "TokenResponse",
+        "type": "object"
+      },
+      "TokenStatsOut": {
+        "properties": {
+          "by_day": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "By Day",
+            "type": "array"
+          },
+          "by_model": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "By Model",
+            "type": "array"
+          },
+          "top_users": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Top Users",
+            "type": "array"
+          },
+          "total_calls": {
+            "title": "Total Calls",
+            "type": "integer"
+          },
+          "total_cost_usd": {
+            "title": "Total Cost Usd",
+            "type": "number"
+          },
+          "total_tokens": {
+            "title": "Total Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_calls",
+          "total_tokens",
+          "total_cost_usd",
+          "by_model",
+          "by_day",
+          "top_users"
+        ],
+        "title": "TokenStatsOut",
         "type": "object"
       },
       "TrainingQuestionOut": {
@@ -11416,7 +12701,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_dict_"
+                  "$ref": "#/components/schemas/Envelope_AdminSetupResult_"
                 }
               }
             },
@@ -11447,7 +12732,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_dict_"
+                  "$ref": "#/components/schemas/Envelope_AdminConfigOut_"
                 }
               }
             },
@@ -11481,7 +12766,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_dict_"
+                  "$ref": "#/components/schemas/Envelope_AdminConfigOut_"
                 }
               }
             },
@@ -11517,7 +12802,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_dict_"
+                  "$ref": "#/components/schemas/Envelope_DashboardOut_"
                 }
               }
             },
@@ -11573,7 +12858,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_list_dict__"
+                  "$ref": "#/components/schemas/Envelope_list_DeadLetterItem__"
                 }
               }
             },
@@ -11620,7 +12905,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_dict_"
+                  "$ref": "#/components/schemas/Envelope_DeadLetterResolveResult_"
                 }
               }
             },
@@ -11656,7 +12941,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_list_dict__"
+                  "$ref": "#/components/schemas/Envelope_list_FaqItemAdminOut__"
                 }
               }
             },
@@ -11690,7 +12975,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_dict_"
+                  "$ref": "#/components/schemas/Envelope_FaqItemAdminOut_"
                 }
               }
             },
@@ -11794,7 +13079,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_dict_"
+                  "$ref": "#/components/schemas/Envelope_FaqItemAdminOut_"
                 }
               }
             },
@@ -11872,7 +13157,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_dict_"
+                  "$ref": "#/components/schemas/Envelope_PaginatedResponse_FeedbackOut__"
                 }
               }
             },
@@ -11977,7 +13262,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_dict_"
+                  "$ref": "#/components/schemas/Envelope_AdminQuotaOut_"
                 }
               }
             },
@@ -12032,7 +13317,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_dict_"
+                  "$ref": "#/components/schemas/Envelope_AdminSetQuotaResult_"
                 }
               }
             },
@@ -12080,7 +13365,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_dict_"
+                  "$ref": "#/components/schemas/Envelope_RagBackfillResult_"
                 }
               }
             },
@@ -12143,7 +13428,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_dict_"
+                  "$ref": "#/components/schemas/Envelope_LowQualitySamplesOut_"
                 }
               }
             },
@@ -12206,7 +13491,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_dict_"
+                  "$ref": "#/components/schemas/Envelope_RecallStatsOut_"
                 }
               }
             },
@@ -12284,7 +13569,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_dict_"
+                  "$ref": "#/components/schemas/Envelope_AdminThreadListResponse_"
                 }
               }
             },
@@ -12498,7 +13783,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_dict_"
+                  "$ref": "#/components/schemas/Envelope_TokenStatsOut_"
                 }
               }
             },
@@ -12557,7 +13842,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_dict_"
+                  "$ref": "#/components/schemas/Envelope_list_TokenHistoryItem__"
                 }
               }
             },
@@ -12634,7 +13919,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_dict_"
+                  "$ref": "#/components/schemas/Envelope_AdminUserListResponse_"
                 }
               }
             },
@@ -12681,7 +13966,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_dict_"
+                  "$ref": "#/components/schemas/Envelope_AdminUserDetail_"
                 }
               }
             },
@@ -12736,7 +14021,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_dict_"
+                  "$ref": "#/components/schemas/Envelope_AdminUpdateResult_"
                 }
               }
             },

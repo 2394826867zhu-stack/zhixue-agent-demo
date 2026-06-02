@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.core.admin_auth import get_current_admin
 from app.schemas.feedback import FeedbackUpdate, FeedbackOut
 from app.schemas.envelope import Envelope
+from app.schemas.common import PaginatedResponse
 from app.services import feedback_service
 
 router = APIRouter()
@@ -16,7 +17,7 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.get("/feedback", summary="反馈列表", response_model=Envelope[dict])
+@router.get("/feedback", summary="反馈列表", response_model=Envelope[PaginatedResponse[FeedbackOut]])
 async def list_feedback(
     status: str | None = Query(None, pattern="^(open|triaged|resolved)$"),
     page: int = Query(1, ge=1),

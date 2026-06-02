@@ -6,6 +6,7 @@ from app.core.database import get_db
 from app.core.admin_auth import get_current_admin
 from app.core.exceptions import NotFoundError
 from app.schemas.envelope import Envelope
+from app.schemas.admin_responses import DeadLetterItem, DeadLetterResolveResult
 from app.services.dead_letter_service import dead_letter_service
 
 router = APIRouter()
@@ -15,7 +16,7 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.get("/dead-letters", summary="死信队列（失败任务）列表", response_model=Envelope[list[dict]])
+@router.get("/dead-letters", summary="死信队列（失败任务）列表", response_model=Envelope[list[DeadLetterItem]])
 async def list_dead_letters(
     limit: int = Query(50, ge=1, le=200),
     resolved: bool | None = Query(None),
@@ -39,7 +40,7 @@ async def list_dead_letters(
     )
 
 
-@router.post("/dead-letters/{entry_id}/resolve", summary="标记死信任务已处理", response_model=Envelope[dict])
+@router.post("/dead-letters/{entry_id}/resolve", summary="标记死信任务已处理", response_model=Envelope[DeadLetterResolveResult])
 async def resolve_dead_letter(
     entry_id: str,
     db: AsyncSession = Depends(get_db),

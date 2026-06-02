@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.core.admin_auth import get_current_admin
 from app.schemas.support import AdminReplyCreate, ThreadStatusUpdate, SupportThreadDetail
 from app.schemas.envelope import Envelope
+from app.schemas.admin_responses import AdminThreadListResponse
 from app.services import support_service
 
 router = APIRouter()
@@ -16,7 +17,7 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.get("/support/threads", summary="客服会话列表", response_model=Envelope[dict])
+@router.get("/support/threads", summary="客服会话列表", response_model=Envelope[AdminThreadListResponse])
 async def list_threads(
     status: str | None = Query(None, pattern="^(open|pending|resolved|closed)$"),
     page: int = Query(1, ge=1),

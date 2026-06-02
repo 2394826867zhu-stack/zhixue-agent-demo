@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.core.admin_auth import get_current_admin
 from app.schemas.faq import FaqItemCreate, FaqItemUpdate
 from app.schemas.envelope import Envelope
+from app.schemas.admin_responses import FaqItemAdminOut
 from app.services import faq_service
 
 router = APIRouter()
@@ -28,7 +29,7 @@ def _dump(item):
     }
 
 
-@router.get("/faq", summary="全部 FAQ（含未发布）", response_model=Envelope[list[dict]])
+@router.get("/faq", summary="全部 FAQ（含未发布）", response_model=Envelope[list[FaqItemAdminOut]])
 async def list_faq(
     db: AsyncSession = Depends(get_db),
     _: dict = Depends(get_current_admin),
@@ -37,7 +38,7 @@ async def list_faq(
     return ok([_dump(i) for i in items])
 
 
-@router.post("/faq", summary="新建 FAQ 条目", response_model=Envelope[dict])
+@router.post("/faq", summary="新建 FAQ 条目", response_model=Envelope[FaqItemAdminOut])
 async def create_faq(
     body: FaqItemCreate,
     db: AsyncSession = Depends(get_db),
@@ -48,7 +49,7 @@ async def create_faq(
     return ok(_dump(item))
 
 
-@router.patch("/faq/{item_id}", summary="编辑 FAQ 条目", response_model=Envelope[dict])
+@router.patch("/faq/{item_id}", summary="编辑 FAQ 条目", response_model=Envelope[FaqItemAdminOut])
 async def update_faq(
     item_id: uuid.UUID,
     body: FaqItemUpdate,
