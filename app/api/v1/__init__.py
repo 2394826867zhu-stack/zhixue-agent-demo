@@ -20,6 +20,8 @@ from app.api.v1 import (
     subscription,
     # C-15 记忆面板
     memory,
+    # C-09 全局搜索
+    search,
 )
 
 router = APIRouter(prefix="/v1")
@@ -64,3 +66,5 @@ router.include_router(knowledge_base.router)
 router.include_router(subscription.router)
 # C-15 记忆面板
 router.include_router(memory.router)
+# C-09 全局搜索
+router.include_router(search.router)
