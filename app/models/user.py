@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, DateTime, JSON, Boolean, Float
+from sqlalchemy import String, DateTime, JSON, Boolean, Float, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.core.database import Base
@@ -67,6 +67,12 @@ class User(Base):
     trial_used: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     trial_ends_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    # E-10 · 邀请好友：referral_code 懒生成（首次访问邀请页时填充，全局唯一）；
+    # referred_by 记录是谁邀请了我（每人仅能填一次，防自荐）。
+    referral_code: Mapped[str | None] = mapped_column(String(12), nullable=True, unique=True, index=True)
+    referred_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
     created_at: Mapped[datetime] = mapped_column(
