@@ -5,17 +5,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
+from pydantic import BaseModel
 from app.schemas.search import SearchResultItem
+from app.schemas.envelope import Envelope
 from app.services import search_service
 
 router = APIRouter(prefix="/search", tags=["search"])
+
+
+class SearchResponse(BaseModel):
+    query: str
+    items: list[SearchResultItem]
+    total: int
 
 
 def _ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.get("", summary="全局搜索（跨闪卡/笔记/知识点/错题/项目）")
+@router.get("", summary="全局搜索（跨闪卡/笔记/知识点/错题/项目）", response_model=Envelope[SearchResponse])
 async def global_search(
     q: str = Query(..., min_length=1, max_length=100, description="搜索关键词"),
     types: str | None = Query(None, description="逗号分隔资源类型，默认全部"),

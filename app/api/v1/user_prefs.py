@@ -6,6 +6,7 @@ from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.schemas.user_prefs import UserPrefsOut, UserPrefsUpdate
+from app.schemas.envelope import Envelope
 
 router = APIRouter(prefix="/profile/prefs", tags=["UI 偏好"])
 
@@ -28,14 +29,14 @@ def _to_out(user: User) -> UserPrefsOut:
     )
 
 
-@router.get("", summary="读取当前 UI 偏好与通知设置")
+@router.get("", summary="读取当前 UI 偏好与通知设置", response_model=Envelope[UserPrefsOut])
 async def get_prefs(
     user: User = Depends(get_current_user),
 ):
     return ok(_to_out(user).model_dump())
 
 
-@router.patch("", summary="更新 UI 偏好与通知设置（任一字段可选）")
+@router.patch("", summary="更新 UI 偏好与通知设置（任一字段可选）", response_model=Envelope[UserPrefsOut])
 async def update_prefs(
     body: UserPrefsUpdate,
     user: User = Depends(get_current_user),

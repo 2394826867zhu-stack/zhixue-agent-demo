@@ -19,13 +19,21 @@ from app.core.database import get_db
 from app.core.exceptions import AppError, NotFoundError
 from app.models.kb_file import KnowledgeBaseFile
 from app.models.user import User
+from pydantic import BaseModel
 from app.schemas.common import PaginatedResponse
+from app.schemas.envelope import Envelope
 from app.schemas.kb_file import KBFileListItem, KBFileOut
 from app.services import rag_index
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/knowledge-base", tags=["知识库文件"])
+
+
+class KBUploadResult(BaseModel):
+    file_id: str
+    processing_status: str
+    original_name: str
 
 _MAX_FILE_BYTES = 20 * 1024 * 1024  # 20 MB
 _ALLOWED_EXTENSIONS = {"pdf", "docx", "txt"}
@@ -86,7 +94,7 @@ def _resolve_file_type(ext: str, content_type: str | None, content: bytes) -> st
     return ext  # "pdf" or "docx"
 
 
-@router.post("/upload", summary="上传 PDF / DOCX / TXT 到知识库")
+@router.post("/upload", summary="上传 PDF / DOCX / TXT 到知识库", response_model=Envelope[KBUploadResult])
 async def upload_kb_file(
     file: UploadFile = File(...),
     project_id: uuid.UUID | None = Query(None),
@@ -166,7 +174,7 @@ async def upload_kb_file(
     )
 
 
-@router.get("/", summary="列出当前用户的知识库文件（分页）")
+@router.get("/", summary="列出当前用户的知识库文件（分页）", response_model=Envelope[PaginatedResponse[KBFileListItem]])
 async def list_kb_files(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -202,7 +210,7 @@ async def list_kb_files(
     )
 
 
-@router.get("/{file_id}", summary="知识库文件详情")
+@router.get("/{file_id}", summary="知识库文件详情", response_model=Envelope[KBFileOut])
 async def get_kb_file(
     file_id: uuid.UUID,
     user: User = Depends(get_current_user),
@@ -219,7 +227,7 @@ async def get_kb_file(
     return _ok(KBFileOut.model_validate(kb_file))
 
 
-@router.delete("/{file_id}", summary="删除知识库文件并清除向量索引")
+@router.delete("/{file_id}", summary="删除知识库文件并清除向量索引", response_model=Envelope[None])
 async def delete_kb_file(
     file_id: uuid.UUID,
     user: User = Depends(get_current_user),

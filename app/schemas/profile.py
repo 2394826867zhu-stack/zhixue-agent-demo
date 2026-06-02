@@ -65,3 +65,29 @@ class ReflectionOut(BaseModel):
         return self.week_start + timedelta(days=6)
 
     model_config = {"from_attributes": True}
+
+
+class TokenQuotaOut(BaseModel):
+    """F-10 · 今日 token 配额余量（profile_service.get_token_quota）。"""
+    date: str
+    used: int
+    daily_limit: int
+    remaining: int
+    is_default_limit: bool
+
+
+class ProfileUpdateResult(BaseModel):
+    nickname: str | None = None
+    grade: str | None = None
+    subjects: list[str] = []
+
+
+class VoiceToggleResult(BaseModel):
+    voice_enabled: bool
+
+
+class ReflectionGenerateResult(BaseModel):
+    """主动触发本周复盘生成的返回（weekly_reflection_tasks._generate_for_user）。"""
+    user_id: str
+    week_start: str
+    len: int

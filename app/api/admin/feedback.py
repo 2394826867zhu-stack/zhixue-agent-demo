@@ -5,7 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.admin_auth import get_current_admin
-from app.schemas.feedback import FeedbackUpdate
+from app.schemas.feedback import FeedbackUpdate, FeedbackOut
+from app.schemas.envelope import Envelope
+from app.schemas.common import PaginatedResponse
 from app.services import feedback_service
 
 router = APIRouter()
@@ -15,7 +17,7 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.get("/feedback", summary="反馈列表")
+@router.get("/feedback", summary="反馈列表", response_model=Envelope[PaginatedResponse[FeedbackOut]])
 async def list_feedback(
     status: str | None = Query(None, pattern="^(open|triaged|resolved)$"),
     page: int = Query(1, ge=1),
@@ -26,7 +28,7 @@ async def list_feedback(
     return ok(await feedback_service.list_all_feedback(db, status, page, page_size))
 
 
-@router.patch("/feedback/{feedback_id}", summary="更新反馈状态 / 备注")
+@router.patch("/feedback/{feedback_id}", summary="更新反馈状态 / 备注", response_model=Envelope[FeedbackOut])
 async def update_feedback(
     feedback_id: uuid.UUID,
     body: FeedbackUpdate,

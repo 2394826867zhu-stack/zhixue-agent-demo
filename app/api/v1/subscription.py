@@ -8,6 +8,7 @@ from app.core.exceptions import AppError
 from app.config import settings
 from app.models.user import User
 from app.schemas.subscription import SubscriptionStatusOut, SubscriptionFeatures
+from app.schemas.envelope import Envelope
 from app.services.subscription_service import (
     get_status, verify_webhook_auth, apply_revenuecat_event, start_trial,
 )
@@ -33,14 +34,14 @@ def _to_out(data: dict) -> SubscriptionStatusOut:
     )
 
 
-@router.get("/status", summary="当前订阅状态")
+@router.get("/status", summary="当前订阅状态", response_model=Envelope[SubscriptionStatusOut])
 async def subscription_status(
     user: User = Depends(get_current_user),
 ):
     return ok(_to_out(get_status(user)))
 
 
-@router.post("/trial", summary="启动 7 天 Pro 免费试用（每人仅一次）")
+@router.post("/trial", summary="启动 7 天 Pro 免费试用（每人仅一次）", response_model=Envelope[SubscriptionStatusOut])
 async def start_pro_trial(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -49,7 +50,7 @@ async def start_pro_trial(
     return ok(_to_out(data))
 
 
-@router.post("/webhook", summary="RevenueCat webhook（服务端专用）")
+@router.post("/webhook", summary="RevenueCat webhook（服务端专用）", response_model=Envelope[None])
 async def revenuecat_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db),

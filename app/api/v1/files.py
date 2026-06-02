@@ -9,11 +9,19 @@ import uuid
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 
+from pydantic import BaseModel
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.config import settings
+from app.schemas.envelope import Envelope
 
 router = APIRouter(prefix="/files", tags=["文件上传"])
+
+
+class FileUploadResult(BaseModel):
+    url: str
+    file_type: str
+    original_name: str
 
 _ALLOWED_CONTENT_TYPES = {
     "image/jpeg", "image/png", "image/webp", "image/gif",
@@ -25,7 +33,7 @@ _MAX_FILE_BYTES = 20 * 1024 * 1024  # 20 MB
 _SAFE_FILENAME = re.compile(r"^[0-9a-fA-F]{32}\.[A-Za-z0-9]+$")
 
 
-@router.post("/upload", summary="上传图片或 PDF，返回可访问 URL")
+@router.post("/upload", summary="上传图片或 PDF，返回可访问 URL", response_model=Envelope[FileUploadResult])
 async def upload_file(
     file: UploadFile = File(...),
     user: User = Depends(get_current_user),

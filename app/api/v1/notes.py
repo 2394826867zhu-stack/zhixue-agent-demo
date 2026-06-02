@@ -4,7 +4,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.user import User
-from app.schemas.note import NoteGenerateRequest, NoteUploadRequest, NoteResponse, NoteBrief, NoteTaskStatus, KnowledgePointBrief
+from app.schemas.note import (
+    NoteGenerateRequest, NoteUploadRequest, NoteResponse, NoteBrief, NoteTaskStatus,
+    KnowledgePointBrief, NoteCreateResult, NoteListResponse, NoteFlashcardGenResult,
+)
+from app.schemas.envelope import Envelope
 from app.services.note_service import note_service
 
 router = APIRouter(prefix="/notes", tags=["笔记"])
@@ -19,7 +23,7 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.post("/generate", summary="主入口：AI主动生成笔记")
+@router.post("/generate", summary="主入口：AI主动生成笔记", response_model=Envelope[NoteCreateResult])
 async def generate_note(
     body: NoteGenerateRequest,
     user: User = Depends(get_current_user),
@@ -29,7 +33,7 @@ async def generate_note(
     return ok(result)
 
 
-@router.post("/upload/text", summary="次入口：粘贴文字生成笔记")
+@router.post("/upload/text", summary="次入口：粘贴文字生成笔记", response_model=Envelope[NoteCreateResult])
 async def upload_text(
     body: NoteUploadRequest,
     user: User = Depends(get_current_user),
@@ -39,7 +43,7 @@ async def upload_text(
     return ok(result)
 
 
-@router.post("/upload/file", summary="次入口：上传图片或PDF生成笔记")
+@router.post("/upload/file", summary="次入口：上传图片或PDF生成笔记", response_model=Envelope[NoteCreateResult])
 async def upload_file(
     file: UploadFile = File(...),
     user: User = Depends(get_current_user),
@@ -54,7 +58,7 @@ async def upload_file(
     return ok(result)
 
 
-@router.get("/task/{note_id}", summary="查询笔记处理进度", response_model=None)
+@router.get("/task/{note_id}", summary="查询笔记处理进度", response_model=Envelope[NoteTaskStatus])
 async def get_task_status(
     note_id: str,
     user: User = Depends(get_current_user),
@@ -64,7 +68,7 @@ async def get_task_status(
     return ok(NoteTaskStatus(**status))
 
 
-@router.get("", summary="笔记列表")
+@router.get("", summary="笔记列表", response_model=Envelope[NoteListResponse])
 async def list_notes(
     subject: str | None = Query(None),
     page: int = Query(1, ge=1),
@@ -80,7 +84,7 @@ async def list_notes(
     return ok({"items": items, "page": result["page"], "page_size": result["page_size"]})
 
 
-@router.get("/{note_id}", summary="笔记详情（含三件套）")
+@router.get("/{note_id}", summary="笔记详情（含三件套）", response_model=Envelope[NoteResponse])
 async def get_note(
     note_id: str,
     user: User = Depends(get_current_user),
@@ -92,7 +96,7 @@ async def get_note(
     return ok(resp)
 
 
-@router.post("/{note_id}/flashcards", summary="为该笔记生成闪卡（用户手动触发）")
+@router.post("/{note_id}/flashcards", summary="为该笔记生成闪卡（用户手动触发）", response_model=Envelope[NoteFlashcardGenResult])
 async def generate_flashcards(
     note_id: str,
     user: User = Depends(get_current_user),
@@ -102,7 +106,7 @@ async def generate_flashcards(
     return ok(result)
 
 
-@router.delete("/{note_id}", summary="删除笔记")
+@router.delete("/{note_id}", summary="删除笔记", response_model=Envelope[None])
 async def delete_note(
     note_id: str,
     user: User = Depends(get_current_user),

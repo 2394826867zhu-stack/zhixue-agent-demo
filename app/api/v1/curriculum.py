@@ -10,6 +10,9 @@ from app.schemas.curriculum import (
     GenerateChapterNoteResponse,
     LinkKnowledgePointRequest,
 )
+from app.schemas.knowledge_point import KnowledgePointResponse
+from app.schemas.studyspace import LessonProgress
+from app.schemas.envelope import Envelope
 from app.services.curriculum_service import curriculum_service
 from app.services.studyspace_service import StudySpaceService
 
@@ -21,7 +24,7 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.get("/chapters", summary="获取课程章节树")
+@router.get("/chapters", summary="获取课程章节树", response_model=Envelope[list[CurriculumChapterGroup]])
 async def list_chapters(
     grade_type: str = Query("senior_high"),
     grade_year: int = Query(2, ge=1, le=6),
@@ -49,7 +52,7 @@ async def list_chapters(
     return ok(payload)
 
 
-@router.get("/chapters/{chapter_id}/my-kps", summary="获取某课时下我的知识点")
+@router.get("/chapters/{chapter_id}/my-kps", summary="获取某课时下我的知识点", response_model=Envelope[list[KnowledgePointResponse]])
 async def get_chapter_kps(
     chapter_id: str,
     user: User = Depends(get_current_user),
@@ -58,7 +61,7 @@ async def get_chapter_kps(
     return ok(await curriculum_service.get_chapter_kps(db, chapter_id, str(user.id)))
 
 
-@router.post("/chapters/{chapter_id}/link-kp", summary="将知识点关联到课程课时")
+@router.post("/chapters/{chapter_id}/link-kp", summary="将知识点关联到课程课时", response_model=Envelope[KnowledgePointResponse])
 async def link_kp(
     chapter_id: str,
     body: LinkKnowledgePointRequest,
@@ -68,7 +71,7 @@ async def link_kp(
     return ok(await curriculum_service.link_kp(db, chapter_id, str(body.kp_id), str(user.id)))
 
 
-@router.get("/subjects", summary="用户已选科目列表")
+@router.get("/subjects", summary="用户已选科目列表", response_model=Envelope[list[str]])
 async def get_subjects(
     user: User = Depends(get_current_user),
 ):
@@ -76,7 +79,7 @@ async def get_subjects(
     return ok(subjects)
 
 
-@router.get("/progress", summary="用户各课章学习进度")
+@router.get("/progress", summary="用户各课章学习进度", response_model=Envelope[list[LessonProgress]])
 async def get_curriculum_progress(
     subject: str | None = Query(None),
     user: User = Depends(get_current_user),
@@ -85,7 +88,7 @@ async def get_curriculum_progress(
     return ok(await _studyspace_svc.get_curriculum_progress(db, str(user.id), subject))
 
 
-@router.post("/chapters/{chapter_id}/generate-note", summary="基于课时生成笔记")
+@router.post("/chapters/{chapter_id}/generate-note", summary="基于课时生成笔记", response_model=Envelope[GenerateChapterNoteResponse])
 async def generate_note_from_chapter(
     chapter_id: str,
     user: User = Depends(get_current_user),

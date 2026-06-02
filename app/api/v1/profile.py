@@ -5,7 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.user import User
-from app.schemas.profile import InsightsOut, AchievementOut, ReflectionCreate, ReflectionOut
+from app.schemas.profile import (
+    InsightsOut, AchievementOut, ReflectionCreate, ReflectionOut,
+    TokenQuotaOut, ProfileUpdateResult, VoiceToggleResult, ReflectionGenerateResult,
+)
+from app.schemas.envelope import Envelope
+from app.schemas.common import PaginatedResponse
 from app.services.profile_service import profile_service
 
 router = APIRouter(prefix="/profile", tags=["个人中心"])
@@ -15,7 +20,7 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.get("/insights", summary="个人学习数据总览（成就/统计）", response_model=None)
+@router.get("/insights", summary="个人学习数据总览（成就/统计）", response_model=Envelope[InsightsOut])
 async def get_insights(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -24,7 +29,7 @@ async def get_insights(
     return ok(data.model_dump())
 
 
-@router.get("/achievements", summary="成就徽章列表", response_model=None)
+@router.get("/achievements", summary="成就徽章列表", response_model=Envelope[list[AchievementOut]])
 async def get_achievements(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -33,7 +38,7 @@ async def get_achievements(
     return ok([a.model_dump() for a in items])
 
 
-@router.get("/token-quota", summary="当前用户今日 Token 配额余量（F-10）", response_model=None)
+@router.get("/token-quota", summary="当前用户今日 Token 配额余量（F-10）", response_model=Envelope[TokenQuotaOut])
 async def get_token_quota(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -42,7 +47,7 @@ async def get_token_quota(
     return ok(data)
 
 
-@router.post("/reflection", summary="保存周复盘（同一周重复提交则覆盖）", response_model=None)
+@router.post("/reflection", summary="保存周复盘（同一周重复提交则覆盖）", response_model=Envelope[ReflectionOut])
 async def upsert_reflection(
     body: ReflectionCreate,
     user: User = Depends(get_current_user),
@@ -58,7 +63,7 @@ class ProfileUpdate(BaseModel):
     subjects: list[str] | None = None
 
 
-@router.put("", summary="更新个人资料（昵称/年级/主攻科目）", response_model=None)
+@router.put("", summary="更新个人资料（昵称/年级/主攻科目）", response_model=Envelope[ProfileUpdateResult])
 async def update_profile(
     body: ProfileUpdate,
     user: User = Depends(get_current_user),
@@ -86,7 +91,7 @@ class VoiceToggle(BaseModel):
     enabled: bool
 
 
-@router.patch("/voice", summary="开关语音输出")
+@router.patch("/voice", summary="开关语音输出", response_model=Envelope[VoiceToggleResult])
 async def toggle_voice(
     body: VoiceToggle,
     user: User = Depends(get_current_user),
@@ -101,7 +106,7 @@ async def toggle_voice(
     return ok({"voice_enabled": u.voice_enabled})
 
 
-@router.post("/reflection/generate", summary="立即触发本周复盘自动生成（v0.33 P0-3）", response_model=None)
+@router.post("/reflection/generate", summary="立即触发本周复盘自动生成（v0.33 P0-3）", response_model=Envelope[ReflectionGenerateResult])
 async def trigger_weekly_reflection(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -112,7 +117,7 @@ async def trigger_weekly_reflection(
     return ok(result)
 
 
-@router.get("/reflection", summary="历史复盘列表（按周倒序）", response_model=None)
+@router.get("/reflection", summary="历史复盘列表（按周倒序）", response_model=Envelope[PaginatedResponse[ReflectionOut]])
 async def list_reflections(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=50),

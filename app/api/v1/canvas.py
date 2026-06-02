@@ -6,7 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.user import User
-from app.schemas.canvas import CanvasStrokeOut, CanvasStrokeBatch
+from app.schemas.canvas import (
+    CanvasStrokeOut, CanvasStrokeBatch,
+    CanvasAddResult, CanvasDeleteResult, CanvasClearResult,
+)
+from app.schemas.envelope import Envelope
 from app.services.canvas_service import canvas_service
 
 router = APIRouter(prefix="/studyspace", tags=["StudySpace · 画板"])
@@ -16,7 +20,7 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.get("/sessions/{session_id}/canvas", summary="读取画板笔画")
+@router.get("/sessions/{session_id}/canvas", summary="读取画板笔画", response_model=Envelope[list[CanvasStrokeOut]])
 async def list_strokes(
     session_id: uuid.UUID,
     page_index: int | None = Query(default=None, ge=0),
@@ -27,7 +31,7 @@ async def list_strokes(
     return ok([CanvasStrokeOut.model_validate(s).model_dump(mode="json") for s in strokes])
 
 
-@router.post("/sessions/{session_id}/canvas", summary="批量提交笔画（前端 throttle 后调用）")
+@router.post("/sessions/{session_id}/canvas", summary="批量提交笔画（前端 throttle 后调用）", response_model=Envelope[CanvasAddResult])
 async def add_strokes(
     session_id: uuid.UUID,
     body: CanvasStrokeBatch,
@@ -38,7 +42,7 @@ async def add_strokes(
     return ok({"added": n})
 
 
-@router.get("/canvas/strokes/{stroke_id}", summary="单条笔画详情（v0.32）")
+@router.get("/canvas/strokes/{stroke_id}", summary="单条笔画详情（v0.32）", response_model=Envelope[CanvasStrokeOut])
 async def get_stroke(
     stroke_id: uuid.UUID,
     user: User = Depends(get_current_user),
@@ -48,7 +52,7 @@ async def get_stroke(
     return ok(CanvasStrokeOut.model_validate(stroke).model_dump(mode="json"))
 
 
-@router.get("/sessions/{session_id}/canvas/pages/{page_index}", summary="单页画板笔画列表（v0.32）")
+@router.get("/sessions/{session_id}/canvas/pages/{page_index}", summary="单页画板笔画列表（v0.32）", response_model=Envelope[list[CanvasStrokeOut]])
 async def get_canvas_page(
     session_id: uuid.UUID,
     page_index: int,
@@ -59,7 +63,7 @@ async def get_canvas_page(
     return ok([CanvasStrokeOut.model_validate(s).model_dump(mode="json") for s in strokes])
 
 
-@router.delete("/canvas/strokes/{stroke_id}", summary="删除单条笔画（橡皮擦/撤销）")
+@router.delete("/canvas/strokes/{stroke_id}", summary="删除单条笔画（橡皮擦/撤销）", response_model=Envelope[CanvasDeleteResult])
 async def delete_stroke(
     stroke_id: uuid.UUID,
     user: User = Depends(get_current_user),
@@ -69,7 +73,7 @@ async def delete_stroke(
     return ok({"deleted": True})
 
 
-@router.delete("/sessions/{session_id}/canvas/pages/{page_index}", summary="清空某页画板")
+@router.delete("/sessions/{session_id}/canvas/pages/{page_index}", summary="清空某页画板", response_model=Envelope[CanvasClearResult])
 async def clear_page(
     session_id: uuid.UUID,
     page_index: int,

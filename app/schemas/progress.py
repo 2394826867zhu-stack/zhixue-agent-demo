@@ -39,3 +39,12 @@ class WeeklyReport(BaseModel):
     total_minutes: int
     weak_subjects: list[str]
     ai_advice: str
+
+
+class PredictedScore(BaseModel):
+    """单科预测成绩（score_prediction_service.predict_all 的元素）。"""
+    subject: str
+    center: int
+    range: tuple[int, int]   # (low, high) → JSON [low, high]
+    weak_topics: list[str]
+    kp_count: int

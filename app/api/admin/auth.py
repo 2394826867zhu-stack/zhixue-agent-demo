@@ -3,6 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.schemas.admin import AdminLoginRequest, AdminLoginResponse, AdminSetupRequest
+from app.schemas.envelope import Envelope
+from app.schemas.admin_responses import AdminSetupResult
 from app.services.admin_service import admin_service
 from app.config import settings
 
@@ -13,7 +15,7 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.post("/setup", summary="初始化第一个超级管理员（仅首次可用）")
+@router.post("/setup", summary="初始化第一个超级管理员（仅首次可用）", response_model=Envelope[AdminSetupResult])
 async def setup(body: AdminSetupRequest, db: AsyncSession = Depends(get_db)):
     expected = settings.ADMIN_JWT_SECRET or settings.JWT_SECRET_KEY
     if body.secret_key != expected:
@@ -23,7 +25,7 @@ async def setup(body: AdminSetupRequest, db: AsyncSession = Depends(get_db)):
     return ok({"admin_id": str(admin.id), "email": admin.email, "role": admin.role})
 
 
-@router.post("/login", summary="管理员登录")
+@router.post("/login", summary="管理员登录", response_model=Envelope[AdminLoginResponse])
 async def login(body: AdminLoginRequest, db: AsyncSession = Depends(get_db)):
     result = await admin_service.login(db, body)
     return ok(AdminLoginResponse(**result))

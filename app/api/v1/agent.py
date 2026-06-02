@@ -8,6 +8,8 @@ from app.api.deps import get_current_user
 from app.models.user import User
 from app.schemas.agent import AgentChatRequest
 from app.schemas.agent_history import ConversationLogItem
+from app.schemas.envelope import Envelope
+from app.schemas.common import PaginatedResponse
 from app.services.agent_service import run
 from app.services.agent_tools import dispatch_tool
 from app.services.agent_history_service import agent_history_service
@@ -17,6 +19,17 @@ class AgentGenerateNoteRequest(BaseModel):
     topic: str = Field(default="", max_length=200)
     content: str = Field(default="", max_length=5000)
     subject: str = Field(default="综合", max_length=50)
+
+
+class AgentUndoResult(BaseModel):
+    undone: int
+    remaining: int
+
+
+class AgentHistorySearchResponse(BaseModel):
+    items: list[ConversationLogItem]
+    total: int
+    query: str
 
 router = APIRouter(prefix="/agent", tags=["AI 管家 Agent"])
 
@@ -53,7 +66,8 @@ async def agent_chat(
     )
 
 
-@router.post("/generate-note", summary="通过 Agent 工具生成笔记")
+# TODO(SDD): 精化 dispatch_tool 工具结果 schema（当前 Envelope[dict]）
+@router.post("/generate-note", summary="通过 Agent 工具生成笔记", response_model=Envelope[dict])
 async def agent_generate_note(
     body: AgentGenerateNoteRequest,
     user: User = Depends(get_current_user),
@@ -78,7 +92,7 @@ async def agent_generate_note(
 
 # ── v0.25 · 浏览记录 + 对话搜索（PRD 9.7 行 669-673）─────────────────
 
-@router.get("/history", summary="Agent 对话浏览记录")
+@router.get("/history", summary="Agent 对话浏览记录", response_model=Envelope[PaginatedResponse[ConversationLogItem]])
 async def list_history(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
@@ -170,7 +184,7 @@ async def agent_correct(
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-@router.post("/undo", summary="撤销上一轮对话")
+@router.post("/undo", summary="撤销上一轮对话", response_model=Envelope[AgentUndoResult])
 async def agent_undo(
     body: dict,
     user: User = Depends(get_current_user),
@@ -201,7 +215,7 @@ async def agent_undo(
     return _ok({"undone": len(history) - last_user_idx, "remaining": len(new_history)})
 
 
-@router.get("/history/search", summary="搜索 Agent 对话记录")
+@router.get("/history/search", summary="搜索 Agent 对话记录", response_model=Envelope[AgentHistorySearchResponse])
 async def search_history(
     q: str = Query(..., min_length=1, max_length=200),
     page: int = Query(1, ge=1),

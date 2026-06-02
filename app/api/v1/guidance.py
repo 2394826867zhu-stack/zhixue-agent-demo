@@ -11,6 +11,8 @@ from app.schemas.guidance import (
     GuidanceSessionOut, GuidanceSessionDetail,
     GuidanceMessageOut, ChatResponse,
 )
+from app.schemas.envelope import Envelope
+from app.schemas.common import PaginatedResponse
 from app.services.guidance_service import guidance_service
 
 router = APIRouter(prefix="/guidance", tags=["引导问答"])
@@ -20,7 +22,7 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.post("/sessions", summary="开启引导会话（提出第一个问题）")
+@router.post("/sessions", summary="开启引导会话（提出第一个问题）", response_model=Envelope[ChatResponse])
 async def start_session(
     body: GuidanceStartRequest,
     user: User = Depends(get_current_user),
@@ -35,7 +37,7 @@ async def start_session(
     ))
 
 
-@router.post("/sessions/{session_id}/chat", summary="继续对话（苏格拉底式引导）")
+@router.post("/sessions/{session_id}/chat", summary="继续对话（苏格拉底式引导）", response_model=Envelope[ChatResponse])
 async def chat(
     session_id: str,
     body: ChatRequest,
@@ -49,7 +51,7 @@ async def chat(
     ))
 
 
-@router.patch("/sessions/{session_id}/resolve", summary="标记会话已解决")
+@router.patch("/sessions/{session_id}/resolve", summary="标记会话已解决", response_model=Envelope[GuidanceSessionOut])
 async def resolve_session(
     session_id: str,
     user: User = Depends(get_current_user),
@@ -59,7 +61,7 @@ async def resolve_session(
     return ok(GuidanceSessionOut.model_validate(session))
 
 
-@router.get("/sessions", summary="引导会话历史列表")
+@router.get("/sessions", summary="引导会话历史列表", response_model=Envelope[PaginatedResponse[GuidanceSessionOut]])
 async def list_sessions(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
@@ -71,7 +73,7 @@ async def list_sessions(
     return ok({"items": items, "total": result["total"], "page": result["page"], "page_size": result["page_size"]})
 
 
-@router.get("/sessions/{session_id}", summary="会话详情（含完整对话记录）")
+@router.get("/sessions/{session_id}", summary="会话详情（含完整对话记录）", response_model=Envelope[GuidanceSessionDetail])
 async def get_session(
     session_id: str,
     user: User = Depends(get_current_user),

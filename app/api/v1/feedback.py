@@ -5,7 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
-from app.schemas.feedback import FeedbackCreate
+from app.schemas.feedback import FeedbackCreate, FeedbackOut
+from app.schemas.envelope import Envelope
 from app.services import feedback_service
 
 router = APIRouter(prefix="/feedback", tags=["反馈"])
@@ -15,7 +16,7 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.post("", summary="提交反馈（含可选截图 URL + 设备信息）")
+@router.post("", summary="提交反馈（含可选截图 URL + 设备信息）", response_model=Envelope[FeedbackOut])
 async def submit_feedback(
     body: FeedbackCreate,
     user: User = Depends(get_current_user),
@@ -26,7 +27,7 @@ async def submit_feedback(
     return ok(fb.model_dump(mode="json"))
 
 
-@router.get("", summary="我的历史反馈")
+@router.get("", summary="我的历史反馈", response_model=Envelope[list[FeedbackOut]])
 async def my_feedback(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

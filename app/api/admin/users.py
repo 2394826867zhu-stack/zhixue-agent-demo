@@ -4,6 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.admin_auth import get_current_admin
 from app.schemas.admin import UpdateUserRequest
+from app.schemas.envelope import Envelope
+from app.schemas.admin_responses import AdminUserListResponse, AdminUserDetail, AdminUpdateResult
 from app.services.admin_service import admin_service
 
 router = APIRouter(prefix="/users")
@@ -13,7 +15,7 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.get("", summary="用户列表")
+@router.get("", summary="用户列表", response_model=Envelope[AdminUserListResponse])
 async def list_users(
     search: str | None = Query(None),
     page: int = Query(1, ge=1),
@@ -24,7 +26,7 @@ async def list_users(
     return ok(await admin_service.list_users(db, search, page, page_size))
 
 
-@router.get("/{user_id}", summary="用户详情")
+@router.get("/{user_id}", summary="用户详情", response_model=Envelope[AdminUserDetail])
 async def get_user(
     user_id: str,
     db: AsyncSession = Depends(get_db),
@@ -33,7 +35,7 @@ async def get_user(
     return ok(await admin_service.get_user_detail(db, user_id))
 
 
-@router.patch("/{user_id}", summary="更新用户配额/状态")
+@router.patch("/{user_id}", summary="更新用户配额/状态", response_model=Envelope[AdminUpdateResult])
 async def update_user(
     user_id: str,
     body: UpdateUserRequest,

@@ -6,6 +6,7 @@ from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.schemas.widget import WidgetOut, WidgetBatchUpdate, WidgetCatalog
+from app.schemas.envelope import Envelope
 from app.services.widget_service import widget_service
 
 router = APIRouter(prefix="/widgets", tags=["首页组件"])
@@ -15,7 +16,7 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.get("", summary="当前用户首页组件配置")
+@router.get("", summary="当前用户首页组件配置", response_model=Envelope[list[WidgetOut]])
 async def list_widgets(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -24,7 +25,7 @@ async def list_widgets(
     return ok([WidgetOut.model_validate(w).model_dump(mode="json") for w in widgets])
 
 
-@router.put("", summary="批量编辑（添加/更新/删除一次提交）")
+@router.put("", summary="批量编辑（添加/更新/删除一次提交）", response_model=Envelope[list[WidgetOut]])
 async def batch_update(
     req: WidgetBatchUpdate,
     user: User = Depends(get_current_user),
@@ -34,7 +35,7 @@ async def batch_update(
     return ok([WidgetOut.model_validate(w).model_dump(mode="json") for w in widgets])
 
 
-@router.get("/available", summary="可添加组件清单")
+@router.get("/available", summary="可添加组件清单", response_model=Envelope[WidgetCatalog])
 async def list_catalog(
     user: User = Depends(get_current_user),
 ):

@@ -5,7 +5,8 @@ from app.api.deps import get_current_user
 from app.core.redis import get_redis
 from app.core.exceptions import NotFoundError
 from app.models.user import User
-from app.schemas.cowork import RoomCreate, Heartbeat
+from app.schemas.cowork import RoomCreate, Heartbeat, RoomSnapshot
+from app.schemas.envelope import Envelope
 from app.services import cowork_service
 
 router = APIRouter(prefix="/cowork", tags=["共同专注"])
@@ -21,7 +22,7 @@ def _display_name(user: User) -> str:
     return user.nickname or (user.email.split("@")[0] if user.email else "同学")
 
 
-@router.post("/rooms", summary="创建共同专注房间（返回邀请码）")
+@router.post("/rooms", summary="创建共同专注房间（返回邀请码）", response_model=Envelope[RoomSnapshot])
 async def create_room(
     body: RoomCreate,
     user: User = Depends(get_current_user),
@@ -31,7 +32,7 @@ async def create_room(
     return ok(room)
 
 
-@router.post("/rooms/{code}/join", summary="凭邀请码加入房间")
+@router.post("/rooms/{code}/join", summary="凭邀请码加入房间", response_model=Envelope[RoomSnapshot])
 async def join_room(
     code: str = _CODE,
     user: User = Depends(get_current_user),
@@ -43,7 +44,7 @@ async def join_room(
     return ok(room)
 
 
-@router.post("/rooms/{code}/heartbeat", summary="上报我的在线/专注状态并取房间快照")
+@router.post("/rooms/{code}/heartbeat", summary="上报我的在线/专注状态并取房间快照", response_model=Envelope[RoomSnapshot])
 async def heartbeat(
     body: Heartbeat,
     code: str = _CODE,
@@ -58,7 +59,7 @@ async def heartbeat(
     return ok(room)
 
 
-@router.get("/rooms/{code}", summary="房间快照（轮询）")
+@router.get("/rooms/{code}", summary="房间快照（轮询）", response_model=Envelope[RoomSnapshot])
 async def get_room(
     code: str = _CODE,
     user: User = Depends(get_current_user),
@@ -70,7 +71,7 @@ async def get_room(
     return ok(room)
 
 
-@router.post("/rooms/{code}/leave", summary="离开房间")
+@router.post("/rooms/{code}/leave", summary="离开房间", response_model=Envelope[None])
 async def leave_room(
     code: str = _CODE,
     user: User = Depends(get_current_user),

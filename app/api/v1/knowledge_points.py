@@ -10,6 +10,8 @@ from app.schemas.knowledge_point import (
     KnowledgePointResponse,
     KnowledgePointStats,
 )
+from app.schemas.envelope import Envelope
+from app.schemas.common import PaginatedResponse
 from app.services.knowledge_point_service import kp_service
 
 router = APIRouter(prefix="/knowledge-points", tags=["知识点"])
@@ -19,7 +21,7 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.post("", summary="手动新建知识点")
+@router.post("", summary="手动新建知识点", response_model=Envelope[KnowledgePointResponse])
 async def create_kp(
     body: KnowledgePointCreate,
     user: User = Depends(get_current_user),
@@ -31,7 +33,7 @@ async def create_kp(
     return ok(resp)
 
 
-@router.get("/stats", summary="知识点掌握度统计")
+@router.get("/stats", summary="知识点掌握度统计", response_model=Envelope[KnowledgePointStats])
 async def get_stats(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -40,7 +42,7 @@ async def get_stats(
     return ok(KnowledgePointStats(**stats))
 
 
-@router.get("", summary="知识点列表")
+@router.get("", summary="知识点列表", response_model=Envelope[PaginatedResponse[KnowledgePointResponse]])
 async def list_kps(
     subject: str | None = Query(None),
     mastery_status: str | None = Query(None),
@@ -71,7 +73,7 @@ async def list_kps(
     })
 
 
-@router.get("/{kp_id}", summary="知识点详情")
+@router.get("/{kp_id}", summary="知识点详情", response_model=Envelope[KnowledgePointResponse])
 async def get_kp(
     kp_id: str,
     user: User = Depends(get_current_user),
@@ -83,7 +85,7 @@ async def get_kp(
     return ok(resp)
 
 
-@router.patch("/{kp_id}", summary="修改知识点")
+@router.patch("/{kp_id}", summary="修改知识点", response_model=Envelope[KnowledgePointResponse])
 async def update_kp(
     kp_id: str,
     body: KnowledgePointUpdate,
@@ -96,7 +98,7 @@ async def update_kp(
     return ok(resp)
 
 
-@router.delete("/{kp_id}", summary="删除知识点（级联删除闪卡）")
+@router.delete("/{kp_id}", summary="删除知识点（级联删除闪卡）", response_model=Envelope[None])
 async def delete_kp(
     kp_id: str,
     user: User = Depends(get_current_user),

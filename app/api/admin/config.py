@@ -5,6 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.admin_auth import get_current_admin
 from app.schemas.config import ConfigUpdate
+from app.schemas.envelope import Envelope
+from app.schemas.admin_responses import AdminConfigOut
 from app.services import config_service
 
 router = APIRouter()
@@ -23,7 +25,7 @@ def _dump(cfg):
     }
 
 
-@router.get("/config", summary="读取全局配置")
+@router.get("/config", summary="读取全局配置", response_model=Envelope[AdminConfigOut])
 async def admin_get_config(
     db: AsyncSession = Depends(get_db),
     _: dict = Depends(get_current_admin),
@@ -33,7 +35,7 @@ async def admin_get_config(
     return ok(_dump(cfg))
 
 
-@router.patch("/config", summary="更新全局配置 + 系统公告")
+@router.patch("/config", summary="更新全局配置 + 系统公告", response_model=Envelope[AdminConfigOut])
 async def admin_update_config(
     body: ConfigUpdate,
     db: AsyncSession = Depends(get_db),
