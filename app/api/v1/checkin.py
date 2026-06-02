@@ -5,6 +5,8 @@ from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.schemas.checkin import CheckInRequest, CheckInOut
+from app.schemas.envelope import Envelope
+from app.schemas.common import PaginatedResponse
 from app.services.checkin_service import checkin_service
 
 router = APIRouter(prefix="/checkin", tags=["每日管家签到"])
@@ -14,7 +16,7 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.post("", summary="发起签到（告诉管家今天学了什么）", response_model=None)
+@router.post("", summary="发起签到（告诉管家今天学了什么）", response_model=Envelope[CheckInOut])
 async def create_checkin(
     body: CheckInRequest,
     user: User = Depends(get_current_user),
@@ -24,7 +26,7 @@ async def create_checkin(
     return ok(result.model_dump())
 
 
-@router.get("/today", summary="今日签到记录（无则返回 null）", response_model=None)
+@router.get("/today", summary="今日签到记录（无则返回 null）", response_model=Envelope[CheckInOut | None])
 async def get_today(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -33,7 +35,7 @@ async def get_today(
     return ok(result.model_dump() if result else None)
 
 
-@router.get("/history", summary="历史签到列表（分页）", response_model=None)
+@router.get("/history", summary="历史签到列表（分页）", response_model=Envelope[PaginatedResponse[CheckInOut]])
 async def list_history(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
