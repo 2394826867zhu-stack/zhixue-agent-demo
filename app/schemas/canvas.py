@@ -39,3 +39,15 @@ class CanvasStrokeOut(BaseModel):
     metadata_json: dict
     created_at: datetime
     model_config = {"from_attributes": True}
+
+
+class CanvasAddResult(BaseModel):
+    added: int
+
+
+class CanvasDeleteResult(BaseModel):
+    deleted: bool
+
+
+class CanvasClearResult(BaseModel):
+    cleared: int
