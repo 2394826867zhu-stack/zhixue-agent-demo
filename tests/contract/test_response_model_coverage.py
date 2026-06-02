@@ -11,8 +11,13 @@ from fastapi.routing import APIRoute
 
 from app.main import app
 
-# 暂时豁免（后续 Phase 收口）：当前留空。新增豁免必须写明理由。
-EXEMPT_PATHS: set[str] = set()
+# 豁免：SSE 流式端点返回 text/event-stream（StreamingResponse），
+# 不是 JSON 信封，无法声明 Envelope[...] response_model。
+EXEMPT_PATHS: set[str] = {
+    "/v1/agent/chat",
+    "/v1/agent/regenerate",
+    "/v1/agent/correct",
+}
 
 
 def _documented_routes():
