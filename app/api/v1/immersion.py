@@ -9,6 +9,7 @@ from app.schemas.immersion import (
     SceneOut, SessionCreate, SessionPatch, SessionOut,
     AgentStateOut, AgentStateUpdate,
 )
+from app.schemas.envelope import Envelope
 from app.services.immersion_service import immersion_service
 from app.services.agent_state_service import agent_state_service
 
@@ -21,7 +22,7 @@ def ok(data):
 
 # ── 场景 ──────────────────────────────────────────────────────────
 
-@router.get("/scenes", summary="沉浸场景列表（含书桌·房间默认）")
+@router.get("/scenes", summary="沉浸场景列表（含书桌·房间默认）", response_model=Envelope[list[SceneOut]])
 async def list_scenes(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -32,7 +33,7 @@ async def list_scenes(
 
 # ── 会话 ──────────────────────────────────────────────────────────
 
-@router.post("/sessions", summary="开始沉浸会话（自定义番茄钟参数）")
+@router.post("/sessions", summary="开始沉浸会话（自定义番茄钟参数）", response_model=Envelope[SessionOut])
 async def create_session(
     data: SessionCreate,
     user: User = Depends(get_current_user),
@@ -42,7 +43,7 @@ async def create_session(
     return ok(SessionOut.model_validate(session).model_dump(mode="json"))
 
 
-@router.get("/sessions/{session_id}", summary="沉浸会话详情（v0.32）")
+@router.get("/sessions/{session_id}", summary="沉浸会话详情（v0.32）", response_model=Envelope[SessionOut])
 async def get_session(
     session_id: str,
     user: User = Depends(get_current_user),
@@ -52,7 +53,7 @@ async def get_session(
     return ok(SessionOut.model_validate(session).model_dump(mode="json"))
 
 
-@router.patch("/sessions/{session_id}", summary="暂停 / 恢复 / 结束 / 更新统计")
+@router.patch("/sessions/{session_id}", summary="暂停 / 恢复 / 结束 / 更新统计", response_model=Envelope[SessionOut])
 async def patch_session(
     session_id: str,
     data: SessionPatch,
@@ -63,7 +64,7 @@ async def patch_session(
     return ok(SessionOut.model_validate(session).model_dump(mode="json"))
 
 
-@router.get("/sessions", summary="历史沉浸会话")
+@router.get("/sessions", summary="历史沉浸会话", response_model=Envelope[list[SessionOut]])
 async def list_sessions(
     limit: int = Query(default=20, ge=1, le=100),
     user: User = Depends(get_current_user),
@@ -78,7 +79,7 @@ async def list_sessions(
 agent_state_router = APIRouter(prefix="/agent/state", tags=["Agent 状态"])
 
 
-@agent_state_router.get("", summary="当前 Agent 状态")
+@agent_state_router.get("", summary="当前 Agent 状态", response_model=Envelope[AgentStateOut])
 async def get_agent_state(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -87,7 +88,7 @@ async def get_agent_state(
     return ok(AgentStateOut.model_validate(state).model_dump(mode="json"))
 
 
-@agent_state_router.put("", summary="切换 Agent 状态（通常由服务端触发）")
+@agent_state_router.put("", summary="切换 Agent 状态（通常由服务端触发）", response_model=Envelope[AgentStateOut])
 async def update_agent_state(
     data: AgentStateUpdate,
     user: User = Depends(get_current_user),

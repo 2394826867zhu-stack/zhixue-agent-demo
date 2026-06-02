@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.memory import MemoryItemOut
+from app.schemas.envelope import Envelope
 from app.services.memory_service import delete_memory, list_memories
 
 router = APIRouter(prefix="/memory", tags=["记忆面板"])
@@ -20,7 +21,7 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.get("", summary="获取当前用户记忆列表")
+@router.get("", summary="获取当前用户记忆列表", response_model=Envelope[PaginatedResponse[MemoryItemOut]])
 async def get_memories(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -38,7 +39,7 @@ async def get_memories(
     )
 
 
-@router.delete("/{episode_id}", status_code=200, summary="删除指定记忆")
+@router.delete("/{episode_id}", status_code=200, summary="删除指定记忆", response_model=Envelope[None])
 async def remove_memory(
     episode_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
