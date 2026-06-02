@@ -66,7 +66,6 @@ async def _scan_async() -> dict:
 
     now = datetime.now(timezone.utc)
     today = date.today()
-    cutoff = now - timedelta(hours=_DEDUP_HOURS)
 
     pushed = 0
     skipped = 0
