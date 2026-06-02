@@ -46,3 +46,14 @@ class EquippedCosmeticsResponse(BaseModel):
     hair: str | None = None
     accessory: str | None = None
     background: str | None = None
+
+
+class StarterOutfitOut(BaseModel):
+    """三套默认服装之一（star_service.list_starter_outfits 元素）。"""
+    id: str
+    name: str
+    items: list[str]   # 套装内道具 item_id 列表
+
+
+class EquipOutfitResult(BaseModel):
+    equipped_outfit: str

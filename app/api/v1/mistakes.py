@@ -6,6 +6,8 @@ from app.api.deps import get_current_user
 from app.models.user import User
 from app.schemas.mistake import MistakeOut, MistakeStatsOut, RetryQuestionOut, RetryAnswerResult
 from app.schemas.training import AnswerRequest
+from app.schemas.envelope import Envelope
+from app.schemas.common import PaginatedResponse
 from app.services.mistake_service import mistake_service
 
 router = APIRouter(prefix="/mistakes", tags=["错题本"])
@@ -15,7 +17,7 @@ def ok(data):
     return {"code": 200, "message": "success", "data": data}
 
 
-@router.get("/stats", summary="错题统计（各学科数量 + 高频错误知识点Top5）")
+@router.get("/stats", summary="错题统计（各学科数量 + 高频错误知识点Top5）", response_model=Envelope[MistakeStatsOut])
 async def get_stats(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -24,7 +26,7 @@ async def get_stats(
     return ok(MistakeStatsOut(**stats))
 
 
-@router.get("", summary="错题列表")
+@router.get("", summary="错题列表", response_model=Envelope[PaginatedResponse[MistakeOut]])
 async def list_mistakes(
     subject: str | None = Query(None),
     knowledge_point_id: str | None = Query(None),
@@ -41,7 +43,7 @@ async def list_mistakes(
     return ok({"items": items, "total": result["total"], "page": result["page"], "page_size": result["page_size"]})
 
 
-@router.post("/{question_id}/retry", summary="生成错题重练题目")
+@router.post("/{question_id}/retry", summary="生成错题重练题目", response_model=Envelope[RetryQuestionOut])
 async def create_retry(
     question_id: str,
     user: User = Depends(get_current_user),
@@ -57,7 +59,7 @@ async def create_retry(
     ))
 
 
-@router.post("/{question_id}/retry/{retry_question_id}/answer", summary="提交重练答案（答对自动移出错题本）")
+@router.post("/{question_id}/retry/{retry_question_id}/answer", summary="提交重练答案（答对自动移出错题本）", response_model=Envelope[RetryAnswerResult])
 async def submit_retry_answer(
     question_id: str,
     retry_question_id: str,
@@ -71,7 +73,7 @@ async def submit_retry_answer(
     return ok(RetryAnswerResult(**result))
 
 
-@router.get("/{question_id}", summary="错题详情（v0.32）")
+@router.get("/{question_id}", summary="错题详情（v0.32）", response_model=Envelope[MistakeOut])
 async def get_mistake(
     question_id: str,
     user: User = Depends(get_current_user),
@@ -81,7 +83,7 @@ async def get_mistake(
     return ok(MistakeOut.model_validate(q))
 
 
-@router.delete("/{question_id}", summary="手动移出错题本")
+@router.delete("/{question_id}", summary="手动移出错题本", response_model=Envelope[None])
 async def remove_mistake(
     question_id: str,
     user: User = Depends(get_current_user),

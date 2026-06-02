@@ -75,3 +75,22 @@ class NoteTaskStatus(BaseModel):
     status: str          # processing | done | failed
     progress: int        # 0-100
     message: str
+
+
+class NoteCreateResult(BaseModel):
+    """generate / upload 三入口的返回（笔记异步生成已入队）。"""
+    note_id: str
+    status: str          # processing
+
+
+class NoteListResponse(BaseModel):
+    """笔记列表（无 total，分组前端按需加载）。"""
+    items: list[NoteBrief]
+    page: int
+    page_size: int
+
+
+class NoteFlashcardGenResult(BaseModel):
+    created: int
+    knowledge_points: int
+    skipped: bool = False
