@@ -8,6 +8,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.services.learner_state_service import get_learner_state
@@ -24,7 +25,7 @@ async def get_recommended_actions(
     """返回当前用户的有序学习动作推荐（引擎决策，带原因）。"""
     user_id = str(current_user.id)
     state = await get_learner_state(db, user_id)
-    actions = recommend_actions(state)
+    actions = recommend_actions(state, use_gain=settings.LEARNING_GAIN_ENABLED)
     return {
         "code": 200,
         "message": "success",

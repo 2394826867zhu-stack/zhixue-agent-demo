@@ -45,6 +45,14 @@ def _prereqs(node, edges: list[tuple]) -> list:
     return [a for (a, b) in edges if b == node]
 
 
+def downstream_count(node, edges: list[tuple]) -> int:
+    """node 沿先修后继可达的下游节点数 = 先修杠杆（P3 G-P3-1）。
+
+    下游越多 → 该点越是地基，先学它解锁的后续越多。纯函数，复用 _reachable。
+    """
+    return len(_reachable(node, _adj(edges)))
+
+
 def learnable_frontier(mastery: dict, edges: list[tuple], *, threshold: float = 0.6) -> list:
     """可学习前沿：自身未掌握(<threshold) 且 所有直接先修均已掌握(>=threshold)。
 

@@ -290,7 +290,7 @@ async def run(
                 from app.services.learner_state_service import get_learner_state
                 from app.services.learning_engine import recommend_actions, action_to_tool_call
                 _state = await get_learner_state(db, user_id)
-                _actions = recommend_actions(_state)
+                _actions = recommend_actions(_state, use_gain=_s.LEARNING_GAIN_ENABLED)
                 if _actions:
                     _act = _actions[0]
                     _tool_nm, _tool_av = action_to_tool_call(_act)

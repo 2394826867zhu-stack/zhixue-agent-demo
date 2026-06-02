@@ -58,7 +58,10 @@ async def get_learner_state(db: AsyncSession, user_id: str) -> dict:
     frontier_ids = graph_service.learnable_frontier(mastery, edges)
     frontier_ids.sort(key=lambda i: mastery.get(i, 0.0))
     frontier = [
-        {"id": fid, "name": id_to_name.get(fid, ""), "p_mastery": round(mastery.get(fid, 0.0), 3)}
+        {"id": fid, "name": id_to_name.get(fid, ""),
+         "p_mastery": round(mastery.get(fid, 0.0), 3),
+         # P3 先修杠杆：下游可达数（gain_policy 用；图谱无边时为 0，gain 兜底）
+         "downstream_count": graph_service.downstream_count(fid, edges)}
         for fid in frontier_ids[:10]
     ]
 

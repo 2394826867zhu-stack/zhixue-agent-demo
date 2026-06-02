@@ -37,13 +37,43 @@ class RecommendedAction:
 
 _WEAK_THRESHOLD = 0.3
 _DIFFICULTY_TIERS = ("blue", "purple", "gold")
+_GAIN_EST_MINUTES = 10.0  # 前沿动作单次耗时估计（gain 接入用，分钟）
 
 
-# ─── 主策略（G-P2-1）────────────────────────────────────────────────────────
+# ─── P3 增益接入（G-P3-1）：把前沿候选按 gain_policy 重排 ────────────────────
 
 
-def recommend_actions(learner_state: dict) -> list[RecommendedAction]:
-    """给定学习者状态，返回有序动作队列（纯函数，不含 DB）。"""
+def _frontier_to_candidate(node: dict) -> dict:
+    """前沿节点 dict → gain_policy 候选契约（缺字段走 gain_policy 中性兜底）。"""
+    return {
+        "kp_id": node.get("id", ""),
+        "p_mastery": node.get("p_mastery", 0.0),
+        "downstream_count": node.get("downstream_count", 0),
+        "stability": node.get("stability"),
+        "last_reviewed_at": node.get("last_reviewed_at"),
+        "recent_correct_rate": node.get("recent_correct_rate"),
+        "est_minutes": _GAIN_EST_MINUTES,
+    }
+
+
+def _rank_frontier_by_gain(nodes: list[dict]) -> list[dict]:
+    """按 gain_policy 单位时间增益降序重排前沿节点（保留原 node dict）。"""
+    from app.services.gain_policy import rank_candidates
+    by_id = {n.get("id", ""): n for n in nodes}
+    ranked = rank_candidates([_frontier_to_candidate(n) for n in nodes])
+    return [by_id[c["kp_id"]] for c in ranked if c.get("kp_id") in by_id]
+
+
+# ─── 主策略（G-P2-1 + G-P3-1 增益接入）──────────────────────────────────────
+
+
+def recommend_actions(learner_state: dict, *, use_gain: bool = False) -> list[RecommendedAction]:
+    """给定学习者状态，返回有序动作队列（纯函数，不含 DB）。
+
+    use_gain=False（默认）：P2 确定性优先级（前沿选掌握度最低）。
+    use_gain=True（G-P3-1，feature flag `LEARNING_GAIN_ENABLED`）：前沿候选改按
+      gain_policy 单位时间增益排序——先修杠杆/遗忘/ZPD 综合最高者优先。
+    """
     if not isinstance(learner_state, dict):
         learner_state = {}
 
@@ -51,8 +81,13 @@ def recommend_actions(learner_state: dict) -> list[RecommendedAction]:
     frontier = learner_state.get("knowledge_graph", {}).get("frontier", [])
     weak = [n for n in frontier if n.get("p_mastery", 0.0) < _WEAK_THRESHOLD]
     non_weak = [n for n in frontier if n.get("p_mastery", 0.0) >= _WEAK_THRESHOLD]
-    # sort non_weak ascending so engine picks lowest-mastery frontier node (Fix 3)
-    non_weak.sort(key=lambda n: n.get("p_mastery", 0.0))
+    if use_gain:
+        # P3：按单位时间增益排序（杠杆高的根因点/前沿点顶上来）
+        weak = _rank_frontier_by_gain(weak)
+        non_weak = _rank_frontier_by_gain(non_weak)
+    else:
+        # P2：non_weak 按掌握度升序，引擎挑最低掌握的前沿（Fix 3）
+        non_weak.sort(key=lambda n: n.get("p_mastery", 0.0))
 
     has_signal = due_count > 0 or bool(weak) or bool(non_weak)
     if not has_signal:
@@ -69,7 +104,8 @@ def recommend_actions(learner_state: dict) -> list[RecommendedAction]:
         ))
 
     if weak:
-        target = min(weak, key=lambda n: n.get("p_mastery", 0.0))
+        # use_gain 时 weak 已按 gain 降序，[0] 即最高杠杆根因点；否则取掌握度最低
+        target = weak[0] if use_gain else min(weak, key=lambda n: n.get("p_mastery", 0.0))
         actions.append(RecommendedAction(
             action_type=ActionType.FILL_PREREQUISITE,
             reason=f"建议先巩固「{target.get('name', '')}」（掌握度 {target.get('p_mastery', 0):.0%}），这是后续知识的地基",
