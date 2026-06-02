@@ -28,13 +28,14 @@ async def get_stats(
 async def list_mistakes(
     subject: str | None = Query(None),
     knowledge_point_id: str | None = Query(None),
+    project_id: str | None = Query(None, description="按项目筛选（D-17 三向联动）"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     result = await mistake_service.list_mistakes(
-        db, str(user.id), subject, knowledge_point_id, page, page_size
+        db, str(user.id), subject, knowledge_point_id, page, page_size, project_id
     )
     items = [MistakeOut.model_validate(q) for q in result["items"]]
     return ok({"items": items, "total": result["total"], "page": result["page"], "page_size": result["page_size"]})

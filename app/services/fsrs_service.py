@@ -133,12 +133,16 @@ class FSRSService:
         subject: str | None,
         page: int,
         page_size: int,
+        project_id: str | None = None,
     ) -> dict:
         uid = uuid.UUID(user_id)
         conditions = [Flashcard.user_id == uid]
 
         if knowledge_point_id:
             conditions.append(Flashcard.knowledge_point_id == uuid.UUID(knowledge_point_id))
+
+        if project_id:
+            conditions.append(Flashcard.project_id == uuid.UUID(project_id))
 
         if subject:
             conditions.append(

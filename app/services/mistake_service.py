@@ -24,6 +24,7 @@ class MistakeService:
         knowledge_point_id: str | None,
         page: int,
         page_size: int,
+        project_id: str | None = None,
     ) -> dict:
         uid = uuid.UUID(user_id)
         conditions = [
@@ -34,6 +35,9 @@ class MistakeService:
 
         if knowledge_point_id:
             conditions.append(TrainingQuestion.knowledge_point_id == uuid.UUID(knowledge_point_id))
+
+        if project_id:
+            conditions.append(TrainingQuestion.project_id == uuid.UUID(project_id))
 
         if subject:
             conditions.append(

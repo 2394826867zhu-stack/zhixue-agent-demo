@@ -47,12 +47,13 @@ async def create_card(
 async def list_cards(
     knowledge_point_id: str | None = Query(None),
     subject: str | None = Query(None),
+    project_id: str | None = Query(None, description="按项目筛选（D-17 三向联动）"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await fsrs_service.list_cards(db, str(user.id), knowledge_point_id, subject, page, page_size)
+    result = await fsrs_service.list_cards(db, str(user.id), knowledge_point_id, subject, page, page_size, project_id)
     items = [
         {**FlashcardResponse.model_validate(c).model_dump(), "memory_state": c.memory_state}
         for c in result["items"]
