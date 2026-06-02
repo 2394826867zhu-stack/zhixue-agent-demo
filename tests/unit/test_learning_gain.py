@@ -28,3 +28,36 @@ def test_expected_calibration_error_well_calibrated_low():
     miscalibrated = [(0.95, False), (0.9, False), (0.92, False)]
     assert lg.expected_calibration_error(calibrated, n_bins=10) == pytest.approx(0.0, abs=1e-6)
     assert lg.expected_calibration_error(miscalibrated, n_bins=10) > 0.5
+
+
+# ── G-P3-2 增益预测校准（预测Δp vs 实测Δp）──
+
+def test_gain_prediction_mae():
+    assert lg.gain_prediction_mae([(0.1, 0.1), (0.2, 0.2)]) == pytest.approx(0.0)
+    assert lg.gain_prediction_mae([(0.2, 0.0)]) == pytest.approx(0.2)
+    assert lg.gain_prediction_mae([]) == 0.0
+
+
+def test_prediction_correlation_perfect():
+    pairs = [(0.1, 0.1), (0.2, 0.2), (0.3, 0.3), (0.4, 0.4)]
+    assert lg.prediction_actual_correlation(pairs) == pytest.approx(1.0)
+
+
+def test_prediction_correlation_inverse():
+    pairs = [(0.1, 0.4), (0.2, 0.3), (0.3, 0.2), (0.4, 0.1)]
+    assert lg.prediction_actual_correlation(pairs) == pytest.approx(-1.0)
+
+
+def test_prediction_correlation_insufficient_or_flat():
+    """样本<2 或预测/实测任一零方差 → None（无相关可言）。"""
+    assert lg.prediction_actual_correlation([(0.1, 0.2)]) is None
+    assert lg.prediction_actual_correlation([(0.2, 0.1), (0.2, 0.3)]) is None  # 预测零方差
+
+
+def test_gain_calibration_report_shape():
+    r = lg.gain_calibration_report([(0.1, 0.1), (0.2, 0.2)])
+    assert r["n"] == 2
+    assert r["mae"] == pytest.approx(0.0)
+    assert r["correlation"] == pytest.approx(1.0)
+    empty = lg.gain_calibration_report([])
+    assert empty["n"] == 0 and empty["correlation"] is None

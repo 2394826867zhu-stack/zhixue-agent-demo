@@ -47,3 +47,51 @@ def expected_calibration_error(pairs: list[tuple[float, bool]], n_bins: int = 10
     if total == 0:
         return 0.0
     return sum(b["n"] * abs(b["pred_mean"] - b["actual_rate"]) for b in bins) / total
+
+
+# ── G-P3-2 增益预测校准（gain_policy 预测的 Δp 期望 vs 真实 Δp）──────────────
+#
+# 用途：验收 P3 增益函数"预测有没有用"。决策时记下 gain_policy.expected_mastery_delta
+# 的预测 Δp，事后由探针/答题回流真实 Δp，配成 (predicted, actual) 对喂入下面三个
+# 纯函数。真实数据管道在 P4 建（探针结果回流，设计§4.3 外部锚）；现为评估框架，
+# 单测可验证算法本身，生产侧无真实样本时返回空报告（安全 no-op）。理论：M10。
+
+
+def gain_prediction_mae(pairs: list[tuple[float, float]]) -> float:
+    """(预测Δp, 实测Δp) 的平均绝对误差。越小越准。空 → 0。"""
+    if not pairs:
+        return 0.0
+    return sum(abs(pred - act) for pred, act in pairs) / len(pairs)
+
+
+def prediction_actual_correlation(pairs: list[tuple[float, float]]) -> float | None:
+    """预测Δp 与 实测Δp 的 Pearson 相关系数 ∈ [−1,1]。
+
+    >0 且显著 = 增益函数有预测力（预测高增益的动作，实测增益也高）→ 值得上引擎。
+    样本 <2 或预测/实测任一零方差 → None（无相关可言，退回固定优先级，设计§3.3 兜底）。
+    """
+    n = len(pairs)
+    if n < 2:
+        return None
+    xs = [p for p, _ in pairs]
+    ys = [a for _, a in pairs]
+    mx, my = sum(xs) / n, sum(ys) / n
+    cov = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    vx = sum((x - mx) ** 2 for x in xs)
+    vy = sum((y - my) ** 2 for y in ys)
+    if vx <= 0 or vy <= 0:
+        return None
+    return cov / (vx ** 0.5 * vy ** 0.5)
+
+
+def gain_calibration_report(pairs: list[tuple[float, float]]) -> dict:
+    """增益预测校准报告：{n, mae, correlation}。
+
+    供 G-P3-2 决定增益函数是否经得起上生产、G-P3-5 与 PFA/Best-LR 同口径对照、
+    以及 10 倍仪表盘的"诚实预测力"展示。空样本 → correlation=None 安全 no-op。
+    """
+    return {
+        "n": len(pairs),
+        "mae": gain_prediction_mae(pairs),
+        "correlation": prediction_actual_correlation(pairs),
+    }
