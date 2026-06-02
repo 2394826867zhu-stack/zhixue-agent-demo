@@ -361,9 +361,10 @@ class TrainingService:
         #   探针 → 只更新掌握度信念 + 写 KP.last_probe，不计练习；
         #   普通题 → BKT 落 p_mastery。
         question.is_correct = not is_wrong
-        from app.services import measurement_service, probe_service
+        from app.services import measurement_service, probe_feedback
         if question.is_probe:
-            await probe_service.record_probe_result(
+            # G-P4-1 · 探针结果回流：record + 调度/状态调整（闭环可见）
+            await probe_feedback.apply_probe_feedback(
                 db, kp_id=question.knowledge_point_id,
                 kind=(question.probe_kind or "retention"), correct=question.is_correct,
             )
