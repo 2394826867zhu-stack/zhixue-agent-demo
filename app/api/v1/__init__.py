@@ -22,6 +22,8 @@ from app.api.v1 import (
     memory,
     # C-09 全局搜索
     search,
+    # C-22/A-14 远程配置 + 系统公告
+    config,
 )
 
 router = APIRouter(prefix="/v1")
@@ -68,3 +70,5 @@ router.include_router(subscription.router)
 router.include_router(memory.router)
 # C-09 全局搜索
 router.include_router(search.router)
+# C-22/A-14 远程配置 + 系统公告
+router.include_router(config.router)
