@@ -53,6 +53,38 @@ def downstream_count(node, edges: list[tuple]) -> int:
     return len(_reachable(node, _adj(edges)))
 
 
+def confusable_neighbors(node, edges: list[tuple]) -> list:
+    """与 node 共享至少一个直接先修的兄弟节点 = 易混候选（P3 G-P3-3，[M5]）。
+
+    共享上位先修概念的节点最易混（如"排列"vs"组合"同源"计数原理"），
+    交错练习它们比 blocked practice 更能强化判别。返回排序后的兄弟列表。
+    """
+    my_prereqs = set(_prereqs(node, edges))
+    if not my_prereqs:
+        return []
+    sibs = {b for (a, b) in edges if b != node and a in my_prereqs}
+    return sorted(sibs)
+
+
+def interleave(kp_ids: list) -> list:
+    """把按 KP 成块的题序列交错成 round-robin（P3 G-P3-3，[M5]），避免同 KP 连续。
+
+    保留各 KP 首次出现顺序；题数不均时多余的同 KP 落末尾。只重排不增删（题数守恒）。
+    """
+    from collections import OrderedDict
+
+    counts: OrderedDict = OrderedDict()
+    for k in kp_ids:
+        counts[k] = counts.get(k, 0) + 1
+    out: list = []
+    while any(v > 0 for v in counts.values()):
+        for k in counts:
+            if counts[k] > 0:
+                out.append(k)
+                counts[k] -= 1
+    return out
+
+
 def learnable_frontier(mastery: dict, edges: list[tuple], *, threshold: float = 0.6) -> list:
     """可学习前沿：自身未掌握(<threshold) 且 所有直接先修均已掌握(>=threshold)。
 
