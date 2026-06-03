@@ -22,6 +22,29 @@ async def _auth(client: AsyncClient, email: str) -> tuple[dict, str]:
 
 
 @pytest.mark.asyncio
+async def test_check_quota_rejects_when_over_limit(client: AsyncClient):
+    """审计 L4-005：enforcement 拒绝路径。used >= limit 时 _check_quota 必须 raise
+    QuotaExceededError（此前测套只验 GET /token-quota 读侧返回值，从不驱动拒绝分支）。"""
+    from app.core.redis import get_redis
+    from app.llm.client import llm_client, QuotaExceededError
+
+    _, uid = await _auth(client, "quota_reject@zhiyao.ai")
+    today = date.today().isoformat()
+    key = f"quota:{uid}:used:{today}"
+    r = await get_redis()
+    try:
+        # used 超过默认 limit → 必须拒绝
+        await r.set(key, settings.DEFAULT_DAILY_TOKEN_LIMIT + 1)
+        with pytest.raises(QuotaExceededError):
+            await llm_client._check_quota(uid)
+        # 控制对照：未超限 → 放行（不 raise）
+        await r.set(key, 0)
+        await llm_client._check_quota(uid)
+    finally:
+        await r.delete(key)
+
+
+@pytest.mark.asyncio
 async def test_token_quota_default_for_new_user(client: AsyncClient):
     h, _ = await _auth(client, "quota_default@zhiyao.ai")
     resp = await client.get("/v1/profile/token-quota", headers=h)
