@@ -1,0 +1,55 @@
+{
+  "method": "GET",
+  "name": "project_detail",
+  "openapi_path": "/v1/projects/{project_id}",
+  "openapi_ref": "Envelope_ProjectDetail_",
+  "path": "/v1/projects/00000000-0000-4000-8000-000000000006",
+  "response": {
+    "code": 200,
+    "data": {
+      "completed_at": null,
+      "completion_pct": 30.0,
+      "created_at": "2026-01-01T12:00:00Z",
+      "current_phase_id": "00000000-0000-4000-8000-000000000007",
+      "id": "00000000-0000-4000-8000-000000000006",
+      "init_context": {},
+      "mastery_pct": 20.0,
+      "milestones": [
+        {
+          "description": "阶段检测。",
+          "event_date": "2026-01-02T12:00:00Z",
+          "exam_id": null,
+          "id": "00000000-0000-4000-8000-000000000008",
+          "is_completed": false,
+          "milestone_type": "exam",
+          "title": "期中模拟考"
+        }
+      ],
+      "name": "中考数学冲刺",
+      "phases": [
+        {
+          "completion_pct": 30.0,
+          "description": "过一遍全部知识点。",
+          "end_date": "2026-01-02T12:00:00Z",
+          "id": "00000000-0000-4000-8000-000000000007",
+          "is_current": true,
+          "name": "基础巩固",
+          "sort_order": 0,
+          "start_date": "2026-01-01T12:00:00Z"
+        }
+      ],
+      "source": "user_project",
+      "started_at": "2026-01-01T12:00:00Z",
+      "status": "active",
+      "subject": "math",
+      "summary": "系统复习初中数学核心考点。",
+      "target_completion_date": "2026-01-02T12:00:00Z",
+      "tree_completed_count": 0,
+      "tree_node_count": 0,
+      "updated_at": "2026-01-01T12:00:00Z",
+      "weekly_hours": 10.0
+    },
+    "message": "success"
+  },
+  "status": 200
+}

@@ -1,0 +1,32 @@
+{
+  "method": "GET",
+  "name": "mistakes_list",
+  "openapi_path": "/v1/mistakes",
+  "openapi_ref": "Envelope_PaginatedResponse_MistakeOut__",
+  "path": "/v1/mistakes",
+  "response": {
+    "code": 200,
+    "data": {
+      "items": [
+        {
+          "ai_feedback": "因式分解的两个根之积应等于常数项 6，请重新检查。",
+          "ai_score": 40,
+          "answered_at": "2026-01-02T12:00:00Z",
+          "bloom_level": "apply",
+          "created_at": "2026-01-01T12:00:00Z",
+          "id": "00000000-0000-4000-8000-000000000004",
+          "knowledge_point_id": "00000000-0000-4000-8000-000000000001",
+          "question_text": "解方程 x²-5x+6=0。",
+          "question_type": "calculation",
+          "reference_answer": "x=2 或 x=3",
+          "user_answer": "x=1 或 x=6"
+        }
+      ],
+      "page": 1,
+      "page_size": 20,
+      "total": 1
+    },
+    "message": "success"
+  },
+  "status": 200
+}

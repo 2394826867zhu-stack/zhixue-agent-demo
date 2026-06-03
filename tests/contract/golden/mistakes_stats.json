@@ -1,0 +1,25 @@
+{
+  "method": "GET",
+  "name": "mistakes_stats",
+  "openapi_path": "/v1/mistakes/stats",
+  "openapi_ref": "Envelope_MistakeStatsOut_",
+  "path": "/v1/mistakes/stats",
+  "response": {
+    "code": 200,
+    "data": {
+      "by_subject": {
+        "math": 1
+      },
+      "top_kps": [
+        {
+          "count": 1,
+          "kp_id": "00000000-0000-4000-8000-000000000001",
+          "kp_name": "一元二次方程的求根公式"
+        }
+      ],
+      "total": 1
+    },
+    "message": "success"
+  },
+  "status": 200
+}

@@ -1,0 +1,26 @@
+{
+  "method": "GET",
+  "name": "profile_insights",
+  "openapi_path": "/v1/profile/insights",
+  "openapi_ref": "Envelope_InsightsOut_",
+  "path": "/v1/profile/insights",
+  "response": {
+    "code": 200,
+    "data": {
+      "achievements_earned": 2,
+      "achievements_total": 20,
+      "mastered_kps": 0,
+      "streak_days": 0,
+      "total_flashcard_reviews": 0,
+      "total_focus_minutes": 0,
+      "total_guidance_sessions": 0,
+      "total_kps": 1,
+      "total_notes": 0,
+      "total_pomodoros": 0,
+      "total_training_sessions": 1,
+      "training_avg_score": 65.0
+    },
+    "message": "success"
+  },
+  "status": 200
+}

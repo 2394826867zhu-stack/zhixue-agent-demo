@@ -1,0 +1,52 @@
+{
+  "method": "GET",
+  "name": "training_detail",
+  "openapi_path": "/v1/training/{session_id}",
+  "openapi_ref": "Envelope_TrainingSessionDetail_",
+  "path": "/v1/training/00000000-0000-4000-8000-000000000002",
+  "response": {
+    "code": 200,
+    "data": {
+      "answered_count": 2,
+      "avg_score": 65.0,
+      "completed_at": "2026-01-02T12:00:00Z",
+      "created_at": "2026-01-01T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000002",
+      "knowledge_point_id": "00000000-0000-4000-8000-000000000001",
+      "mode": "single_kp",
+      "question_count": 2,
+      "questions": [
+        {
+          "ai_feedback": "完全正确，公式记得很牢。",
+          "ai_score": 90,
+          "answered_at": "2026-01-02T12:00:00Z",
+          "bloom_level": "apply",
+          "id": "00000000-0000-4000-8000-000000000003",
+          "is_wrong": false,
+          "knowledge_point_id": "00000000-0000-4000-8000-000000000001",
+          "question": "请写出一元二次方程的求根公式。",
+          "question_type": "short_answer",
+          "reference": "x=(-b±√(b²-4ac))/2a",
+          "user_answer": "x=(-b±√(b²-4ac))/2a"
+        },
+        {
+          "ai_feedback": "因式分解的两个根之积应等于常数项 6，请重新检查。",
+          "ai_score": 40,
+          "answered_at": "2026-01-02T12:00:00Z",
+          "bloom_level": "apply",
+          "id": "00000000-0000-4000-8000-000000000004",
+          "is_wrong": true,
+          "knowledge_point_id": "00000000-0000-4000-8000-000000000001",
+          "question": "解方程 x²-5x+6=0。",
+          "question_type": "calculation",
+          "reference": "x=2 或 x=3",
+          "user_answer": "x=1 或 x=6"
+        }
+      ],
+      "status": "completed",
+      "subject": "math"
+    },
+    "message": "success"
+  },
+  "status": 200
+}

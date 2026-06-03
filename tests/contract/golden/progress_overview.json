@@ -1,0 +1,28 @@
+{
+  "method": "GET",
+  "name": "progress_overview",
+  "openapi_path": "/v1/progress/overview",
+  "openapi_ref": "Envelope_OverviewOut_",
+  "path": "/v1/progress/overview",
+  "response": {
+    "code": 200,
+    "data": {
+      "due_cards": 0,
+      "kp_delta_week": 0,
+      "mastery_distribution": {
+        "learning": 0,
+        "mastered": 0,
+        "new": 0,
+        "reviewing": 1
+      },
+      "mistake_count": 1,
+      "today_tasks_done": 0,
+      "today_tasks_total": 0,
+      "total_kps": 1,
+      "weekly_minutes": 0,
+      "weekly_pomodoros": 0
+    },
+    "message": "success"
+  },
+  "status": 200
+}

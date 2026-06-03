@@ -1,0 +1,13 @@
+{
+  "method": "GET",
+  "name": "tasks_today",
+  "openapi_path": "/v1/tasks",
+  "openapi_ref": "Envelope_list_DailyTaskOut__",
+  "path": "/v1/tasks",
+  "response": {
+    "code": 200,
+    "data": [],
+    "message": "success"
+  },
+  "status": 200
+}
