@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, DateTime, JSON, ForeignKey, Integer, Boolean
+from sqlalchemy import String, Text, DateTime, ForeignKey, Integer, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID, ENUM as PgEnum
+from sqlalchemy.dialects.postgresql import UUID, ENUM as PgEnum, JSONB
 from app.core.database import Base
 
 # 引用 018 已创建的 enum（不重复创建）
@@ -37,7 +37,7 @@ class Note(Base):
     graph_mermaid: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # 提取结果
-    difficulty_points: Mapped[list] = mapped_column(JSON, default=list)
+    difficulty_points: Mapped[list] = mapped_column(JSONB, default=list)
     # [{"name": "...", "reason": "..."}]
 
     # 闪卡是否已生成（用于前端提示按钮状态）

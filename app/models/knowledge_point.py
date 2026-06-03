@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, DateTime, JSON, Float, ForeignKey
+from sqlalchemy import String, Text, DateTime, Float, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, ENUM as PgEnum, JSONB
 from app.core.database import Base
@@ -30,7 +30,7 @@ class KnowledgePoint(Base):
     mastery_status: Mapped[str] = mapped_column(String(20), default="new", nullable=False, index=True)
     # 'new'|'learning'|'reviewing'|'mastered'
 
-    tags: Mapped[list] = mapped_column(JSON, default=list)
+    tags: Mapped[list] = mapped_column(JSONB, default=list)
 
     # v2 PRD · 项目挂载 + 来源区分 + 蓝紫金分级（migration 020）
     project_id: Mapped[uuid.UUID | None] = mapped_column(
