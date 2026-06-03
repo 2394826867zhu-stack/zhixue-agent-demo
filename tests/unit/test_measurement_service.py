@@ -56,6 +56,20 @@ def test_bkt_update_stays_in_unit_interval():
             assert 0.0 <= v <= 1.0
 
 
+def test_bkt_no_absorbing_state_at_p1():
+    # 审计 L2-001：p=1.0 时 (1-p)=0 曾使答错的贝叶斯后验恒 1.0（吸收态——该 KP 永远免疫
+    # "答错降掌握度"，违反 BKT 单调性）。修复后必须：
+    # ① 历史已存 1.0 数据传入答错，严格低于 1.0（能下降）
+    assert ms.bkt_update(1.0, False) < 1.0
+    # ② 连对 100 次也不会收敛到 1.0（上限钳 <1.0，保证 (1-p)>0）
+    p = None
+    for _ in range(100):
+        p = ms.bkt_update(p, True)
+    assert p < 1.0
+    # ③ 收敛到上限后，一次答错必须严格降低掌握度
+    assert ms.bkt_update(p, False) < p
+
+
 def test_bkt_guess_slip_clamped_against_degeneracy():
     # M2 防退化安全不变量（审计 A-2）：传入退化参数 guess=slip=0.9（>0.5）必须被钳到 0.5，
     # 钳制后"答对"的后验信念不得低于"答错"——否则模型会把答错判为更掌握。
