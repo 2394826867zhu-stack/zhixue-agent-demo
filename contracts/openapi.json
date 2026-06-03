@@ -54,7 +54,6 @@
           "announcement": {
             "anyOf": [
               {
-                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -64,7 +63,6 @@
             "title": "Announcement"
           },
           "feature_flags": {
-            "additionalProperties": true,
             "title": "Feature Flags",
             "type": "object"
           },
@@ -273,7 +271,6 @@
         "properties": {
           "items": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "title": "Items",
@@ -363,7 +360,6 @@
           "learning_profile": {
             "anyOf": [
               {
-                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -393,7 +389,6 @@
           },
           "token_usage_7d": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "title": "Token Usage 7D",
@@ -684,7 +679,6 @@
             "type": "string"
           },
           "state_data": {
-            "additionalProperties": true,
             "title": "State Data",
             "type": "object"
           },
@@ -723,7 +717,6 @@
             "type": "string"
           },
           "state_data": {
-            "additionalProperties": true,
             "default": {},
             "title": "State Data",
             "type": "object"
@@ -822,7 +815,6 @@
           "announcement": {
             "anyOf": [
               {
-                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -832,7 +824,6 @@
             "title": "Announcement"
           },
           "feature_flags": {
-            "additionalProperties": true,
             "title": "Feature Flags",
             "type": "object"
           },
@@ -960,7 +951,6 @@
             "type": "string"
           },
           "metadata_json": {
-            "additionalProperties": true,
             "default": {},
             "title": "Metadata Json",
             "type": "object"
@@ -1022,7 +1012,6 @@
             "type": "string"
           },
           "metadata_json": {
-            "additionalProperties": true,
             "title": "Metadata Json",
             "type": "object"
           },
@@ -1121,7 +1110,6 @@
             "type": "string"
           },
           "parsed_updates": {
-            "additionalProperties": true,
             "title": "Parsed Updates",
             "type": "object"
           },
@@ -1302,7 +1290,6 @@
           "announcement": {
             "anyOf": [
               {
-                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -1314,7 +1301,6 @@
           "feature_flags": {
             "anyOf": [
               {
-                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -1380,7 +1366,6 @@
             "type": "string"
           },
           "tools_called": {
-            "additionalProperties": true,
             "title": "Tools Called",
             "type": "object"
           }
@@ -1821,7 +1806,6 @@
           },
           "top_token_users": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "title": "Top Token Users",
@@ -4434,7 +4418,6 @@
             "type": "integer"
           },
           "data": {
-            "additionalProperties": true,
             "title": "Data",
             "type": "object"
           },
@@ -5552,7 +5535,6 @@
           "device_info": {
             "anyOf": [
               {
-                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -5620,7 +5602,6 @@
           "device_info": {
             "anyOf": [
               {
-                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -7032,7 +7013,6 @@
           },
           "samples": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "title": "Samples",
@@ -7308,7 +7288,6 @@
           },
           "top_kps": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "title": "Top Kps",
@@ -7748,7 +7727,6 @@
             "type": "boolean"
           },
           "profile_draft": {
-            "additionalProperties": true,
             "title": "Profile Draft",
             "type": "object"
           },
@@ -7791,7 +7769,6 @@
             "type": "string"
           },
           "profile_draft": {
-            "additionalProperties": true,
             "title": "Profile Draft",
             "type": "object"
           },
@@ -8797,7 +8774,6 @@
             "type": "string"
           },
           "init_context": {
-            "additionalProperties": true,
             "title": "Init Context",
             "type": "object"
           },
@@ -8942,7 +8918,6 @@
             "type": "string"
           },
           "init_context": {
-            "additionalProperties": true,
             "default": {},
             "title": "Init Context",
             "type": "object"
@@ -9156,7 +9131,6 @@
           },
           "proposed_milestones": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "title": "Proposed Milestones",
@@ -9164,14 +9138,12 @@
           },
           "proposed_phases": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "title": "Proposed Phases",
             "type": "array"
           },
           "proposed_tree_summary": {
-            "additionalProperties": true,
             "title": "Proposed Tree Summary",
             "type": "object"
           }
@@ -9343,7 +9315,6 @@
             "type": "number"
           },
           "kind_totals": {
-            "additionalProperties": true,
             "title": "Kind Totals",
             "type": "object"
           },
@@ -9384,7 +9355,6 @@
             "type": "string"
           },
           "params": {
-            "additionalProperties": true,
             "title": "Params",
             "type": "object"
           },
@@ -10854,7 +10824,6 @@
             "type": "string"
           },
           "payload": {
-            "additionalProperties": true,
             "title": "Payload",
             "type": "object"
           },
@@ -11144,7 +11113,6 @@
         "properties": {
           "by_day": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "title": "By Day",
@@ -11152,7 +11120,6 @@
           },
           "by_model": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "title": "By Model",
@@ -11160,7 +11127,6 @@
           },
           "top_users": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "title": "Top Users",
@@ -12057,7 +12023,6 @@
           "learning_profile": {
             "anyOf": [
               {
-                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -12446,7 +12411,6 @@
       "WidgetCreate": {
         "properties": {
           "config": {
-            "additionalProperties": true,
             "default": {},
             "title": "Config",
             "type": "object"
@@ -12494,7 +12458,6 @@
       "WidgetOut": {
         "properties": {
           "config": {
-            "additionalProperties": true,
             "title": "Config",
             "type": "object"
           },
@@ -12568,7 +12531,6 @@
           "config": {
             "anyOf": [
               {
-                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -14120,7 +14082,6 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
                 "title": "Body",
                 "type": "object"
               }
@@ -14346,7 +14307,6 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
                 "title": "Body",
                 "type": "object"
               }
@@ -14463,7 +14423,6 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
                 "title": "Body",
                 "type": "object"
               }
@@ -19706,7 +19665,6 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
                 "title": "Body",
                 "type": "object"
               }
@@ -21172,7 +21130,6 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
                 "title": "Body",
                 "type": "object"
               }
