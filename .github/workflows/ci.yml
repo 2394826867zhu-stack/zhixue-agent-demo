@@ -72,9 +72,11 @@ jobs:
         run: pip install -r requirements.txt
       - name: alembic 空库全链 upgrade
         run: python -m alembic upgrade head
-      - name: alembic 漂移检测（模型改了必须有迁移）
-        # autogenerate diff 非空 → 说明模型与迁移漂移。允许告警不阻断，
-        # 待迁移基线稳定后改为硬失败（去掉 || true）。
-        run: python -m alembic check || echo "::warning::alembic check 发现模型/迁移漂移，请补迁移"
+      - name: alembic 漂移检测（硬闸：模型↔迁移漂移即挡合并）
+        # 基线已对齐（审计 L6：迁移048清孤儿表/列 + 049收紧时间戳NOT NULL + 4列改模型JSONB），
+        # 故由软门控（|| echo warning）转硬失败。index/unique 的命名表示已在 alembic/env.py 的
+        # include_object 排除（历史手命名 noise + 保护 pgvector HNSW 向量索引不被误删）；
+        # 表/列/类型/nullable/FK 等 correctness 漂移仍被硬检测。
+        run: python -m alembic check
       - name: pytest 全量回归（含 contract）
         run: python -m pytest tests/unit tests/integration tests/contract -q
