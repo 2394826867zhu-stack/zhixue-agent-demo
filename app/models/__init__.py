@@ -53,6 +53,8 @@ from app.models.onboarding import OnboardingSession  # noqa: F401
 from app.models.profile import WeeklyReflection  # noqa: F401
 from app.models.app_config import AppConfig  # noqa: F401
 from app.models.prerequisite_edge import PrerequisiteEdge  # noqa: F401
+# 审计 L5 · 文件归属（owner 隔离）
+from app.models.file_upload import FileUpload  # noqa: F401
 
 __all__ = [
     "User", "Note", "KnowledgePoint", "Flashcard",
@@ -83,4 +85,5 @@ __all__ = [
     "FaqItem",
     "Exam", "CheckIn", "OnboardingSession", "WeeklyReflection",
     "AppConfig", "PrerequisiteEdge",
+    "FileUpload",
 ]
