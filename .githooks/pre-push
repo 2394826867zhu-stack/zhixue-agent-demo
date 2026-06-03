@@ -1,0 +1,8 @@
+#!/bin/sh
+# SDD pre-push（backend）：跑无 DB 契约闸,挡住契约漂移的 push。全量 pytest 归 CI。
+echo "[SDD] pre-push: 契约闸 pytest tests/contract ..."
+PYTHONPATH=. PYTHONIOENCODING=utf-8 python -m pytest tests/contract -q || {
+  echo "[SDD] ❌ 契约闸失败，push 被挡。修复后重试（紧急可 --no-verify 绕过）。"
+  exit 1
+}
+echo "[SDD] ✓ 契约闸通过"
