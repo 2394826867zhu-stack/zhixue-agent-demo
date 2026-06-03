@@ -16,6 +16,12 @@ jobs:
   contract-gates:
     # 纯路由内省 + openapi 生成比对，不需要任何外部服务，最快失败。
     runs-on: ubuntu-latest
+    # Settings 有 2 个必填字段（DATABASE_URL / JWT_SECRET_KEY，app/config.py）；
+    # import app.main 即实例化，缺则 conftest 加载崩（ValidationError，exit 4）。
+    # 本 job 不连库（仅路由内省），dummy 值即可让 Settings 通过。
+    env:
+      DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/ci_dummy_unused
+      JWT_SECRET_KEY: ci_dummy_secret_key_not_for_prod
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

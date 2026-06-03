@@ -5,12 +5,19 @@ alembic==1.14.0
 asyncpg==0.30.0
 pydantic==2.10.3
 pydantic-settings==2.7.0
+# EmailStr（app/schemas/{auth,admin}.py）需要；本地有传递依赖故不报，CI 干净安装会缺
+email-validator==2.3.0
 anthropic==0.43.0
 openai==1.58.1
 celery==5.4.0
 redis==5.2.1
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+# bcrypt 必须 pin：passlib 1.7.4(最后发布)加载 bcrypt backend 时 detect_wrap_bug
+# 用 >72 字节探测密码 verify。bcrypt>=4.1 改为对 >72 字节抛 ValueError(旧版静默
+# 截断)，使 passlib backend 加载即崩，所有密码哈希/验证失败。passlib[bcrypt]
+# extras 不约束版本，CI 干净装会取最新(5.x)→全量 auth 测试红。固定到兼容版本。
+bcrypt==4.0.1
 python-multipart==0.0.20
 pillow==11.0.0
 pgvector==0.3.6
