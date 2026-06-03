@@ -61,15 +61,19 @@ async def revenuecat_webhook(
     Configure REVENUECAT_WEBHOOK_SECRET in .env to match the secret set in the
     RevenueCat dashboard → Project Settings → Webhooks → Authorization header.
 
-    If REVENUECAT_WEBHOOK_SECRET is empty (dev default), the endpoint accepts all
-    requests that include an Authorization header, and only logs — safe for local testing.
+    Fail-closed（审计 L5）：若 REVENUECAT_WEBHOOK_SECRET 未配置（空），端点拒绝处理任何
+    请求（403），而非接受带任意 Authorization header 的请求——否则攻击者可在 dev 默认空 secret
+    下伪造 RevenueCat 事件把任意用户改成 Pro。本地测试请显式配置一个 dev secret。
     """
     auth_header = request.headers.get("Authorization")
     secret = settings.REVENUECAT_WEBHOOK_SECRET
 
     if not auth_header:
         raise AppError(4010, "Webhook 签名无效", 401)
-    if secret and not verify_webhook_auth(auth_header, secret):
+    if not secret:
+        # 未配置 secret → fail-closed 拒绝（绝不 accept-all）
+        raise AppError(4030, "Webhook 未配置密钥，拒绝处理", 403)
+    if not verify_webhook_auth(auth_header, secret):
         raise AppError(4010, "Webhook 签名无效", 401)
 
     try:
