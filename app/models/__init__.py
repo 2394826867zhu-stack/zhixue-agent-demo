@@ -44,6 +44,15 @@ from app.models.support import SupportThread, SupportMessage  # noqa: F401
 from app.models.feedback import Feedback  # noqa: F401
 # E-06 · 帮助中心 FAQ
 from app.models.faq import FaqItem  # noqa: F401
+# 审计补全：以下 model 此前未在本 __init__ 导入。app/main 经 service 层传递导入它们故运行时/测试正常，
+# 但 alembic env.py 的 `import app.models` 只加载此处列出的，缺这些表致 Base.metadata 不全 →
+# alembic check/autogenerate 解析 ProjectMilestone.exam_id 等 FK 时崩（NoReferencedTableError）。
+from app.models.exam import Exam  # noqa: F401
+from app.models.checkin import CheckIn  # noqa: F401
+from app.models.onboarding import OnboardingSession  # noqa: F401
+from app.models.profile import WeeklyReflection  # noqa: F401
+from app.models.app_config import AppConfig  # noqa: F401
+from app.models.prerequisite_edge import PrerequisiteEdge  # noqa: F401
 
 __all__ = [
     "User", "Note", "KnowledgePoint", "Flashcard",
@@ -72,4 +81,6 @@ __all__ = [
     "SupportThread", "SupportMessage",
     "Feedback",
     "FaqItem",
+    "Exam", "CheckIn", "OnboardingSession", "WeeklyReflection",
+    "AppConfig", "PrerequisiteEdge",
 ]

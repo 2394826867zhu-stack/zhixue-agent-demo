@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 
 from app.models.project import Project, ProjectTreeNode
+from app.models.knowledge_point import KnowledgePoint
+from app.models.curriculum import CurriculumChapter
 from app.schemas.project import TreeNodeOut, TreeNodeBubble
 from app.core.exceptions import NotFoundError, PermissionDeniedError, ValidationError
 
@@ -50,10 +52,27 @@ class ProjectTreeService:
         if node is None:
             raise NotFoundError("节点不存在")
 
+        # 课程描述：真填充——优先关联 KP 的 content（其次 name），再次关联章节 lesson_title，
+        # 皆无则空串。此前硬编码 "" 占位，使契约 course_description 恒为空（审计 L1 幻觉）。
+        course_description = ""
+        if node.kp_id is not None:
+            kp = (await db.execute(
+                select(KnowledgePoint.content, KnowledgePoint.name)
+                .where(KnowledgePoint.id == node.kp_id)
+            )).first()
+            if kp is not None:
+                course_description = kp.content or kp.name or ""
+        elif node.curriculum_chapter_id is not None:
+            lesson = (await db.execute(
+                select(CurriculumChapter.lesson_title)
+                .where(CurriculumChapter.id == node.curriculum_chapter_id)
+            )).scalar_one_or_none()
+            course_description = lesson or ""
+
         return TreeNodeBubble(
             node=TreeNodeOut.model_validate(node),
             course_title=node.title,
-            course_description="",  # Agent 后续填充
+            course_description=course_description,
             can_start_study=node.status in ("available", "in_progress"),
             can_start_quiz=node.completion_pct >= 1.0 or node.status == "completed",
         )
@@ -103,7 +122,7 @@ class ProjectTreeService:
                     db, user_id=uuid.UUID(user_id),
                     event_kind="phase_completed",
                     summary=f"完成项目阶段「{node.title}」。",
-                    detail={"node_id": str(nid), "title": node.title, "tier": node.tier},
+                    detail={"node_id": str(nid), "title": node.title, "tier": node.difficulty},
                     ref_project_id=uuid.UUID(project_id),
                     emotional_tone="positive",
                 )
