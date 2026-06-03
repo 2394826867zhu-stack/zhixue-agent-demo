@@ -24,14 +24,20 @@ def event_loop():
 @pytest_asyncio.fixture(scope="function")
 async def db():
     async with test_engine.begin() as conn:
+        # 干净起点：先 DROP/CREATE public schema，抹掉上一个用例、以及 CI 里
+        # `alembic upgrade head` 预建的全量 schema（含 metadata 之外的 enum/约束/
+        # alembic_version 等）。否则 Base.metadata.drop_all 因这些对象的 FK 依赖
+        # 顺序处理不了 users 而崩（cannot drop table users because other objects
+        # depend on it）。schema 级 CASCADE 重置与 alembic/前序用例彻底解耦，
+        # 干净可重复。
+        await conn.execute(text("DROP SCHEMA public CASCADE"))
+        await conn.execute(text("CREATE SCHEMA public"))
         # 自愈：pgvector 扩展不被 metadata 管理，schema 被重置后会丢失。
         # 建表前确保扩展存在，否则 document_embeddings 的 vector 列建表失败（审计 A-7）。
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
     async with TestSessionLocal() as session:
         yield session
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
 
 
 @pytest_asyncio.fixture(scope="function")
