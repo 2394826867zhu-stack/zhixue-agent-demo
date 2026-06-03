@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Text, DateTime, ForeignKey, JSON
+from sqlalchemy import Text, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.core.database import Base
 
 
@@ -18,7 +18,7 @@ class CheckIn(Base):
     raw_content: Mapped[str] = mapped_column(Text, nullable=False)
     ai_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     # {"kp_updates": [...], "kps_created": [...], "tasks_created": [...]}
-    parsed_updates: Mapped[dict] = mapped_column(JSON, default=dict)
+    parsed_updates: Mapped[dict] = mapped_column(JSONB, default=dict)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

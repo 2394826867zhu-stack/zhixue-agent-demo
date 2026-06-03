@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, DateTime, ForeignKey, JSON
+from sqlalchemy import String, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.core.database import Base
 
 
@@ -17,7 +17,7 @@ class OnboardingSession(Base):
 
     # grade | subjects | progress | performance | next_exam | goal | upload | confirm | completed
     current_step: Mapped[str] = mapped_column(String(30), default="grade", nullable=False)
-    profile_draft: Mapped[dict] = mapped_column(JSON, default=dict)
+    profile_draft: Mapped[dict] = mapped_column(JSONB, default=dict)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
