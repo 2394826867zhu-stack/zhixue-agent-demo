@@ -16242,7 +16242,7 @@
     },
     "/v1/files/{filename}": {
       "get": {
-        "description": "经鉴权的文件读取端点，替代裸静态服务。\n\nF-08：/uploads/{filename} 原本无端点服务且无鉴权。此端点要求登录，\n并用文件名白名单 + 路径边界二次校验杜绝路径遍历（防读取 .env 等敏感文件）。\n注：owner 级隔离（仅能下载自己上传的文件）需全局文件归属表，列为后续任务。",
+        "description": "经鉴权 + owner 隔离的文件读取端点，替代裸静态服务。\n\nF-08：/uploads/{filename} 原本无端点服务且无鉴权。此端点要求登录，\n并用文件名白名单 + 路径边界二次校验杜绝路径遍历（防读取 .env 等敏感文件）。\n审计 L5：用 file_uploads 归属表做 owner 隔离——有归属记录则仅 owner 可下载（杜绝 IDOR）；\n无记录的历史文件（迁移050前上传）放行兼容，记 warning。",
         "operationId": "download_file_v1_files__filename__get",
         "parameters": [
           {
