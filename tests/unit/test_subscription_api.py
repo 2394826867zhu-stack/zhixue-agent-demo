@@ -30,3 +30,19 @@ async def test_webhook_rejects_wrong_secret():
                 headers={"Authorization": "Bearer wrong-secret"},
             )
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_webhook_fail_closed_when_secret_unset():
+    # 审计 L5：未配置 secret（dev 默认空）时必须 fail-closed（403），
+    # 不得接受带任意 Authorization 的伪造请求（否则攻击者可改任意用户为 Pro）。
+    from app.config import settings
+
+    with patch.object(settings, "REVENUECAT_WEBHOOK_SECRET", ""):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/subscription/webhook",
+                json={"event": {"id": "x", "type": "INITIAL_PURCHASE", "app_user_id": "y"}},
+                headers={"Authorization": "Bearer anything"},
+            )
+    assert resp.status_code == 403

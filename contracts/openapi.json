@@ -21432,7 +21432,7 @@
     },
     "/v1/subscription/webhook": {
       "post": {
-        "description": "Receive RevenueCat subscription lifecycle events.\n\nAuthentication: RevenueCat sends `Authorization: Bearer <secret>`.\nConfigure REVENUECAT_WEBHOOK_SECRET in .env to match the secret set in the\nRevenueCat dashboard → Project Settings → Webhooks → Authorization header.\n\nIf REVENUECAT_WEBHOOK_SECRET is empty (dev default), the endpoint accepts all\nrequests that include an Authorization header, and only logs — safe for local testing.",
+        "description": "Receive RevenueCat subscription lifecycle events.\n\nAuthentication: RevenueCat sends `Authorization: Bearer <secret>`.\nConfigure REVENUECAT_WEBHOOK_SECRET in .env to match the secret set in the\nRevenueCat dashboard → Project Settings → Webhooks → Authorization header.\n\nFail-closed（审计 L5）：若 REVENUECAT_WEBHOOK_SECRET 未配置（空），端点拒绝处理任何\n请求（403），而非接受带任意 Authorization header 的请求——否则攻击者可在 dev 默认空 secret\n下伪造 RevenueCat 事件把任意用户改成 Pro。本地测试请显式配置一个 dev secret。",
         "operationId": "revenuecat_webhook_v1_subscription_webhook_post",
         "responses": {
           "200": {
