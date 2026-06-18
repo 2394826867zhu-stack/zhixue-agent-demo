@@ -319,8 +319,14 @@ class TaskService:
         return list(result.scalars().all())
 
     async def _get_task(self, db: AsyncSession, task_id: str, user_id: str) -> DailyTask:
+        # 非法 UUID 永远不可能命中真实任务 → 语义上就是「不存在」(404)，
+        # 不能让 uuid.UUID 的 ValueError 冒泡成 500。
+        try:
+            tid = uuid.UUID(task_id)
+        except ValueError:
+            raise NotFoundError("任务")
         result = await db.execute(
-            select(DailyTask).where(DailyTask.id == uuid.UUID(task_id))
+            select(DailyTask).where(DailyTask.id == tid)
         )
         task = result.scalar_one_or_none()
         if not task:

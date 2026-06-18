@@ -36,6 +36,18 @@ async def get_today(
     return ok([DailyTaskOut.model_validate(t) for t in tasks])
 
 
+# 必须定义在 `/{task_id}` 之前：Starlette 按注册顺序匹配，否则
+# GET /tasks/today 会落进动态路由（task_id="today"）→ uuid.UUID("today")
+# ValueError → 500。SPEC 4.7 与前端 TasksScreen 契约都以 /tasks/today 为准。
+@router.get("/today", summary="获取今日任务列表（GET /tasks 的契约别名）", response_model=Envelope[list[DailyTaskOut]])
+async def get_today_alias(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    tasks = await task_service.get_today(db, str(user.id))
+    return ok([DailyTaskOut.model_validate(t) for t in tasks])
+
+
 @router.post("", summary="手动新增任务", response_model=Envelope[DailyTaskOut])
 async def create_task(
     body: DailyTaskCreate,
