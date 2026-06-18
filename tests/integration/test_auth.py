@@ -85,3 +85,27 @@ async def test_refresh_token(client: AsyncClient):
     resp = await client.post("/v1/auth/refresh", json={"refresh_token": refresh_token})
     assert resp.status_code == 200
     assert "access_token" in resp.json()["data"]
+
+
+@pytest.mark.asyncio
+async def test_delete_account(client: AsyncClient):
+    """注销账号：DELETE /me 删除用户（DB FK ondelete=CASCADE 级联删全部数据）→ 之后该 token 取 /me 401。"""
+    reg = await client.post("/v1/auth/register", json={
+        "email": "delete-me@zhiyao.ai",
+        "password": "password123",
+    })
+    token = reg.json()["data"]["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # /me 正常 → 注销 → 再取 /me 应 401（用户已删）
+    assert (await client.get("/v1/auth/me", headers=headers)).status_code == 200
+    deleted = await client.delete("/v1/auth/me", headers=headers)
+    assert deleted.status_code == 200
+    assert (await client.get("/v1/auth/me", headers=headers)).status_code == 401
+
+    # 同邮箱可重新注册（确认旧账号确已删除，唯一约束释放）
+    again = await client.post("/v1/auth/register", json={
+        "email": "delete-me@zhiyao.ai",
+        "password": "password123",
+    })
+    assert again.status_code == 200

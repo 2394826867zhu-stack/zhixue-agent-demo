@@ -14551,6 +14551,30 @@
       }
     },
     "/v1/auth/me": {
+      "delete": {
+        "operationId": "delete_me_v1_auth_me_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_NoneType_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "注销账号（永久删除账号及全部数据）",
+        "tags": [
+          "认证"
+        ]
+      },
       "get": {
         "operationId": "get_me_v1_auth_me_get",
         "responses": {
@@ -21791,6 +21815,32 @@
           }
         ],
         "summary": "番茄钟统计（今日/本周）",
+        "tags": [
+          "每日任务与番茄钟"
+        ]
+      }
+    },
+    "/v1/tasks/today": {
+      "get": {
+        "operationId": "get_today_alias_v1_tasks_today_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_DailyTaskOut__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "获取今日任务列表（GET /tasks 的契约别名）",
         "tags": [
           "每日任务与番茄钟"
         ]

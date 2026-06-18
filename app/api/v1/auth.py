@@ -56,3 +56,14 @@ async def update_me(
 ):
     updated = await auth_service.update_profile(db, user, body)
     return ok(UserProfile.model_validate(updated))
+
+
+@router.delete("/me", summary="注销账号（永久删除账号及全部数据）", response_model=Envelope[None])
+async def delete_me(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # 删 users 行 → 全部用户数据按 FK ondelete=CASCADE 在 DB 层级联删除（隐私政策"注销后永久删除"）。
+    await db.delete(user)
+    await db.commit()
+    return ok(None)
