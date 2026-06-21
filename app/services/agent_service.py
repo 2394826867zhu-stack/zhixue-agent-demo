@@ -379,6 +379,27 @@ async def run(
         except Exception as e:
             logger.debug(f"TTS skipped: {e}")
 
+    # 会话感知 · 把回答 + 工具动作沉淀进 StudySpace 文档（spec 2026-06-21）
+    # 仅 studyspace 模式；失败静默降级，不阻断对话主流
+    if studyspace_session_id:
+        try:
+            import uuid as _uuid
+            from app.services.ss_timeline_service import ss_timeline_service
+            ss_uid = _uuid.UUID(studyspace_session_id)
+            usr_uid = _uuid.UUID(user_id)
+            if full_reply and full_reply.strip():
+                await ss_timeline_service.append_system_node(
+                    db, ss_uid, usr_uid,
+                    kind="agent_message", title="知曜", content=full_reply.strip(),
+                )
+            for _tool in tools_called:
+                await ss_timeline_service.append_system_node(
+                    db, ss_uid, usr_uid,
+                    kind="agent_action", content=None, payload={"tool": _tool},
+                )
+        except Exception as _e:
+            logger.debug(f"studyspace timeline write skipped: {_e}")
+
     # C-12 · RAG 召回来源随 done 事件回前端展示（"答案参考了你的：错题《…》/ 笔记《…》"）
     from app.services.rag_service import format_citations
     done_payload: dict = {
