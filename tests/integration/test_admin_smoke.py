@@ -38,6 +38,7 @@ async def test_admin_read_endpoints_validate(client):
         "/admin/dead-letters",
         "/admin/rag/recall-stats",
         "/admin/rag/low-quality-samples",
+        "/admin/agent-tools/stats",
         "/admin/support/threads",
         "/admin/feedback",
         "/admin/faq",

@@ -1,6 +1,10 @@
 from celery import Celery
 from celery.schedules import crontab
 from app.config import settings
+from app.core.observability import init_sentry
+
+# G2-4 · worker 进程接 Sentry（CeleryIntegration 自动捕获任务异常；无 DSN 时 no-op）
+init_sentry()
 
 celery_app = Celery(
     "zhiyao",

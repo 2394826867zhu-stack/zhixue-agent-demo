@@ -728,6 +728,33 @@
         "title": "AgentStateUpdate",
         "type": "object"
       },
+      "AgentToolStatsOut": {
+        "description": "G2-6b · agent_tool_traces 按 tool_name 聚合（工具成功率/延迟/cost 可观测）。",
+        "properties": {
+          "tools": {
+            "items": {
+              "type": "object"
+            },
+            "title": "Tools",
+            "type": "array"
+          },
+          "total_calls": {
+            "title": "Total Calls",
+            "type": "integer"
+          },
+          "window_days": {
+            "title": "Window Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_days",
+          "total_calls",
+          "tools"
+        ],
+        "title": "AgentToolStatsOut",
+        "type": "object"
+      },
       "AgentUndoResult": {
         "properties": {
           "remaining": {
@@ -2272,6 +2299,28 @@
           "data"
         ],
         "title": "Envelope[AgentStateOut]",
+        "type": "object"
+      },
+      "Envelope_AgentToolStatsOut_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AgentToolStatsOut"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[AgentToolStatsOut]",
         "type": "object"
       },
       "Envelope_AgentUndoResult_": {
@@ -12717,6 +12766,57 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/admin/agent-tools/stats": {
+      "get": {
+        "description": "最近 days 天 agent_tool_traces 按 tool_name 聚合：调用数/成功率/平均延迟/cost/tokens。",
+        "operationId": "agent_tool_stats_admin_agent_tools_stats_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 7,
+              "maximum": 90,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_AgentToolStatsOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Agent 工具调用聚合（G2-6b 可观测）",
+        "tags": [
+          "管理后台"
+        ]
+      }
+    },
     "/admin/auth/login": {
       "post": {
         "operationId": "login_admin_auth_login_post",

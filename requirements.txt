@@ -37,3 +37,5 @@ rapidocr-onnxruntime>=1.4.0
 pypdf>=4.0.0
 # v0.35 文件 magic bytes 校验（F-03）
 filetype>=1.2.0
+# G2-4 可观测 · 外部错误上报（Sentry）。仅 SENTRY_DSN 非空才 init，本地零依赖
+sentry-sdk[fastapi]==2.63.0

@@ -10,6 +10,7 @@ from app.config import settings
 from app.core.database import engine
 from app.core.redis import close_redis
 from app.core.exceptions import AppError, app_error_handler
+from app.core.observability import init_sentry, capture_exception
 from app.api.v1 import router as v1_router
 from app.api.admin import router as admin_router
 
@@ -88,6 +89,9 @@ def _assert_cors_safe() -> None:
 async def lifespan(app: FastAPI):
     _assert_cors_safe()
 
+    # G2-4 · 接 Sentry（仅 SENTRY_DSN 非空才 init，本地零依赖）
+    init_sentry()
+
     from app.data.seed_curriculum import seed_curriculum
     from app.data.seed_immersion_scenes import seed_immersion_scenes
     from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -134,6 +138,8 @@ app.add_exception_handler(AppError, app_error_handler)
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
+    # G2-4 · 未捕获异常上报 Sentry（无 DSN 时 no-op）。灰度 500 不再只进本地日志
+    capture_exception(exc)
     # v0.34 P1-13 · PRD voice
     return JSONResponse(
         status_code=500,

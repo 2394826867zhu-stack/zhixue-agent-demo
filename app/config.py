@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     # 应用
     APP_ENV: Literal["development", "production"] = "development"
     LOG_LEVEL: str = "INFO"
+
+    # G2-4 可观测 · Sentry 错误上报（审计 P0）。
+    # 留空（默认）= 不 init、不上报，本地开发零依赖；非空才接入。
+    SENTRY_DSN: str = ""
+    # 性能追踪采样率（0.0-1.0），生产按量调；仅 DSN 非空时生效
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.1
     ALLOWED_ORIGINS: str = "http://localhost:3000"
     ALLOWED_ORIGIN_REGEX: str | None = None
 
