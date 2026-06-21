@@ -10408,6 +10408,17 @@
             "title": "Kp Extracted",
             "type": "integer"
           },
+          "lesson_plan": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lesson Plan"
+          },
           "lesson_title": {
             "title": "Lesson Title",
             "type": "string"

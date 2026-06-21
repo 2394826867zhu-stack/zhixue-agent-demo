@@ -365,6 +365,7 @@ class StudySpaceService:
             kp_extracted=session.kp_extracted,
             flashcards_created=session.flashcards_created,
             stars_earned=session.stars_earned,
+            lesson_plan=session.lesson_plan,
             started_at=session.started_at,
             completed_at=session.completed_at,
         )

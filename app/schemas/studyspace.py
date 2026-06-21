@@ -26,6 +26,7 @@ class StudySpaceSessionOut(BaseModel):
     kp_extracted: int
     flashcards_created: int
     stars_earned: int
+    lesson_plan: dict | None = None
     started_at: datetime
     completed_at: datetime | None
     model_config = {"from_attributes": True}
