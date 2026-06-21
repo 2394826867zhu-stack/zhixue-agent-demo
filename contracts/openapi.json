@@ -10818,7 +10818,8 @@
               "mistake",
               "reflection",
               "agent_message",
-              "agent_action"
+              "agent_action",
+              "spot_quiz_generated"
             ],
             "title": "Kind",
             "type": "string"

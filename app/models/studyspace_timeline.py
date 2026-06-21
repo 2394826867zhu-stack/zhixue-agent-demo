@@ -35,6 +35,7 @@ TIMELINE_NODE_KIND = PgEnum(
     "reflection",         # 用户复盘 / 总结
     "agent_message",      # Agent 关键发言 / 调度结果
     "agent_action",       # Agent 调度（生成笔记 / 出题 / 复盘等）
+    "spot_quiz_generated",  # 随堂测验：生成的题（不可编辑）
     name="ss_timeline_node_kind",
     create_type=True,
 )
