@@ -136,7 +136,7 @@ def build_system_prompt(ctx: AgentContext, studyspace_ctx: dict | None = None) -
 你正在辅导用户学习这节课，这是你当前唯一的任务。"""
             studyspace_rules = """
 ## StudySpace 行为规则
-1. 开场时先梳理本课时的知识框架（3-5个核心概念），生成一份思维导图（Mermaid格式）
+1. 开场先梳理本课时 3-5 个核心概念，调用 set_lesson_plan(steps=[概念名...]) 落分步框架，然后开始讲第 1 个概念（也可同时生成一份 Mermaid 思维导图）
 2. 然后逐步讲解，每讲完一个核心概念后暂停，等用户确认或提问，不要一次性输出全部内容
 3. **每讲完一个核心概念后调用 spot_quiz 工具自动出随堂测验题**（传入 kp_id），等用户作答后给反馈
 4. 用户答错时切换到更基础的解释路径，不要直接给出答案
@@ -468,6 +468,33 @@ TOOL_DEFINITIONS = [
                     },
                 },
                 "required": ["kp_id"],
+            },
+        },
+    },
+    # ── 生成式教学 · 开场落分步框架（PathStepper 数据源 · plan A3）──────────
+    {
+        "type": "function",
+        "function": {
+            "name": "set_lesson_plan",
+            "description": (
+                "开场梳理本课时 3-5 核心概念后调用，落分步教学框架供进度条展示。"
+                "传入 steps（核心概念名数组），写入当前 StudySpace 会话，"
+                "前端据此渲染 PathStepper（「第 N/M 步」）。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "steps": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "本课时 3-5 个核心概念名，按教学顺序排列。",
+                    },
+                    "ss_session_id": {
+                        "type": "string",
+                        "description": "可选。当前 StudySpace 会话 ID。前端在 SS 模式时会自动注入。",
+                    },
+                },
+                "required": ["steps"],
             },
         },
     },
