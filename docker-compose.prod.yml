@@ -1,0 +1,115 @@
+# 知曜后端 · 生产编排（阿里云 ECS 单机部署）
+# ----------------------------------------------------------------------------
+# 一台 ECS 上跑全栈：pgvector + redis + 后端(uvicorn) + celery worker。
+# 用法：
+#   1. 同目录放好 .env（见 .env.example，生产必配项见部署指南）
+#   2. docker compose -f docker-compose.prod.yml up -d --build
+#   3. 健康检查：curl http://127.0.0.1:8000/health
+# Nginx 在宿主机反代 127.0.0.1:8000 → 域名 HTTPS（见 deploy/nginx-zhiyao.conf）
+# ----------------------------------------------------------------------------
+version: "3.9"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: zhiyao_pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-zhiyao}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?生产必须在 .env 设强密码}
+      POSTGRES_DB: ${POSTGRES_DB:-zhiyao}
+      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
+    volumes:
+      - zhiyao_pgdata:/var/lib/postgresql/data
+    # 仅容器内网可达，不对公网暴露（安全组也别开 5432）
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zhiyao} -d ${POSTGRES_DB:-zhiyao}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: zhiyao_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - zhiyao_redisdata:/data
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zhiyao_backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # 容器内连服务用 compose 服务名，不是 localhost
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-zhiyao}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-zhiyao}
+      REDIS_URL: redis://redis:6379/0
+      # BGE-M3 模型缓存挂持久卷（避免每次重启重下 ~1.3GB）
+      HF_HOME: /models/hf
+      # 大陆从 HuggingFace 官方下载慢/不稳 → 用国内镜像（见指南）
+      HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
+      APP_ENV: production
+      PORT: "8000"
+    volumes:
+      - zhiyao_hf:/models/hf        # 模型权重持久化
+      - zhiyao_uploads:/app/uploads # 用户上传文件持久化
+    # 只绑回环，由宿主机 Nginx 反代；不对公网直接暴露 8000
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zhiyao_celery
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-zhiyao}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-zhiyao}
+      REDIS_URL: redis://redis:6379/0
+      HF_HOME: /models/hf
+      HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
+      APP_ENV: production
+    # 覆盖 Dockerfile 的 CMD：起 celery worker（不跑迁移/不起 uvicorn）
+    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2
+    volumes:
+      - zhiyao_hf:/models/hf
+      - zhiyao_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  zhiyao_pgdata:
+    name: zhiyao_pgdata
+  zhiyao_redisdata:
+    name: zhiyao_redisdata
+  zhiyao_hf:
+    name: zhiyao_hf
+  zhiyao_uploads:
+    name: zhiyao_uploads
