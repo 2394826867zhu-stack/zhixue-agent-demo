@@ -35,19 +35,23 @@ _LEARNING_WHITELIST_PHRASES = (
 
 
 def _hit_blacklist(text: str) -> tuple[str, str] | None:
-    """(category, hit_keyword) if hit, None otherwise"""
+    """(category, hit_keyword) if hit, None otherwise.
+
+    G3-3 修复：原白名单循环是 `pass` 死代码（命中后什么都不做）。
+    现实现为真逻辑——把命中的学习场景短语先从待检文本里挖空，
+    再跑黑名单，避免「政治制度」误伤「政治」这类学习术语。
+    """
     if not text:
         return None
-    low = text.lower()
-    # 先白名单豁免（避免学习场景误伤）
+    # 白名单豁免：先把合法学习短语从文本中移除，再做黑名单匹配
+    scrubbed = text
     for phrase in _LEARNING_WHITELIST_PHRASES:
-        if phrase in text:
-            # 暂时简化：白名单命中 → 跳过这次检查
-            # 严格版本应该用 token level 而不是 phrase
-            pass
+        if phrase in scrubbed:
+            scrubbed = scrubbed.replace(phrase, "")
+    low = scrubbed.lower()
     for cat, words in _BLACKLIST.items():
         for w in words:
-            if w in low or w in text:
+            if w in low or w in scrubbed:
                 return (cat, w)
     return None
 

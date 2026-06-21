@@ -6,7 +6,7 @@ from app.api.deps import get_current_user
 from app.models.user import User
 from app.schemas.auth import (
     RegisterRequest, LoginRequest, RefreshRequest,
-    TokenResponse, UserProfile, UpdateProfileRequest,
+    TokenResponse, UserProfile, UpdateProfileRequest, ChangePasswordRequest,
 )
 from app.schemas.envelope import Envelope
 from app.services.auth_service import auth_service
@@ -56,6 +56,16 @@ async def update_me(
 ):
     updated = await auth_service.update_profile(db, user, body)
     return ok(UserProfile.model_validate(updated))
+
+
+@router.post("/change-password", summary="修改密码", response_model=Envelope[None])
+async def change_password(
+    body: ChangePasswordRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await auth_service.change_password(db, user, body)
+    return ok(None)
 
 
 @router.delete("/me", summary="注销账号（永久删除账号及全部数据）", response_model=Envelope[None])

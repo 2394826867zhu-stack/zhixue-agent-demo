@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 _NON_EDITABLE_KINDS = {
     "training_result", "mistake", "flashcard_result",
     "agent_action",  # Agent 关键调度结果（"判题事实"等同视为不可改）
+    "spot_quiz_generated",  # 生成的随堂测验题，不可编辑
 }
 
 

@@ -20,12 +20,26 @@ def handle_task_failure(
     tb = str(einfo) if einfo else None
     retries = getattr(getattr(sender, "request", None), "retries", 0) or 0
 
-    # 管理员告警：ERROR 级日志（运维监控/Sentry 可订阅）。
-    # 如需即时推送，可在此读 settings.ADMIN_ALERT_WEBHOOK 发送，缺省走日志。
+    # 管理员告警：ERROR 级日志 + 主动上报 Sentry（G2-6a 审计 P0：不再只日志静默）。
     logger.error(
         "[DLQ] Celery 任务最终失败 task=%s id=%s retries=%s error=%s",
         task_name, task_id, retries, error,
     )
+
+    # G2-6a · 主动告警进 Sentry 仪表盘（无 DSN 时 no-op）。
+    # 有异常对象 → capture_exception 带堆栈；否则 capture_message 兜底。
+    try:
+        from app.core.observability import capture_exception, capture_message
+
+        if exception is not None:
+            capture_exception(exception)
+        else:
+            capture_message(
+                f"[DLQ] {task_name} failed (id={task_id}, retries={retries})",
+                level="error",
+            )
+    except Exception as e:  # 告警失败绝不影响落库
+        logger.error("[DLQ] Sentry 告警失败: %s", e)
 
     # 持久化到死信队列表（管理员可查 / 后续可重放）
     try:

@@ -141,6 +141,13 @@ class LowQualitySamplesOut(BaseModel):
     samples: list[dict]
 
 
+class AgentToolStatsOut(BaseModel):
+    """G2-6b · agent_tool_traces 按 tool_name 聚合（工具成功率/延迟/cost 可观测）。"""
+    window_days: int
+    total_calls: int
+    tools: list[dict]   # 每项：tool_name/calls/success_rate/avg_latency_ms/avg_cost_usd/avg_tokens_in/avg_tokens_out
+
+
 class AdminThreadListResponse(BaseModel):
     items: list[dict]   # thread 摘要子表（id/user_id/subject/status/时间...）
     total: int

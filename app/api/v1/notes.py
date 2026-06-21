@@ -71,12 +71,13 @@ async def get_task_status(
 @router.get("", summary="笔记列表", response_model=Envelope[NoteListResponse])
 async def list_notes(
     subject: str | None = Query(None),
+    project_id: str | None = Query(None, description="按项目筛选（G1-4 三向联动）"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await note_service.list_notes(db, str(user.id), subject, page, page_size)
+    result = await note_service.list_notes(db, str(user.id), subject, page, page_size, project_id)
     items = [
         {**NoteBrief.model_validate(item["note"]).model_dump(), "kp_count": item["kp_count"]}
         for item in result["items"]

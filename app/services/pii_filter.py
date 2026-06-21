@@ -11,13 +11,15 @@ _ID_CARD = re.compile(r"(?<!\d)([1-9]\d{5})(\d{8})(\d{3}[0-9xX])(?!\d)")
 _PHONE = re.compile(r"(?<!\d)(1[3-9]\d)(\d{4})(\d{4})(?!\d)")
 # 银行卡 16-19 位（粗略）
 _BANK_CARD = re.compile(r"(?<!\d)(\d{4})\d{8,11}(\d{4})(?!\d)")
+# 邮箱（G3-4 · 审计 P0：未成年人 PII，邮箱常含真实姓名/学校）
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 
 
 def mask_pii(text: str) -> tuple[str, dict[str, int]]:
     """返回 (masked_text, counts) — counts 含每类 PII 匹配数"""
     if not text:
-        return text, {"id_card": 0, "phone": 0, "bank_card": 0}
-    counts = {"id_card": 0, "phone": 0, "bank_card": 0}
+        return text, {"id_card": 0, "phone": 0, "bank_card": 0, "email": 0}
+    counts = {"id_card": 0, "phone": 0, "bank_card": 0, "email": 0}
 
     def _id(m):
         counts["id_card"] += 1
@@ -31,13 +33,23 @@ def mask_pii(text: str) -> tuple[str, dict[str, int]]:
         counts["bank_card"] += 1
         return m.group(1) + "*" * 8 + m.group(2)
 
+    def _em(m):
+        counts["email"] += 1
+        return "[邮箱已隐藏]"
+
     text = _ID_CARD.sub(_id, text)
     text = _PHONE.sub(_ph, text)
     text = _BANK_CARD.sub(_bc, text)
+    text = _EMAIL.sub(_em, text)
     return text, counts
 
 
 def has_pii(text: str) -> bool:
     if not text:
         return False
-    return bool(_ID_CARD.search(text) or _PHONE.search(text) or _BANK_CARD.search(text))
+    return bool(
+        _ID_CARD.search(text)
+        or _PHONE.search(text)
+        or _BANK_CARD.search(text)
+        or _EMAIL.search(text)
+    )

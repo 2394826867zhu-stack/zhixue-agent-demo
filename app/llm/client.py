@@ -1,8 +1,10 @@
 import asyncio
 import base64
 import logging
+from datetime import date
 from openai import AsyncOpenAI
 from app.config import settings
+from app.core.redis import get_redis
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +158,9 @@ class LLMClient:
         except (APIStatusError, RateLimitError) as e:
             raise RuntimeError(f"Anthropic API error: {e}") from e
 
-    async def describe_image(self, image_url: str, prompt: str = "") -> str:
+    async def describe_image(
+        self, image_url: str, prompt: str = "", user_id: str | None = None
+    ) -> str:
         """
         v0.32 · OCR + DeepSeek V4 Flash 视觉链路（纯 DeepSeek，零云依赖）
         ------------------------------------------------
@@ -168,6 +172,9 @@ class LLMClient:
         不适用：无文字的纯图（如纯几何图、艺术画）
         """
         from app.services.ocr_service import extract_text_from_image
+
+        # 配额护栏（G2-1）：describe_image 也会真实消耗 DeepSeek token
+        await self._check_quota(user_id)
 
         # 1) OCR
         ocr = await extract_text_from_image(image_url=image_url)
@@ -186,7 +193,7 @@ class LLMClient:
                 self._deepseek, settings.DEEPSEEK_MODEL,
                 full_prompt, "",
             )
-            asyncio.create_task(self._record(None, settings.DEEPSEEK_MODEL, "describe_image", usage))
+            asyncio.create_task(self._record(user_id, settings.DEEPSEEK_MODEL, "describe_image", usage))
             return content
         except Exception as e:
             logger.warning(f"DeepSeek describe_image failed: {e}")
@@ -286,13 +293,38 @@ class LLMClient:
     # ---- Quota & Recording ----
 
     async def _check_quota(self, user_id: str | None) -> None:
+        """成本护栏（G2 审计 P0）：单用户日配额 + 全局日熔断，配额系统不可用时 fail-closed。
+
+        - G2-1：无 user_id 调用不再静默放行，记 warning 暴露可观测性缺口（但不阻断）。
+        - G2-2：除单用户额度外，再查全局当日累计 token（GLOBAL_DAILY_TOKEN_LIMIT），
+          任一超限即拒绝；多用户并发可瞬间击穿月预算，此为全局兜底闸。
+        - G2-3：Redis 等配额基础设施异常时，区分"配额耗尽"vs"系统不可用"——
+          系统不可用走 fail-closed 保守拒绝（QUOTA_FAIL_OPEN=True 才放行）。
+        """
         if not user_id:
+            # 不再静默放行无主 LLM 调用：成本盲区，至少留可观测
+            logger.warning("quota check skipped: no user_id passed to LLM call")
             return
         try:
-            from app.core.redis import get_redis
-            from datetime import date
             r = await get_redis()
             today = date.today().isoformat()
+
+            # 全局日熔断（G2-2）：任一用户消耗都累计进全局，先查全局
+            global_used = int(await r.get(f"quota:global:used:{today}") or 0)
+            global_limit = settings.GLOBAL_DAILY_TOKEN_LIMIT
+            if global_used >= global_limit:
+                logger.error(
+                    f"GLOBAL daily token limit hit: {global_used}/{global_limit} — rejecting LLM calls"
+                )
+                raise QuotaExceededError(
+                    f"今日全局 Token 配额已用尽（{global_used}/{global_limit}），请稍后再试"
+                )
+            if global_used >= global_limit * settings.GLOBAL_QUOTA_WARN_RATIO:
+                logger.warning(
+                    f"GLOBAL daily token usage approaching limit: {global_used}/{global_limit}"
+                )
+
+            # 单用户日配额
             used = int(await r.get(f"quota:{user_id}:used:{today}") or 0)
             # limit 真相源统一（F-13）：Redis 缓存优先，未命中回源 DB 权威值，再无才 DEFAULT
             limit = await self._resolve_daily_limit(user_id)
@@ -301,7 +333,13 @@ class LLMClient:
         except QuotaExceededError:
             raise
         except Exception as e:
-            logger.debug(f"Quota check skipped: {e}")
+            # 区分"配额耗尽"（上面已 raise）vs"配额系统不可用"（落到这里）。
+            # 系统不可用 = 成本命门失守的真实风险，默认 fail-closed 保守拒绝。
+            if settings.QUOTA_FAIL_OPEN:
+                logger.error(f"Quota system unavailable, FAIL-OPEN allows call (cost risk): {e}")
+                return
+            logger.error(f"Quota system unavailable, FAIL-CLOSED rejecting call: {e}")
+            raise QuotaExceededError("配额系统暂时不可用，请稍后再试") from e
 
     async def get_today_usage(self, user_id: str | None) -> int:
         """F-10 · 用户今日已用 token（与 _check_quota 同一 Redis 真相源）。"""
@@ -363,17 +401,19 @@ class LLMClient:
         from app.models.token_usage import estimate_cost, TokenUsage
         cost = estimate_cost(model, prompt_tokens, completion_tokens, cache_hit)
         try:
-            # 更新 Redis 计数
-            from app.core.redis import get_redis
-            from datetime import date
+            # 更新 Redis 计数：单用户 + 全局（G2-2 熔断的累计源）
             r = await get_redis()
             today = date.today().isoformat()
+            # 全局累计始终维护（无论调用是否带 user_id），熔断闸才有真相源
+            global_key = f"quota:global:used:{today}"
+            await r.incrby(global_key, total)
+            await r.expire(global_key, 86400 * 2)  # 保留2天
             if user_id:
                 key = f"quota:{user_id}:used:{today}"
                 await r.incrby(key, total)
                 await r.expire(key, 86400 * 2)  # 保留2天
         except Exception as e:
-            logger.debug(f"Redis quota update failed: {e}")
+            logger.warning(f"Redis quota update failed: {e}")
 
         try:
             # 写入 DB

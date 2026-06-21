@@ -78,6 +78,58 @@ async def test_token_quota_reflects_redis_usage(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_global_daily_circuit_breaker_rejects(client: AsyncClient, monkeypatch):
+    """G2-2 全局熔断：单用户未超限但全局当日累计 token >= GLOBAL_DAILY_TOKEN_LIMIT
+    时 _check_quota 必须拒绝（多用户并发击穿月预算的护栏）。"""
+    from app.core.redis import get_redis
+    from app.llm.client import llm_client, QuotaExceededError
+
+    _, uid = await _auth(client, "quota_global@zhiyao.ai")
+    today = date.today().isoformat()
+    user_key = f"quota:{uid}:used:{today}"
+    global_key = f"quota:global:used:{today}"
+    r = await get_redis()
+    # 全局限额压到 1000，单用户额度照常很大
+    monkeypatch.setattr(settings, "GLOBAL_DAILY_TOKEN_LIMIT", 1000)
+    try:
+        await r.set(user_key, 0)  # 单用户未超限
+        await r.set(global_key, 1000)  # 全局已达上限
+        with pytest.raises(QuotaExceededError):
+            await llm_client._check_quota(uid)
+        # 控制对照：全局回落 → 放行
+        await r.set(global_key, 0)
+        await llm_client._check_quota(uid)
+    finally:
+        await r.delete(user_key)
+        await r.delete(global_key)
+
+
+@pytest.mark.asyncio
+async def test_quota_fail_closed_when_redis_unavailable(client: AsyncClient, monkeypatch):
+    """G2-3 fail-closed：配额系统（Redis）不可用时，默认保守拒绝；
+    QUOTA_FAIL_OPEN=True 时才放行（运维可调）。"""
+    from app.llm import client as client_mod
+    from app.llm.client import llm_client, QuotaExceededError
+
+    uid = "00000000-0000-0000-0000-000000000abc"
+
+    async def _boom():
+        raise RuntimeError("redis down")
+
+    # 让 quota 检查里拿 redis 直接炸 → 模拟配额系统不可用
+    monkeypatch.setattr(client_mod, "get_redis", _boom, raising=False)
+
+    # 默认 fail-closed → 拒绝
+    monkeypatch.setattr(settings, "QUOTA_FAIL_OPEN", False)
+    with pytest.raises(QuotaExceededError):
+        await llm_client._check_quota(uid)
+
+    # flag 打开 → 放行（不 raise）
+    monkeypatch.setattr(settings, "QUOTA_FAIL_OPEN", True)
+    await llm_client._check_quota(uid)
+
+
+@pytest.mark.asyncio
 async def test_resolve_daily_limit_falls_back_to_db(db):
     """F-13：Redis 无 daily_limit 缓存时，enforcement 应回源 DB 权威值，而非退 DEFAULT。
 

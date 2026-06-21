@@ -56,6 +56,62 @@ class CurriculumService:
 
         return list(groups.values())
 
+    async def get_chapter_detail(
+        self,
+        db: AsyncSession,
+        chapter_id: str,
+        user_id: str,
+    ) -> dict:
+        """章节（课时）详情 — 字段对齐前端 ChapterDetail。
+
+        - title = lesson_title（这一行就是一个课时）
+        - description = chapter_title（所属章节标题，作为详情描述）
+        - kp_count = 该用户在此课时下的 KP 数
+        - has_note = 该用户在此课时下是否已有「挂了笔记」的 KP（note_id 非空）
+        - lessons = 同章节兄弟课时（各带该用户 kp_count）
+        """
+        uid = uuid.UUID(user_id)
+        chapter = await self._get_chapter(db, chapter_id)
+
+        # 同章节兄弟课时（含自身），按 lesson_index 排序
+        sibling_rows = await db.execute(
+            select(CurriculumChapter)
+            .where(
+                CurriculumChapter.subject == chapter.subject,
+                CurriculumChapter.grade_type == chapter.grade_type,
+                CurriculumChapter.grade_year == chapter.grade_year,
+                CurriculumChapter.semester == chapter.semester,
+                CurriculumChapter.chapter_index == chapter.chapter_index,
+            )
+            .order_by(CurriculumChapter.lesson_index.asc())
+        )
+        siblings = list(sibling_rows.scalars().all())
+
+        kp_counts = await self._kp_counts_by_chapter(db, uid, [s.id for s in siblings])
+
+        # has_note：此课时下是否有挂了 note 的 KP
+        note_exists = await db.execute(
+            select(func.count(KnowledgePoint.id)).where(
+                KnowledgePoint.user_id == uid,
+                KnowledgePoint.chapter_id == chapter.id,
+                KnowledgePoint.note_id.is_not(None),
+            )
+        )
+        has_note = (note_exists.scalar() or 0) > 0
+
+        return {
+            "id": chapter.id,
+            "title": chapter.lesson_title,
+            "subject": chapter.subject,
+            "kp_count": kp_counts.get(chapter.id, 0),
+            "has_note": has_note,
+            "description": chapter.chapter_title,
+            "lessons": [
+                {"id": s.id, "title": s.lesson_title, "kp_count": kp_counts.get(s.id, 0)}
+                for s in siblings
+            ],
+        }
+
     async def get_chapter_kps(
         self,
         db: AsyncSession,

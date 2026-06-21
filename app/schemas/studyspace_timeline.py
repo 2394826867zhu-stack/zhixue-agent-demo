@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 NODE_KIND_T = Literal[
     "content", "kp_extracted", "flashcard_result", "training_result",
     "mistake", "reflection", "agent_message", "agent_action",
+    "spot_quiz_generated",
 ]
 
 

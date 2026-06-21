@@ -24,6 +24,10 @@ class GuidanceService:
         self, db: AsyncSession, user_id: str, question: str, subject: str | None
     ) -> tuple[GuidanceSession, GuidanceMessage]:
         uid = uuid.UUID(user_id)
+        # G3-3/G3-4 · 入站安全：先审核（命中抛 ContentBlockedError）再脱敏后落库/送 LLM
+        from app.services.safety_guard import guard_inbound_text, mask_inbound_text
+        await guard_inbound_text(question, user_id=user_id)
+        question = mask_inbound_text(question)
         title = question[:50] + ("..." if len(question) > 50 else "")
 
         session = GuidanceSession(
@@ -75,6 +79,11 @@ class GuidanceService:
         session = await self._get_session(db, session_id, user_id)
         if session.status == "resolved":
             raise ValidationError("该引导会话已结束，请开启新会话")
+
+        # G3-3/G3-4 · 入站安全：审核（命中抛 ContentBlockedError）+ PII 脱敏
+        from app.services.safety_guard import guard_inbound_text, mask_inbound_text
+        await guard_inbound_text(message, user_id=user_id)
+        message = mask_inbound_text(message)
 
         # load recent conversation history
         history_result = await db.execute(

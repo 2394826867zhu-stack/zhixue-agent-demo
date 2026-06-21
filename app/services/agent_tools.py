@@ -64,6 +64,8 @@ async def dispatch_tool(
         "spot_quiz": _spot_quiz,
         # v0.34 P1-4 · 费曼输出评估
         "feynman_grade": _feynman_grade,
+        # 生成式教学 · 开场落分步框架（PathStepper 数据源 · plan A3）
+        "set_lesson_plan": _set_lesson_plan,
     }
     handler = handlers.get(tool_name)
     if not handler:
@@ -870,6 +872,37 @@ async def _spot_quiz(
         )
     except Exception as e:
         return {"error": str(e)}
+
+
+# ── 工具 18 · 生成式教学开场落分步框架（PathStepper 数据源）────────────────
+
+async def _set_lesson_plan(
+    db: AsyncSession,
+    uid: uuid.UUID,
+    steps: list | None = None,
+    ss_session_id: str | None = None,
+    **_,
+) -> dict:
+    """知曜开场梳理本课时 3-5 核心概念后调用，写入会话 lesson_plan（{steps, current_index:0}）。
+
+    ss_session_id 与 spot_quiz / feynman_grade 一致经 **args 透传（前端在 SS 模式自动注入）。
+    JSONB 整体替换为新 dict，沿用仓库惯例（同 _save_memory，无需 flag_modified）。
+    """
+    steps = steps or []
+    if ss_session_id and isinstance(steps, list) and steps:
+        from app.models.studyspace import StudySpaceSession
+        try:
+            ss_uuid = uuid.UUID(ss_session_id)
+        except (ValueError, TypeError):
+            return {"ok": False, "error": "ss_session_id 无效"}
+        ss = await db.get(StudySpaceSession, ss_uuid)
+        if ss and ss.user_id == uid:
+            ss.lesson_plan = {
+                "steps": [str(s).strip()[:40] for s in steps[:6] if str(s).strip()],
+                "current_index": 0,
+            }
+            await db.flush()
+    return {"ok": True, "steps_count": len(steps)}
 
 
 # ── 工具 15 · v0.28 RAG 主动召回 ──────────────────────────────────────────

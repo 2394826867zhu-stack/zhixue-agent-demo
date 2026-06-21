@@ -52,6 +52,10 @@ class NoteService:
     async def create_from_text(self, db: AsyncSession, user_id: str, data: NoteUploadRequest) -> dict:
         """次入口：用户粘贴文字"""
         from app.services._origin_resolver import resolve_origin_context
+        # G3-3/G3-4 · 入站安全：审核（命中抛 ContentBlockedError）+ PII 脱敏后落库/送 Celery LLM
+        from app.services.safety_guard import guard_inbound_text, mask_inbound_text
+        await guard_inbound_text(data.content, user_id=user_id)
+        safe_content = mask_inbound_text(data.content)
         uid = uuid.UUID(user_id)
         proj_id, origin = await resolve_origin_context(db, uid)
         note = Note(
@@ -59,7 +63,7 @@ class NoteService:
             title=data.title,
             subject=data.subject,
             source_type="text",
-            source_input=data.content,
+            source_input=safe_content,
             status="processing",
             project_id=proj_id,
             notebook_origin=origin,
@@ -140,10 +144,12 @@ class NoteService:
     async def get_note(self, db: AsyncSession, note_id: str, user_id: str) -> Note:
         return await self._get_note(db, note_id, user_id, with_kps=True)
 
-    async def list_notes(self, db: AsyncSession, user_id: str, subject: str | None, page: int, page_size: int) -> dict:
+    async def list_notes(self, db: AsyncSession, user_id: str, subject: str | None, page: int, page_size: int, project_id: str | None = None) -> dict:
         query = select(Note).where(Note.user_id == uuid.UUID(user_id))
         if subject:
             query = query.where(Note.subject == subject)
+        if project_id:
+            query = query.where(Note.project_id == uuid.UUID(project_id))
         query = query.order_by(Note.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
 
         result = await db.execute(query)

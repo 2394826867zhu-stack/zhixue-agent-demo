@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from app.api.admin import (
     auth, dashboard, users, tokens, dead_letters, rag, config,
-    support, feedback, faq,
+    support, feedback, faq, agent_tools,
 )
 
 router = APIRouter(prefix="/admin", tags=["管理后台"])
@@ -11,6 +11,7 @@ router.include_router(users.router)
 router.include_router(tokens.router)
 router.include_router(dead_letters.router)
 router.include_router(rag.router)
+router.include_router(agent_tools.router)  # G2-6b · agent 工具聚合
 router.include_router(config.router)
 # E-05/06/07 · 客服 / 反馈 / FAQ 管理
 router.include_router(support.router)

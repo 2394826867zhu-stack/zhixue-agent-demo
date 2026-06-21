@@ -28,6 +28,9 @@ class StudySpaceSession(Base):
     exam_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # mock_exam only: {"subject": "数学", "exam_type": "gaokao", "duration_minutes": 120}
 
+    lesson_plan: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # 生成式教学（PathStepper 数据源）：{"steps": ["核心概念1", ...], "current_index": int}
+
     progress: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     kp_extracted: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     flashcards_created: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

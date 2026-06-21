@@ -72,14 +72,19 @@ async def _process_note_async(task, note_id: str, user_id: str):
         # Step 1: 提取结构化内容
         if note.source_type == "ai_generated":
             prompt = EXTRACT_FROM_AI.format(topic=note.source_input)
-            raw = await llm_client.generate(prompt, system=SYSTEM_NOTE)
+            raw = await llm_client.generate(
+                prompt, system=SYSTEM_NOTE, user_id=user_id, endpoint="note_extract"
+            )
         else:
             content = note.source_input or ""
             prompt = EXTRACT_FROM_CONTENT.format(content=content)
             image_b64 = None
             if note.source_file_url and note.source_type == "image":
                 image_b64 = _load_image_b64(note.source_file_url)
-            raw = await llm_client.generate(prompt, system=SYSTEM_NOTE, image_b64=image_b64)
+            raw = await llm_client.generate(
+                prompt, system=SYSTEM_NOTE, image_b64=image_b64,
+                user_id=user_id, endpoint="note_extract",
+            )
 
         extracted = _parse_json_safe(raw)
         if not extracted:
@@ -93,9 +98,9 @@ async def _process_note_async(task, note_id: str, user_id: str):
         kp_names = "、".join(kp["name"] for kp in extracted.get("knowledge_points", []))
 
         full_v, exam_v, graph_v = await asyncio.gather(
-            llm_client.generate(FULL_VERSION_PROMPT.format(core_content=core_content), system=SYSTEM_NOTE),
-            llm_client.generate(EXAM_VERSION_PROMPT.format(core_content=core_content, key_formulas=key_formulas), system=SYSTEM_NOTE),
-            llm_client.generate(GRAPH_MERMAID_PROMPT.format(knowledge_points_names=kp_names, title=extracted.get("title", "")), system=SYSTEM_NOTE),
+            llm_client.generate(FULL_VERSION_PROMPT.format(core_content=core_content), system=SYSTEM_NOTE, user_id=user_id, endpoint="note_full"),
+            llm_client.generate(EXAM_VERSION_PROMPT.format(core_content=core_content, key_formulas=key_formulas), system=SYSTEM_NOTE, user_id=user_id, endpoint="note_exam"),
+            llm_client.generate(GRAPH_MERMAID_PROMPT.format(knowledge_points_names=kp_names, title=extracted.get("title", "")), system=SYSTEM_NOTE, user_id=user_id, endpoint="note_graph"),
         )
 
         await _update_task_progress(note_id, 75, "正在提取知识点...")

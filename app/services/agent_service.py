@@ -100,22 +100,41 @@ async def run(
         pass
 
     # v0.34 P1-12 · 内容审核（关键词快速过 + 命中走引导式劝退）
+    # G3-3 fail-open 修复：原 except 静默 pass 放行——对未成年人产品，审核系统
+    # 异常时必须 fail-closed（保守拦截），不能让违规内容在审核挂掉时穿透到 LLM。
+    from app.services.content_safety_service import audit_text, make_redirect_reply
+
+    def _block_frame(category: str | None) -> tuple[str, str]:
+        redirect = make_redirect_reply(category)
+        return (
+            f'data: {json.dumps({"delta": redirect}, ensure_ascii=False)}\n\n',
+            f'data: {json.dumps({"done": True, "session_id": session_id, "tools_called": [], "blocked": True, "sources": []}, ensure_ascii=False)}\n\n',
+        )
+
     try:
-        from app.services.content_safety_service import audit_text, make_redirect_reply
         audit = await audit_text(message, deep_check=False, user_id=user_id)
-        if not audit["safe"]:
-            redirect = make_redirect_reply(audit.get("category"))
-            logger.info(f"content_safety blocked user={user_id} cat={audit.get('category')}")
-            yield f'data: {json.dumps({"delta": redirect}, ensure_ascii=False)}\n\n'
-            yield f'data: {json.dumps({"done": True, "session_id": session_id, "tools_called": [], "blocked": True, "sources": []}, ensure_ascii=False)}\n\n'
-            return
+        _audit_unsafe = not audit["safe"]
+        _audit_cat = audit.get("category")
+        _audit_failed = False
     except Exception as _e:
-        logger.debug(f"content_safety skipped: {_e}")
+        # fail-closed：审核不可用 = 保守拦截（暴露成本/异常，不静默放行）
+        logger.error(f"content_safety audit FAILED (fail-closed, blocking) user={user_id}: {_e}")
+        _audit_unsafe = True
+        _audit_cat = None
+        _audit_failed = True
+
+    if _audit_unsafe:
+        if not _audit_failed:
+            logger.info(f"content_safety blocked user={user_id} cat={_audit_cat}")
+        d1, d2 = _block_frame(_audit_cat)
+        yield d1
+        yield d2
+        return
 
     # 0. 图片预处理：视觉 LLM 描述后拼入消息正文
     if image_url:
         try:
-            description = await llm_client.describe_image(image_url)
+            description = await llm_client.describe_image(image_url, user_id=user_id)
             message = f"[图片内容]\n{description}\n\n[用户消息]\n{message}" if message.strip() else f"[图片内容]\n{description}"
         except Exception as e:
             logger.warning(f"Image preprocessing failed: {e}")
@@ -323,6 +342,8 @@ async def run(
                 messages=history,
                 tools=TOOL_DEFINITIONS,
                 system=system,
+                user_id=user_id,
+                endpoint="agent_chat",
             )
         except Exception as e:
             logger.error(f"DeepSeek tool call failed: {type(e).__name__}: {e}")
@@ -347,7 +368,21 @@ async def run(
                 except Exception:
                     pass
 
-                result = await dispatch_tool(db, user_id, tool_name, tc.function.arguments)
+                # StudySpace 教学模式：把会话 UUID 注入 ss-aware 工具 args。
+                # LLM 不知道这个 UUID，只有服务端持有 → 必须在此注入，否则
+                # _set_lesson_plan / _spot_quiz / _feynman_grade 拿到 ss_session_id=None
+                # 静默 no-op（lesson_plan 永不写、spot_quiz 节点永不落库）。
+                # 仅对这 3 个工具注入：其他工具不接受 ss_session_id，注入会因无 **_ 报错。
+                _raw_args = tc.function.arguments
+                if studyspace_session_id and tool_name in ("spot_quiz", "set_lesson_plan", "feynman_grade"):
+                    try:
+                        _a = json.loads(_raw_args) if _raw_args else {}
+                        if isinstance(_a, dict):
+                            _a.setdefault("ss_session_id", studyspace_session_id)  # 不覆盖 LLM 万一已给的值
+                            _raw_args = json.dumps(_a, ensure_ascii=False)
+                    except Exception:
+                        pass
+                result = await dispatch_tool(db, user_id, tool_name, _raw_args)
 
                 history.append({
                     "role": "tool",
@@ -361,7 +396,9 @@ async def run(
     # 3. 最终回答轮（流式）
     full_reply = ""
     try:
-        async for token in llm_client.stream_response(messages=history, system=system):
+        async for token in llm_client.stream_response(
+            messages=history, system=system, user_id=user_id, endpoint="agent_chat",
+        ):
             full_reply += token
             yield f'data: {json.dumps({"delta": token}, ensure_ascii=False)}\n\n'
     except Exception as e:
@@ -378,6 +415,33 @@ async def run(
             audio_url = await synthesize(full_reply, user_id)
         except Exception as e:
             logger.debug(f"TTS skipped: {e}")
+
+    # 会话感知 · 把回答 + 工具动作沉淀进 StudySpace 文档（spec 2026-06-21）
+    # 仅 studyspace 模式；失败静默降级，不阻断对话主流
+    if studyspace_session_id:
+        try:
+            import uuid as _uuid
+            from app.services.ss_timeline_service import ss_timeline_service
+            ss_uid = _uuid.UUID(studyspace_session_id)
+            usr_uid = _uuid.UUID(user_id)
+            if full_reply.strip():
+                await ss_timeline_service.append_system_node(
+                    db, ss_uid, usr_uid,
+                    kind="agent_message", title="知曜", content=full_reply.strip(),
+                )
+            # 同一工具多轮调用会重复 append，去重（保首次出现顺序）：payload 仅 {"tool"}，
+            # 重复节点内容完全相同、对用户是噪音
+            _seen: set[str] = set()
+            for _tool in tools_called:
+                if _tool in _seen:
+                    continue
+                _seen.add(_tool)
+                await ss_timeline_service.append_system_node(
+                    db, ss_uid, usr_uid,
+                    kind="agent_action", content=None, payload={"tool": _tool},
+                )
+        except Exception as _e:
+            logger.debug(f"studyspace timeline write skipped: {_e}")
 
     # C-12 · RAG 召回来源随 done 事件回前端展示（"答案参考了你的：错题《…》/ 笔记《…》"）
     from app.services.rag_service import format_citations

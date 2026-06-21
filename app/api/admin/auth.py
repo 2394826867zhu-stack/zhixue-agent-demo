@@ -1,3 +1,5 @@
+import hmac
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,9 +19,15 @@ def ok(data):
 
 @router.post("/setup", summary="初始化第一个超级管理员（仅首次可用）", response_model=Envelope[AdminSetupResult])
 async def setup(body: AdminSetupRequest, db: AsyncSession = Depends(get_db)):
-    expected = settings.ADMIN_JWT_SECRET or settings.JWT_SECRET_KEY
-    if body.secret_key != expected:
-        from app.core.exceptions import ValidationError
+    # G3-2：一次性 setup 口令与签名密钥彻底解耦（不再用 JWT_SECRET_KEY）。
+    # 未配置 ADMIN_SETUP_TOKEN → 拒绝创建超管（比回退用签名密钥安全）。
+    from app.core.exceptions import ValidationError
+
+    expected = settings.ADMIN_SETUP_TOKEN
+    if not expected:
+        raise ValidationError("ADMIN_SETUP_TOKEN 未配置，管理员初始化已禁用")
+    # timing-safe 比较，杜绝按字符耗时侧信道
+    if not hmac.compare_digest(body.secret_key, expected):
         raise ValidationError("secret_key 不正确")
     admin = await admin_service.setup_first_admin(db, body.email, body.password)
     return ok({"admin_id": str(admin.id), "email": admin.email, "role": admin.role})

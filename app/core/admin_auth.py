@@ -10,6 +10,8 @@ _ALGORITHM = "HS256"
 
 
 def _secret() -> str:
+    # 生产已被 config.Settings._assert_secrets_safe 强制 ADMIN_JWT_SECRET 独立非空，
+    # 故此处回退只在开发/测试生效（本地零摩擦）；生产绝不会落到 JWT_SECRET_KEY 分支。
     secret = settings.ADMIN_JWT_SECRET or settings.JWT_SECRET_KEY
     return f"admin:{secret}"
 

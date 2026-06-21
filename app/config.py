@@ -1,5 +1,28 @@
 from pydantic_settings import BaseSettings
+from pydantic import model_validator
 from typing import Literal
+
+
+# .env.example 占位串特征（含中文「必填」「生产用」及英文 change/replace/example 等）。
+# 命中任一即视为未替换的样例值，生产拒绝启动。
+_PLACEHOLDER_MARKERS = (
+    "change-this",
+    "change-in-prod",
+    "change_in_prod",
+    "replace",
+    "example",
+    "your-secret",
+    "dummy",
+    "placeholder",
+    "必填",
+    "生产用",
+    "填入",
+)
+
+
+def _looks_like_placeholder(value: str) -> bool:
+    low = value.lower()
+    return any(marker in low for marker in _PLACEHOLDER_MARKERS)
 
 
 class Settings(BaseSettings):
@@ -35,8 +58,25 @@ class Settings(BaseSettings):
     ADMIN_JWT_SECRET: str = ""
     ADMIN_TOKEN_EXPIRE_HOURS: int = 12
 
+    # 管理后台首个超管创建一次性口令（G3-2 审计 P0）。
+    # 与签名密钥（JWT_SECRET_KEY / ADMIN_JWT_SECRET）彻底解耦：仅用于 /admin/auth/setup
+    # 校验，绝不参与任何 token 签名。为空 = setup 端点拒绝创建（未配置不允许造超管，
+    # 比"回退用签名密钥"安全）。首个 admin 创建后可清空。
+    ADMIN_SETUP_TOKEN: str = ""
+
     # 默认每日 Token 配额（所有用户）
     DEFAULT_DAILY_TOKEN_LIMIT: int = 200_000
+
+    # 全局每日 Token 熔断（G2-2 成本护栏·审计 P0）：所有用户当日累计 token 上限。
+    # 多用户并发可瞬间击穿月预算 → 加全局日闸，任一超限即拒绝。可 env 覆盖。
+    GLOBAL_DAILY_TOKEN_LIMIT: int = 5_000_000
+    # 接近全局阈值告警比例（达到即 logger.warning 提前预警）
+    GLOBAL_QUOTA_WARN_RATIO: float = 0.8
+
+    # 配额系统失败模式（G2-3 fail-closed·审计 P0）：Redis 等配额基础设施不可用时的行为。
+    # False（默认）= fail-closed 保守拒绝（成本命门，宁可拒绝不可击穿）；
+    # True = fail-open 放行（运维明确可承受成本风险时再开）。
+    QUOTA_FAIL_OPEN: bool = False
 
     # 文件存储
     STORAGE_TYPE: Literal["local", "oss"] = "local"
@@ -50,6 +90,12 @@ class Settings(BaseSettings):
     # 应用
     APP_ENV: Literal["development", "production"] = "development"
     LOG_LEVEL: str = "INFO"
+
+    # G2-4 可观测 · Sentry 错误上报（审计 P0）。
+    # 留空（默认）= 不 init、不上报，本地开发零依赖；非空才接入。
+    SENTRY_DSN: str = ""
+    # 性能追踪采样率（0.0-1.0），生产按量调；仅 DSN 非空时生效
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.1
     ALLOWED_ORIGINS: str = "http://localhost:3000"
     ALLOWED_ORIGIN_REGEX: str | None = None
 
@@ -61,6 +107,41 @@ class Settings(BaseSettings):
 
     # Subscription (RevenueCat)
     REVENUECAT_WEBHOOK_SECRET: str = ""  # Set in .env for production; empty = webhook disabled
+
+    @model_validator(mode="after")
+    def _assert_secrets_safe(self) -> "Settings":
+        """生产 fail-fast 密钥强度校验（G3-1 审计 P0）。
+
+        弱/占位密钥泄露即可签发任意用户/管理员 token → 用户态 + 后台一起沦陷。
+        仅在 APP_ENV == 'production' 时强制（开发/测试零摩擦，本地无需配真随机串）。
+        与 main.py::_assert_cors_safe 同一生产 fail-fast 风格。
+        """
+        if self.APP_ENV != "production":
+            return self
+
+        # JWT_SECRET_KEY：长度 ≥32 且非占位串
+        if len(self.JWT_SECRET_KEY) < 32 or _looks_like_placeholder(self.JWT_SECRET_KEY):
+            raise ValueError(
+                "JWT_SECRET_KEY 在生产环境必须是 ≥32 字符的强随机串（如 openssl rand -hex 32），"
+                "禁用 .env.example 占位串。"
+            )
+
+        # ADMIN_JWT_SECRET：生产必须独立配置且 ≠ JWT_SECRET_KEY（不复用同一秘密）
+        if not self.ADMIN_JWT_SECRET:
+            raise ValueError(
+                "ADMIN_JWT_SECRET 在生产环境必须独立配置（禁回退用 JWT_SECRET_KEY），"
+                "用 openssl rand -hex 32 另生成一串。"
+            )
+        if self.ADMIN_JWT_SECRET == self.JWT_SECRET_KEY:
+            raise ValueError(
+                "ADMIN_JWT_SECRET 不得与 JWT_SECRET_KEY 相同（管理后台与用户态必须用独立签名密钥）。"
+            )
+        if len(self.ADMIN_JWT_SECRET) < 32 or _looks_like_placeholder(self.ADMIN_JWT_SECRET):
+            raise ValueError(
+                "ADMIN_JWT_SECRET 在生产环境必须是 ≥32 字符的强随机串，禁用占位串。"
+            )
+
+        return self
 
     @property
     def origins_list(self) -> list[str]:

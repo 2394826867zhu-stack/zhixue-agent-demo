@@ -1,4 +1,7 @@
 fastapi==0.115.6
+# starlette 显式 pin（G3-5）：fastapi 0.115.6 透传依赖，不 pin 则 CI 干净装可能漂到
+# 含 CVE 的旧版。0.41.3 是 fastapi 0.115.6 兼容范围内 ≥0.40.0 的安全版本。
+starlette==0.41.3
 uvicorn[standard]==0.32.1
 sqlalchemy==2.0.36
 alembic==1.14.0
@@ -11,6 +14,11 @@ anthropic==0.43.0
 openai==1.58.1
 celery==5.4.0
 redis==5.2.1
+# python-jose 已知 CVE 在本项目不可利用（G3-5 评估）：
+#  · 算法混淆 CVE：本项目 decode 全部 algorithms=["HS256"] 单算法白名单 → 不可利用。
+#  · 解压炸弹 DoS CVE-2024-33664：仅 JWE（加密）路径触发；本项目 JWT 全为 JWS 签名
+#    （HS256 jwt.encode/decode，grep 确认零 jwe/encrypt/decrypt 调用）→ 不触达。
+#  迁移 PyJWT 风险高、灰度前收益低，列 post-canary（见 SPEC.md G3-5 评估）。
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 # bcrypt 必须 pin：passlib 1.7.4(最后发布)加载 bcrypt backend 时 detect_wrap_bug
@@ -19,7 +27,8 @@ passlib[bcrypt]==1.7.4
 # extras 不约束版本，CI 干净装会取最新(5.x)→全量 auth 测试红。固定到兼容版本。
 bcrypt==4.0.1
 python-multipart==0.0.20
-pillow==11.0.0
+# G3-5：升 11.3.0 收口 11.0.x 已知 CVE（OCR/图片上传路径触达 pillow）。
+pillow==11.3.0
 pgvector==0.3.6
 httpx==0.28.1
 pytest==8.3.4
@@ -37,3 +46,5 @@ rapidocr-onnxruntime>=1.4.0
 pypdf>=4.0.0
 # v0.35 文件 magic bytes 校验（F-03）
 filetype>=1.2.0
+# G2-4 可观测 · 外部错误上报（Sentry）。仅 SENTRY_DSN 非空才 init，本地零依赖
+sentry-sdk[fastapi]==2.63.0
