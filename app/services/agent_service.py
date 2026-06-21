@@ -100,17 +100,36 @@ async def run(
         pass
 
     # v0.34 P1-12 · 内容审核（关键词快速过 + 命中走引导式劝退）
+    # G3-3 fail-open 修复：原 except 静默 pass 放行——对未成年人产品，审核系统
+    # 异常时必须 fail-closed（保守拦截），不能让违规内容在审核挂掉时穿透到 LLM。
+    from app.services.content_safety_service import audit_text, make_redirect_reply
+
+    def _block_frame(category: str | None) -> tuple[str, str]:
+        redirect = make_redirect_reply(category)
+        return (
+            f'data: {json.dumps({"delta": redirect}, ensure_ascii=False)}\n\n',
+            f'data: {json.dumps({"done": True, "session_id": session_id, "tools_called": [], "blocked": True, "sources": []}, ensure_ascii=False)}\n\n',
+        )
+
     try:
-        from app.services.content_safety_service import audit_text, make_redirect_reply
         audit = await audit_text(message, deep_check=False, user_id=user_id)
-        if not audit["safe"]:
-            redirect = make_redirect_reply(audit.get("category"))
-            logger.info(f"content_safety blocked user={user_id} cat={audit.get('category')}")
-            yield f'data: {json.dumps({"delta": redirect}, ensure_ascii=False)}\n\n'
-            yield f'data: {json.dumps({"done": True, "session_id": session_id, "tools_called": [], "blocked": True, "sources": []}, ensure_ascii=False)}\n\n'
-            return
+        _audit_unsafe = not audit["safe"]
+        _audit_cat = audit.get("category")
+        _audit_failed = False
     except Exception as _e:
-        logger.debug(f"content_safety skipped: {_e}")
+        # fail-closed：审核不可用 = 保守拦截（暴露成本/异常，不静默放行）
+        logger.error(f"content_safety audit FAILED (fail-closed, blocking) user={user_id}: {_e}")
+        _audit_unsafe = True
+        _audit_cat = None
+        _audit_failed = True
+
+    if _audit_unsafe:
+        if not _audit_failed:
+            logger.info(f"content_safety blocked user={user_id} cat={_audit_cat}")
+        d1, d2 = _block_frame(_audit_cat)
+        yield d1
+        yield d2
+        return
 
     # 0. 图片预处理：视觉 LLM 描述后拼入消息正文
     if image_url:

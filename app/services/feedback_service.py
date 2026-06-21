@@ -10,10 +10,13 @@ from app.core.exceptions import NotFoundError
 
 
 async def create_feedback(db: AsyncSession, user_id: str, body: FeedbackCreate) -> FeedbackOut:
+    # G3-4 · PII 脱敏后落库（管理员会读到反馈正文，邮箱/手机/身份证不入库）
+    from app.services.safety_guard import mask_inbound_text
+    safe_content = mask_inbound_text(body.content.strip())
     fb = Feedback(
         user_id=uuid.UUID(user_id),
         category=body.category,
-        content=body.content.strip(),
+        content=safe_content,
         screenshot_url=body.screenshot_url,
         device_info=body.device_info,
         app_version=body.app_version,

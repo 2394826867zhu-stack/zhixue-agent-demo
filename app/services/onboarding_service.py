@@ -71,6 +71,11 @@ class OnboardingService:
     async def chat(
         self, db: AsyncSession, user_id: str, message: str
     ) -> OnboardingChatResponse:
+        # G3-3/G3-4 · 入站安全：审核（命中抛 ContentBlockedError）+ PII 脱敏
+        from app.services.safety_guard import guard_inbound_text, mask_inbound_text
+        await guard_inbound_text(message, user_id=user_id)
+        message = mask_inbound_text(message)
+
         session = await self._get_or_create(db, user_id)
         step = session.current_step
 

@@ -32,6 +32,11 @@ class CheckInService:
     ) -> CheckInOut:
         uid = uuid.UUID(user_id)
 
+        # G3-3/G3-4 · 入站安全：审核（命中抛 ContentBlockedError）+ PII 脱敏后落库/送 LLM
+        from app.services.safety_guard import guard_inbound_text, mask_inbound_text
+        await guard_inbound_text(content, user_id=user_id)
+        content = mask_inbound_text(content)
+
         # 拉取用户当前知识库（最多100条，用于 LLM 匹配）
         kp_rows = await db.execute(
             select(KnowledgePoint).where(KnowledgePoint.user_id == uid).limit(100)

@@ -108,7 +108,10 @@ async def create_thread(
     db.add(thread)
     await db.flush()
 
-    db.add(SupportMessage(thread_id=thread.id, sender="user", content=message.strip(), created_at=now))
+    # G3-4 · PII 脱敏后落库（客服/管理员会读到，邮箱/手机/身份证不入库）
+    from app.services.safety_guard import mask_inbound_text
+    safe_msg = mask_inbound_text(message.strip())
+    db.add(SupportMessage(thread_id=thread.id, sender="user", content=safe_msg, created_at=now))
     # 自动回执
     db.add(SupportMessage(thread_id=thread.id, sender="system", content=_AUTO_ACK))
     thread.last_message_at = _now()
@@ -122,7 +125,10 @@ async def add_user_message(
 ) -> SupportThreadDetail:
     t = await _get_owned_thread(db, user_id, thread_id)
     now = _now()
-    db.add(SupportMessage(thread_id=t.id, sender="user", content=content.strip(), created_at=now))
+    # G3-4 · PII 脱敏后落库
+    from app.services.safety_guard import mask_inbound_text
+    safe_content = mask_inbound_text(content.strip())
+    db.add(SupportMessage(thread_id=t.id, sender="user", content=safe_content, created_at=now))
     t.last_message_at = now
     # 用户重新发言 → 回到待人工处理
     if t.status in ("resolved", "closed", "pending"):
