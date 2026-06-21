@@ -347,7 +347,21 @@ async def run(
                 except Exception:
                     pass
 
-                result = await dispatch_tool(db, user_id, tool_name, tc.function.arguments)
+                # StudySpace 教学模式：把会话 UUID 注入 ss-aware 工具 args。
+                # LLM 不知道这个 UUID，只有服务端持有 → 必须在此注入，否则
+                # _set_lesson_plan / _spot_quiz / _feynman_grade 拿到 ss_session_id=None
+                # 静默 no-op（lesson_plan 永不写、spot_quiz 节点永不落库）。
+                # 仅对这 3 个工具注入：其他工具不接受 ss_session_id，注入会因无 **_ 报错。
+                _raw_args = tc.function.arguments
+                if studyspace_session_id and tool_name in ("spot_quiz", "set_lesson_plan", "feynman_grade"):
+                    try:
+                        _a = json.loads(_raw_args) if _raw_args else {}
+                        if isinstance(_a, dict):
+                            _a.setdefault("ss_session_id", studyspace_session_id)  # 不覆盖 LLM 万一已给的值
+                            _raw_args = json.dumps(_a, ensure_ascii=False)
+                    except Exception:
+                        pass
+                result = await dispatch_tool(db, user_id, tool_name, _raw_args)
 
                 history.append({
                     "role": "tool",
