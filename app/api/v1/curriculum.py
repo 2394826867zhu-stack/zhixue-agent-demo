@@ -5,6 +5,7 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
 from app.schemas.curriculum import (
+    ChapterDetailOut,
     CurriculumChapterGroup,
     CurriculumLessonOut,
     GenerateChapterNoteResponse,
@@ -50,6 +51,16 @@ async def list_chapters(
         for group in groups
     ]
     return ok(payload)
+
+
+@router.get("/chapters/{chapter_id}", summary="课时（章节）详情", response_model=Envelope[ChapterDetailOut])
+async def get_chapter_detail(
+    chapter_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    detail = await curriculum_service.get_chapter_detail(db, chapter_id, str(user.id))
+    return ok(ChapterDetailOut(**detail))
 
 
 @router.get("/chapters/{chapter_id}/my-kps", summary="获取某课时下我的知识点", response_model=Envelope[list[KnowledgePointResponse]])

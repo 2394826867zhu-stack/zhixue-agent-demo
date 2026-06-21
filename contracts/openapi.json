@@ -1056,6 +1056,85 @@
         "title": "CanvasStrokeOut",
         "type": "object"
       },
+      "ChapterDetailLessonOut": {
+        "description": "同一章节下的兄弟课时（前端 ChapterDetail.lessons 列表项）。",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kp_count": {
+            "default": 0,
+            "title": "Kp Count",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "ChapterDetailLessonOut",
+        "type": "object"
+      },
+      "ChapterDetailOut": {
+        "description": "GET /v1/curriculum/chapters/{id} 详情。字段对齐前端 ChapterDetail：\ntitle=课时标题(lesson_title) · subject · description=所属章节标题(chapter_title) ·\nkp_count=该用户在此课时下的 KP 数 · has_note=该用户在此课时下是否已有挂笔记的 KP ·\nlessons=同章节兄弟课时（各带该用户 kp_count）。",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "has_note": {
+            "title": "Has Note",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kp_count": {
+            "title": "Kp Count",
+            "type": "integer"
+          },
+          "lessons": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ChapterDetailLessonOut"
+            },
+            "title": "Lessons",
+            "type": "array"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "subject",
+          "kp_count",
+          "has_note"
+        ],
+        "title": "ChapterDetailOut",
+        "type": "object"
+      },
       "ChatRequest": {
         "properties": {
           "message": {
@@ -2347,6 +2426,28 @@
           "data"
         ],
         "title": "Envelope[CanvasStrokeOut]",
+        "type": "object"
+      },
+      "Envelope_ChapterDetailOut_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ChapterDetailOut"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[ChapterDetailOut]",
         "type": "object"
       },
       "Envelope_ChatResponse_": {
@@ -15503,6 +15604,53 @@
         ]
       }
     },
+    "/v1/curriculum/chapters/{chapter_id}": {
+      "get": {
+        "operationId": "get_chapter_detail_v1_curriculum_chapters__chapter_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "chapter_id",
+            "required": true,
+            "schema": {
+              "title": "Chapter Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_ChapterDetailOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "课时（章节）详情",
+        "tags": [
+          "课程目录"
+        ]
+      }
+    },
     "/v1/curriculum/chapters/{chapter_id}/generate-note": {
       "post": {
         "operationId": "generate_note_from_chapter_v1_curriculum_chapters__chapter_id__generate_note_post",
@@ -18328,6 +18476,24 @@
                 }
               ],
               "title": "Subject"
+            }
+          },
+          {
+            "description": "按项目筛选（G1-4 三向联动）",
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按项目筛选（G1-4 三向联动）",
+              "title": "Project Id"
             }
           },
           {

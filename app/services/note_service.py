@@ -140,10 +140,12 @@ class NoteService:
     async def get_note(self, db: AsyncSession, note_id: str, user_id: str) -> Note:
         return await self._get_note(db, note_id, user_id, with_kps=True)
 
-    async def list_notes(self, db: AsyncSession, user_id: str, subject: str | None, page: int, page_size: int) -> dict:
+    async def list_notes(self, db: AsyncSession, user_id: str, subject: str | None, page: int, page_size: int, project_id: str | None = None) -> dict:
         query = select(Note).where(Note.user_id == uuid.UUID(user_id))
         if subject:
             query = query.where(Note.subject == subject)
+        if project_id:
+            query = query.where(Note.project_id == uuid.UUID(project_id))
         query = query.order_by(Note.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
 
         result = await db.execute(query)
