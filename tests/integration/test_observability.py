@@ -54,12 +54,13 @@ def test_init_sentry_called_with_dsn(monkeypatch):
 
 # ---------- G2-6b agent-tools stats ----------
 
-async def _admin_token(client) -> str:
-    secret = settings.ADMIN_JWT_SECRET or settings.JWT_SECRET_KEY
+async def _admin_token(client, monkeypatch) -> str:
+    # G3-2：setup 口令现独立于签名密钥，测试显式配 ADMIN_SETUP_TOKEN
+    monkeypatch.setattr(settings, "ADMIN_SETUP_TOKEN", "obs-setup-token", raising=False)
     await client.post("/admin/auth/setup", json={
         "email": "obs_admin@zhiyao.com",
         "password": "admin_pw_123456",
-        "secret_key": secret,
+        "secret_key": "obs-setup-token",
     })
     r = await client.post("/admin/auth/login", json={
         "email": "obs_admin@zhiyao.com",
@@ -70,7 +71,7 @@ async def _admin_token(client) -> str:
 
 
 @pytest.mark.asyncio
-async def test_agent_tool_stats_aggregates(client, db):
+async def test_agent_tool_stats_aggregates(client, db, monkeypatch):
     from app.models.agent_tool_trace import AgentToolTrace
 
     now = datetime.now(timezone.utc)
@@ -98,7 +99,7 @@ async def test_agent_tool_stats_aggregates(client, db):
         ))
     await db.commit()
 
-    token = await _admin_token(client)
+    token = await _admin_token(client, monkeypatch)
     h = {"Authorization": f"Bearer {token}"}
     resp = await client.get("/admin/agent-tools/stats?days=7", headers=h)
     assert resp.status_code == 200, resp.text
@@ -121,9 +122,9 @@ async def test_agent_tool_stats_aggregates(client, db):
 
 
 @pytest.mark.asyncio
-async def test_agent_tool_stats_empty(client):
+async def test_agent_tool_stats_empty(client, monkeypatch):
     """空库下诚实返回零，不 500。"""
-    token = await _admin_token(client)
+    token = await _admin_token(client, monkeypatch)
     h = {"Authorization": f"Bearer {token}"}
     resp = await client.get("/admin/agent-tools/stats", headers=h)
     assert resp.status_code == 200, resp.text

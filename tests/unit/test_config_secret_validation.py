@@ -1,0 +1,85 @@
+"""G3-1 密钥强度生产 fail-fast 校验（审计 P0）。
+
+仅在 APP_ENV=production 时强制 JWT_SECRET_KEY / ADMIN_JWT_SECRET 强度与独立性；
+开发/测试环境零摩擦（弱密钥放行）。
+"""
+import pytest
+
+from app.config import Settings
+
+
+# 所有用例显式给齐 Settings 的两个必填字段（DATABASE_URL / JWT_SECRET_KEY），
+# 并强制 _env_file=None 以免读到本地 .env 干扰交叉字段断言。
+_STRONG_JWT = "a" * 64
+_STRONG_ADMIN = "b" * 64
+_DB = "postgresql+asyncpg://u:p@localhost:5432/db"
+
+
+def _make(**overrides):
+    base = dict(
+        DATABASE_URL=_DB,
+        JWT_SECRET_KEY=_STRONG_JWT,
+        _env_file=None,
+    )
+    base.update(overrides)
+    return Settings(**base)
+
+
+# ---------- 生产强制 ----------
+
+def test_production_rejects_short_jwt_secret():
+    with pytest.raises(ValueError):
+        _make(APP_ENV="production", JWT_SECRET_KEY="short", ADMIN_JWT_SECRET=_STRONG_ADMIN)
+
+
+def test_production_rejects_placeholder_jwt_secret():
+    # .env.example 占位串特征（含中文「必填」/英文 change-this）
+    with pytest.raises(ValueError):
+        _make(
+            APP_ENV="production",
+            JWT_SECRET_KEY="change-this-" + "x" * 40,
+            ADMIN_JWT_SECRET=_STRONG_ADMIN,
+        )
+
+
+def test_production_rejects_chinese_placeholder_jwt_secret():
+    with pytest.raises(ValueError):
+        _make(
+            APP_ENV="production",
+            JWT_SECRET_KEY="必填" + "x" * 40,
+            ADMIN_JWT_SECRET=_STRONG_ADMIN,
+        )
+
+
+def test_production_rejects_empty_admin_secret():
+    # 生产 ADMIN_JWT_SECRET 必须独立非空（禁回退 JWT_SECRET_KEY）
+    with pytest.raises(ValueError):
+        _make(APP_ENV="production", ADMIN_JWT_SECRET="")
+
+
+def test_production_rejects_admin_equal_jwt():
+    with pytest.raises(ValueError):
+        _make(APP_ENV="production", ADMIN_JWT_SECRET=_STRONG_JWT)
+
+
+def test_production_rejects_short_admin_secret():
+    with pytest.raises(ValueError):
+        _make(APP_ENV="production", ADMIN_JWT_SECRET="bbbb")
+
+
+def test_production_accepts_strong_independent_secrets():
+    s = _make(APP_ENV="production", ADMIN_JWT_SECRET=_STRONG_ADMIN)
+    assert s.APP_ENV == "production"
+
+
+# ---------- 开发零摩擦 ----------
+
+def test_development_allows_weak_secrets():
+    # 开发环境弱密钥、空 ADMIN、占位串都不 raise（本地零摩擦）
+    s = _make(APP_ENV="development", JWT_SECRET_KEY="weak", ADMIN_JWT_SECRET="")
+    assert s.APP_ENV == "development"
+
+
+def test_development_allows_admin_equal_jwt():
+    s = _make(APP_ENV="development", JWT_SECRET_KEY="dev", ADMIN_JWT_SECRET="dev")
+    assert s.ADMIN_JWT_SECRET == s.JWT_SECRET_KEY

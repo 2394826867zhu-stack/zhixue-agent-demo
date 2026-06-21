@@ -1,5 +1,28 @@
 from pydantic_settings import BaseSettings
+from pydantic import model_validator
 from typing import Literal
+
+
+# .env.example 占位串特征（含中文「必填」「生产用」及英文 change/replace/example 等）。
+# 命中任一即视为未替换的样例值，生产拒绝启动。
+_PLACEHOLDER_MARKERS = (
+    "change-this",
+    "change-in-prod",
+    "change_in_prod",
+    "replace",
+    "example",
+    "your-secret",
+    "dummy",
+    "placeholder",
+    "必填",
+    "生产用",
+    "填入",
+)
+
+
+def _looks_like_placeholder(value: str) -> bool:
+    low = value.lower()
+    return any(marker in low for marker in _PLACEHOLDER_MARKERS)
 
 
 class Settings(BaseSettings):
@@ -34,6 +57,12 @@ class Settings(BaseSettings):
     # JWT (管理后台，独立密钥)
     ADMIN_JWT_SECRET: str = ""
     ADMIN_TOKEN_EXPIRE_HOURS: int = 12
+
+    # 管理后台首个超管创建一次性口令（G3-2 审计 P0）。
+    # 与签名密钥（JWT_SECRET_KEY / ADMIN_JWT_SECRET）彻底解耦：仅用于 /admin/auth/setup
+    # 校验，绝不参与任何 token 签名。为空 = setup 端点拒绝创建（未配置不允许造超管，
+    # 比"回退用签名密钥"安全）。首个 admin 创建后可清空。
+    ADMIN_SETUP_TOKEN: str = ""
 
     # 默认每日 Token 配额（所有用户）
     DEFAULT_DAILY_TOKEN_LIMIT: int = 200_000
@@ -78,6 +107,41 @@ class Settings(BaseSettings):
 
     # Subscription (RevenueCat)
     REVENUECAT_WEBHOOK_SECRET: str = ""  # Set in .env for production; empty = webhook disabled
+
+    @model_validator(mode="after")
+    def _assert_secrets_safe(self) -> "Settings":
+        """生产 fail-fast 密钥强度校验（G3-1 审计 P0）。
+
+        弱/占位密钥泄露即可签发任意用户/管理员 token → 用户态 + 后台一起沦陷。
+        仅在 APP_ENV == 'production' 时强制（开发/测试零摩擦，本地无需配真随机串）。
+        与 main.py::_assert_cors_safe 同一生产 fail-fast 风格。
+        """
+        if self.APP_ENV != "production":
+            return self
+
+        # JWT_SECRET_KEY：长度 ≥32 且非占位串
+        if len(self.JWT_SECRET_KEY) < 32 or _looks_like_placeholder(self.JWT_SECRET_KEY):
+            raise ValueError(
+                "JWT_SECRET_KEY 在生产环境必须是 ≥32 字符的强随机串（如 openssl rand -hex 32），"
+                "禁用 .env.example 占位串。"
+            )
+
+        # ADMIN_JWT_SECRET：生产必须独立配置且 ≠ JWT_SECRET_KEY（不复用同一秘密）
+        if not self.ADMIN_JWT_SECRET:
+            raise ValueError(
+                "ADMIN_JWT_SECRET 在生产环境必须独立配置（禁回退用 JWT_SECRET_KEY），"
+                "用 openssl rand -hex 32 另生成一串。"
+            )
+        if self.ADMIN_JWT_SECRET == self.JWT_SECRET_KEY:
+            raise ValueError(
+                "ADMIN_JWT_SECRET 不得与 JWT_SECRET_KEY 相同（管理后台与用户态必须用独立签名密钥）。"
+            )
+        if len(self.ADMIN_JWT_SECRET) < 32 or _looks_like_placeholder(self.ADMIN_JWT_SECRET):
+            raise ValueError(
+                "ADMIN_JWT_SECRET 在生产环境必须是 ≥32 字符的强随机串，禁用占位串。"
+            )
+
+        return self
 
     @property
     def origins_list(self) -> list[str]:

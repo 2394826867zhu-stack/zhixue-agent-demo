@@ -9,12 +9,13 @@ import pytest
 from app.config import settings
 
 
-async def _admin_token(client) -> str:
-    secret = settings.ADMIN_JWT_SECRET or settings.JWT_SECRET_KEY
+async def _admin_token(client, monkeypatch) -> str:
+    # G3-2：setup 口令现独立于签名密钥，测试显式配 ADMIN_SETUP_TOKEN
+    monkeypatch.setattr(settings, "ADMIN_SETUP_TOKEN", "smoke-setup-token", raising=False)
     await client.post("/admin/auth/setup", json={
         "email": "smoke_admin@zhiyao.com",
         "password": "admin_pw_123456",
-        "secret_key": secret,
+        "secret_key": "smoke-setup-token",
     })
     r = await client.post("/admin/auth/login", json={
         "email": "smoke_admin@zhiyao.com",
@@ -25,8 +26,8 @@ async def _admin_token(client) -> str:
 
 
 @pytest.mark.asyncio
-async def test_admin_read_endpoints_validate(client):
-    token = await _admin_token(client)
+async def test_admin_read_endpoints_validate(client, monkeypatch):
+    token = await _admin_token(client, monkeypatch)
     h = {"Authorization": f"Bearer {token}"}
 
     # 所有读端点：空库下应 200，且精确 response_model 序列化通过（不 500）
