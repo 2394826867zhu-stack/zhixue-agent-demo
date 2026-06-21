@@ -387,12 +387,18 @@ async def run(
             from app.services.ss_timeline_service import ss_timeline_service
             ss_uid = _uuid.UUID(studyspace_session_id)
             usr_uid = _uuid.UUID(user_id)
-            if full_reply and full_reply.strip():
+            if full_reply.strip():
                 await ss_timeline_service.append_system_node(
                     db, ss_uid, usr_uid,
                     kind="agent_message", title="知曜", content=full_reply.strip(),
                 )
+            # 同一工具多轮调用会重复 append，去重（保首次出现顺序）：payload 仅 {"tool"}，
+            # 重复节点内容完全相同、对用户是噪音
+            _seen: set[str] = set()
             for _tool in tools_called:
+                if _tool in _seen:
+                    continue
+                _seen.add(_tool)
                 await ss_timeline_service.append_system_node(
                     db, ss_uid, usr_uid,
                     kind="agent_action", content=None, payload={"tool": _tool},
