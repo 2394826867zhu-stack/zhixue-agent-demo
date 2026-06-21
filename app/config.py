@@ -38,6 +38,17 @@ class Settings(BaseSettings):
     # 默认每日 Token 配额（所有用户）
     DEFAULT_DAILY_TOKEN_LIMIT: int = 200_000
 
+    # 全局每日 Token 熔断（G2-2 成本护栏·审计 P0）：所有用户当日累计 token 上限。
+    # 多用户并发可瞬间击穿月预算 → 加全局日闸，任一超限即拒绝。可 env 覆盖。
+    GLOBAL_DAILY_TOKEN_LIMIT: int = 5_000_000
+    # 接近全局阈值告警比例（达到即 logger.warning 提前预警）
+    GLOBAL_QUOTA_WARN_RATIO: float = 0.8
+
+    # 配额系统失败模式（G2-3 fail-closed·审计 P0）：Redis 等配额基础设施不可用时的行为。
+    # False（默认）= fail-closed 保守拒绝（成本命门，宁可拒绝不可击穿）；
+    # True = fail-open 放行（运维明确可承受成本风险时再开）。
+    QUOTA_FAIL_OPEN: bool = False
+
     # 文件存储
     STORAGE_TYPE: Literal["local", "oss"] = "local"
     LOCAL_UPLOAD_DIR: str = "./uploads"

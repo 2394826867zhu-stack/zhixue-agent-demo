@@ -115,7 +115,7 @@ async def run(
     # 0. 图片预处理：视觉 LLM 描述后拼入消息正文
     if image_url:
         try:
-            description = await llm_client.describe_image(image_url)
+            description = await llm_client.describe_image(image_url, user_id=user_id)
             message = f"[图片内容]\n{description}\n\n[用户消息]\n{message}" if message.strip() else f"[图片内容]\n{description}"
         except Exception as e:
             logger.warning(f"Image preprocessing failed: {e}")
@@ -323,6 +323,8 @@ async def run(
                 messages=history,
                 tools=TOOL_DEFINITIONS,
                 system=system,
+                user_id=user_id,
+                endpoint="agent_chat",
             )
         except Exception as e:
             logger.error(f"DeepSeek tool call failed: {type(e).__name__}: {e}")
@@ -375,7 +377,9 @@ async def run(
     # 3. 最终回答轮（流式）
     full_reply = ""
     try:
-        async for token in llm_client.stream_response(messages=history, system=system):
+        async for token in llm_client.stream_response(
+            messages=history, system=system, user_id=user_id, endpoint="agent_chat",
+        ):
             full_reply += token
             yield f'data: {json.dumps({"delta": token}, ensure_ascii=False)}\n\n'
     except Exception as e:
