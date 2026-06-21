@@ -7,8 +7,6 @@
 #   3. 健康检查：curl http://127.0.0.1:8000/health
 # Nginx 在宿主机反代 127.0.0.1:8000 → 域名 HTTPS（见 deploy/nginx-zhiyao.conf）
 # ----------------------------------------------------------------------------
-version: "3.9"
-
 services:
   postgres:
     image: pgvector/pgvector:pg17

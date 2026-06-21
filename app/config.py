@@ -150,6 +150,9 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        # .env 含 compose 专用键（POSTGRES_USER/PASSWORD/DB 用于拼 DATABASE_URL、
+        # 配置 pg 容器），它们不是 app Settings 字段；忽略多余键，避免 extra_forbidden。
+        extra = "ignore"
 
 
 settings = Settings()
