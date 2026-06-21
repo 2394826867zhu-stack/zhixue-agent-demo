@@ -6,6 +6,7 @@
 - 状态机：用户消息 → open（待人工）；人工回复 → pending（待用户）。
 - 列表未读数 = 用户最后已读时间之后、非用户发送的消息数。
 """
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -17,6 +18,9 @@ from app.schemas.support import (
     SupportThreadOut, SupportThreadDetail, SupportMessageOut,
 )
 from app.core.exceptions import NotFoundError, PermissionDeniedError
+from app.core.observability import capture_message
+
+logger = logging.getLogger(__name__)
 
 # 系统自动回执文案（管家口吻，非冰冷模板）
 _AUTO_ACK = (
@@ -117,6 +121,16 @@ async def create_thread(
     thread.last_message_at = _now()
 
     await db.flush()
+
+    # G5-3 · 到达通知：让团队在 Sentry 看到新客服会话（无 DSN 时 no-op；告警失败不阻断主流程）
+    try:
+        capture_message(
+            f"[Support] new thread from user {user_id}: {subject.strip()[:80]}",
+            level="info",
+        )
+    except Exception:  # pragma: no cover - 告警绝不影响会话创建
+        logger.exception("客服会话到达通知失败")
+
     return await get_thread_detail(db, user_id, thread.id)
 
 

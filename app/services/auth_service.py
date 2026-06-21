@@ -5,7 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models.user import User
-from app.schemas.auth import RegisterRequest, LoginRequest, UpdateProfileRequest
+from app.schemas.auth import (
+    RegisterRequest, LoginRequest, UpdateProfileRequest, ChangePasswordRequest,
+)
 from app.core.security import (
     hash_password, verify_password,
     create_access_token, create_refresh_token, decode_token,
@@ -91,6 +93,16 @@ class AuthService:
         if not user:
             raise NotFoundError("用户")
         return user
+
+    async def change_password(
+        self, db: AsyncSession, user: User, data: ChangePasswordRequest
+    ) -> None:
+        # 校验旧密码（不匹配 → 401，明确区别于校验失败）
+        if not verify_password(data.old_password, user.password_hash):
+            raise AppError(4003, "原密码不正确", 401)
+        # 新密码强度已由 schema 校验（复用注册规则，<8 位 422）
+        user.password_hash = hash_password(data.new_password)
+        await db.commit()
 
     async def update_profile(
         self, db: AsyncSession, user: User, data: UpdateProfileRequest

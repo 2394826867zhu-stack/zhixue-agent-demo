@@ -18,6 +18,19 @@ class RegisterRequest(BaseModel):
         return v
 
 
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def new_password_strength(cls, v: str) -> str:
+        # 复用注册同款密码强度规则（最小 8 位）
+        if len(v) < 8:
+            raise ValueError("密码长度不能少于8位")
+        return v
+
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
