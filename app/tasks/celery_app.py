@@ -40,6 +40,17 @@ celery_app.conf.update(
     timezone="Asia/Shanghai",
     enable_utc=True,
     task_track_started=True,
+    # P0-8 · 可靠性基线：worker 崩溃(OOM/重启)时不静默丢任务。
+    #  · acks_late：任务执行完成才 ACK，中途崩溃消息回队重投（要求任务幂等——
+    #    胜过笔记生成/RAG 嵌入/推送被静默吞掉）。
+    #  · reject_on_worker_lost：worker 被杀时显式拒绝→重投而非丢弃。
+    #  · prefetch=1：配合 acks_late，避免一个 worker 预取一堆任务后崩溃全丢。
+    #  · visibility_timeout=12h：Redis broker 默认 1h，短于 note_tasks 的 countdown=300
+    #    + 长任务运行时会导致重复消费；放宽到 12h 覆盖最长 ETA + 运行窗口。
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    worker_prefetch_multiplier=1,
+    broker_transport_options={"visibility_timeout": 43200},
     beat_schedule={
         "generate-daily-tasks": {
             "task": "app.tasks.task_tasks.generate_daily_tasks_all_users",

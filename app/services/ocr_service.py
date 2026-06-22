@@ -12,8 +12,6 @@ import logging
 import os
 from threading import Lock
 
-import httpx
-
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -76,23 +74,20 @@ async def extract_text_from_image(
             logger.warning(f"image_b64 decode failed: {e}")
             return _empty_result(reason=f"base64 decode failed: {e}")
     elif image_url:
-        try:
-            # /uploads/{filename} 相对 URL → 映射本地 LOCAL_UPLOAD_DIR 读；否则当本地绝对路径 / 远程 URL
-            local = resolve_upload_path(image_url)
-            if local and os.path.exists(local):
+        # P0-12 · SSRF 防护：image_url 只接受 /uploads/{filename} 本地上传文件。
+        # 绝不按用户提供的 URL 发起远程抓取（否则任意登录用户可让后端访问内网 / 阿里云
+        # 元数据 http://100.100.100.200/ 窃取 RAM 临时凭证），也不读任意本地绝对路径。
+        local = resolve_upload_path(image_url)
+        if local and os.path.exists(local):
+            try:
                 with open(local, "rb") as f:
                     img_bytes = f.read()
-            elif os.path.exists(image_url):
-                with open(image_url, "rb") as f:
-                    img_bytes = f.read()
-            else:
-                async with httpx.AsyncClient(timeout=15) as c:
-                    resp = await c.get(image_url)
-                    resp.raise_for_status()
-                    img_bytes = resp.content
-        except Exception as e:
-            logger.warning(f"image fetch failed ({image_url}): {e}")
-            return _empty_result(reason=f"fetch failed: {e}")
+            except Exception as e:
+                logger.warning(f"upload image read failed ({image_url}): {e}")
+                return _empty_result(reason=f"read failed: {e}")
+        else:
+            logger.warning(f"image_url rejected (not a valid /uploads file): {image_url}")
+            return _empty_result(reason="image_url 仅接受已上传文件 /uploads/{name}")
 
     if not img_bytes:
         return _empty_result(reason="no image data")

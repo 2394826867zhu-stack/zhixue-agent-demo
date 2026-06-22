@@ -50,12 +50,9 @@ async def import_from_image(
     if grade_type not in _VALID_GRADE_TYPES:
         grade_type = "senior_high"
 
-    # Resolve relative URLs (e.g. /uploads/xxx.jpg) to absolute for httpx
-    if image_url and image_url.startswith("/"):
-        from app.config import settings
-        base = getattr(settings, "PUBLIC_BASE_URL", "http://localhost:8000")
-        image_url = base.rstrip("/") + image_url
-
+    # P0-12 · 直接传 /uploads/{name} 相对路径，OCR 走本地读取（resolve_upload_path）。
+    # 旧实现把它拼成 http://localhost:8000/uploads/... 让 OCR 远程抓取本机——这正是 SSRF
+    # 远程抓取分支的唯一用途。改为本地读取后该分支已删除，导入仍正常工作。
     from app.models.curriculum import CurriculumChapter
 
     # 1. 视觉 LLM 提取结构
