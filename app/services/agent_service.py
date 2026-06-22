@@ -166,6 +166,11 @@ async def run(
                             "lesson_title": chapter.lesson_title,
                             "subject": chapter.subject,
                             "is_key": chapter.is_key,
+                            # 分步教学进度（PathStepper 数据源）→ 注入 prompt，让 AI 多轮中
+                            # 始终知道「讲到第几个概念、下一个该讲哪个」，否则会把「继续」
+                            # 误解成「再出一道同概念的题」而非讲下一个概念（B1）。
+                            "lesson_plan": ss.lesson_plan
+                            if isinstance(ss.lesson_plan, dict) else None,
                         }
         except Exception:
             pass  # StudySpace context is optional; don't break chat if it fails

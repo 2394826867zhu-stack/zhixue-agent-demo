@@ -85,6 +85,35 @@ def _format_memory(memory: dict) -> str:
     return "\n".join(parts)
 
 
+def _render_lesson_progress(lesson_plan: dict | None) -> str:
+    """把分步教学进度渲染进 StudySpace 课时 prompt（B1）。
+
+    lesson_plan = {"steps": ["概念1", ...], "current_index": int}。current_index 由
+    spot_quiz 每出一题 +1（= 已讲并测过的概念数），故 steps[current_index] 正是「下一个
+    待讲概念」。把它明确写进 prompt，AI 多轮中就不会丢失进度、把「继续」误当「再出题」。
+    """
+    if not isinstance(lesson_plan, dict):
+        return ""
+    steps = lesson_plan.get("steps") or []
+    if not isinstance(steps, list) or not steps:
+        return ""  # 开场尚未 set_lesson_plan：按规则 1 先落框架
+    cur = int(lesson_plan.get("current_index", 0) or 0)
+    total = len(steps)
+    lines = []
+    for i, name in enumerate(steps):
+        if i < cur:
+            lines.append(f"  {i + 1}. {name} ✓ 已讲并测过")
+        elif i == cur:
+            lines.append(f"  {i + 1}. {name} ← 当前该讲这个")
+        else:
+            lines.append(f"  {i + 1}. {name}（待讲）")
+    if cur >= total:
+        tail = "所有概念已讲完 → 做简短总结并 set_agent_state('celebrate')，不要再重复任何概念。"
+    else:
+        tail = f"下一步只讲第 {cur + 1} 个概念「{steps[cur]}」，讲完再 spot_quiz；不要重复上面打 ✓ 的概念。"
+    return "\n## 本课时分步教学进度（务必据此推进）\n" + "\n".join(lines) + f"\n{tail}"
+
+
 def build_system_prompt(ctx: AgentContext, studyspace_ctx: dict | None = None) -> str:
     exam_line = (
         f"近期考试：{ctx.upcoming_exam_name}（还有 {ctx.days_remaining} 天）"
@@ -134,14 +163,15 @@ def build_system_prompt(ctx: AgentContext, studyspace_ctx: dict | None = None) -
 ## StudySpace 课时上下文
 当前课时：{studyspace_ctx['subject']} — {studyspace_ctx['chapter_title']} — {studyspace_ctx['lesson_title']}{key_label}
 你正在辅导用户学习这节课，这是你当前唯一的任务。"""
+            studyspace_block += _render_lesson_progress(studyspace_ctx.get("lesson_plan"))
             studyspace_rules = """
 ## StudySpace 行为规则
 1. 开场先梳理本课时 3-5 个核心概念，调用 set_lesson_plan(steps=[概念名...]) 落分步框架，然后开始讲第 1 个概念（也可同时生成一份 Mermaid 思维导图）
-2. 然后逐步讲解，每讲完一个核心概念后暂停，等用户确认或提问，不要一次性输出全部内容
-3. **每讲完一个核心概念后调用 spot_quiz 工具自动出随堂测验题**（传入 kp_id），等用户作答后给反馈
+2. **严格按分步框架顺序逐个推进**：每一轮只讲「下一个待讲概念」（见上方教学进度）。用户说「继续/懂了/下一个/明白了」就讲下一个**还没讲过**的概念，**绝不重复已讲过的概念，也不要对同一个概念反复出题**。一次只讲一个，讲完暂停等用户回应，不要一次性输出全部内容
+3. **每讲完一个核心概念后调用 spot_quiz 工具自动出随堂测验题**（传入 kp_id），等用户作答后给反馈；该工具会把进度推进一步。**调用 spot_quiz 时不要在讲解正文里再把题目文字抄一遍**——题目会以独立的随堂练习卡片呈现给用户，正文只需一句自然过渡（如「我出道题测测你」），否则同一道题会重复出现
 4. 用户答错时切换到更基础的解释路径，不要直接给出答案
 5. 涉及公式或图示时，建议用户打开画板配合推导
-6. 课时讲解结束后，调用 set_agent_state('celebrate') 庆祝"""
+6. **所有概念都讲完后（教学进度显示已到最后一步）**，做一段简短总结，然后调用 set_agent_state('celebrate') 庆祝，不要再重复讲任何概念"""
 
     return (
         "\n\n".join([_IDENTITY, profile, memory_block, _RULES])
