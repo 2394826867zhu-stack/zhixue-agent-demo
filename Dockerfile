@@ -33,6 +33,9 @@ COPY . .
 
 RUN mkdir -p uploads
 
-# Run DB migrations then start the server
-CMD alembic upgrade head && \
-    uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 2
+# P0-11 · 仅启动应用；DB 迁移由部署流程独立一次性执行（deploy.sh 的 `run --rm backend
+# alembic upgrade head`），不再耦合进 CMD——避免多副本并发抢 DDL 锁 + 迁移失败把容器拖进
+# restart 循环。
+# P0-6 · workers 默认 1：2核4G 单机同时跑 pg+redis+backend+celery，且 backend/celery 各自
+# 加载 BGE-M3(~1.5-2G/进程)，2 worker × 模型副本必 OOM。worker 数经 env 可调。
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${UVICORN_WORKERS:-1}

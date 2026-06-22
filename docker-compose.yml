@@ -17,7 +17,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - zhiyao_pgdata:/var/lib/postgresql/data
+      - zhiyao_pgdata_dev:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U zhiyao -d zhiyao"]
       interval: 5s
@@ -25,5 +25,8 @@ services:
       retries: 10
 
 volumes:
-  zhiyao_pgdata:
-    name: zhiyao_pgdata
+  # P0-10 · dev 卷独立命名，杜绝与生产 docker-compose.prod.yml 的 `zhiyao_pgdata` 撞名：
+  # 在 ECS 上误跑默认 docker-compose.yml 时只会建空的 dev 卷，绝不挂载/污染生产数据卷。
+  # 本地 dev 数据可由迁移随时重建，重命名导致的旧 dev 卷弃用可接受。
+  zhiyao_pgdata_dev:
+    name: zhiyao_pgdata_dev

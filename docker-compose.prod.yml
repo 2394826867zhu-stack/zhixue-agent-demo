@@ -12,6 +12,10 @@ services:
     image: pgvector/pgvector:pg17
     container_name: zhiyao_pg
     restart: unless-stopped
+    # P0-6 · 内存上限：防止任一容器内存失控触发内核 OOM-killer 随机杀进程（常误杀 pg）。
+    # 单容器超限只杀自己并 restart，保护其余进程。值为 2核4G 上的保守起点，
+    # 上线后用 `docker stats` 实测调优（见 RELEASE_AND_DEPLOYMENT_SOP）。
+    mem_limit: 1g
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-zhiyao}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?生产必须在 .env 设强密码}
@@ -32,6 +36,8 @@ services:
     image: redis:7-alpine
     container_name: zhiyao_redis
     restart: unless-stopped
+    mem_limit: 512m
+    # 不设 maxmemory 淘汰策略：redis 同时是 Celery broker，allkeys-lru 会驱逐在途任务键致丢任务。
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - zhiyao_redisdata:/data
@@ -49,6 +55,8 @@ services:
       dockerfile: Dockerfile
     container_name: zhiyao_backend
     restart: unless-stopped
+    # 生发性上限（BGE-M3 + uvicorn 1 worker 正常 ~1.8G）；作运行时失控backstop，非紧贴峰值。
+    mem_limit: 2g
     env_file: .env
     environment:
       # 容器内连服务用 compose 服务名，不是 localhost
@@ -87,6 +95,7 @@ services:
       dockerfile: Dockerfile
     container_name: zhiyao_celery
     restart: unless-stopped
+    mem_limit: 1800m
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-zhiyao}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-zhiyao}
@@ -97,13 +106,41 @@ services:
       HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
       APP_ENV: production
     # 覆盖 Dockerfile 的 CMD：起 celery worker（不跑迁移/不起 uvicorn）
-    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2
+    # P0-6 · concurrency=1：减少 BGE-M3 模型副本数（worker 进程各持一份），控内存。
+    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=1
     volumes:
       - zhiyao_hf:/models/hf
       - zhiyao_uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # P0-7 · Celery Beat 调度器：生产此前完全缺失 → 12 个 beat_schedule 定时任务
+  # （每日任务生成/FSRS 复习推送/打卡提醒/周复盘/episode 清理/卡死笔记恢复）全部永不触发，
+  # 在用户侧静默失效。worker 只执行不调度，必须有独立 beat 进程派发。
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zhiyao_celery_beat
+    restart: unless-stopped
+    mem_limit: 512m
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-zhiyao}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-zhiyao}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      HF_HOME: /models/hf
+      HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
+      APP_ENV: production
+    # schedule 文件落持久卷，重启不重置 last-run-time（防重复触发）
+    command: celery -A app.tasks.celery_app beat --loglevel=info --schedule /beat/celerybeat-schedule
+    volumes:
+      - zhiyao_beat:/beat
+    depends_on:
       redis:
         condition: service_healthy
 
@@ -116,3 +153,5 @@ volumes:
     name: zhiyao_hf
   zhiyao_uploads:
     name: zhiyao_uploads
+  zhiyao_beat:
+    name: zhiyao_beat
