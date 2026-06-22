@@ -61,6 +61,10 @@ services:
       HF_HOME: /models/hf
       # 大陆从 HuggingFace 官方下载慢/不稳 → 用国内镜像（见指南）
       HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
+      # 模型已缓存到持久卷 → 离线模式：不再每次嵌入向 hf-mirror 发在线 HEAD 校验
+      # （hf-mirror 超时曾把每次 RAG/AI 调用拖慢 20-30s，用户感觉"AI 好卡"）
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
       APP_ENV: production
       PORT: "8000"
     volumes:
@@ -95,6 +99,10 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       HF_HOME: /models/hf
       HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
+      # 模型已缓存到持久卷 → 离线模式：不再每次嵌入向 hf-mirror 发在线 HEAD 校验
+      # （hf-mirror 超时曾把每次 RAG/AI 调用拖慢 20-30s，用户感觉"AI 好卡"）
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
       APP_ENV: production
     # 覆盖 Dockerfile 的 CMD：起 celery worker（不跑迁移/不起 uvicorn）
     command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2
