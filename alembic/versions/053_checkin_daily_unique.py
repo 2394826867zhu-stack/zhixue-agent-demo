@@ -20,8 +20,13 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # 1. 加列（先 nullable 以便回填存量）
-    op.add_column("check_ins", sa.Column("checkin_date", sa.Date(), nullable=True))
+    # 1. 加列（先 nullable 以便回填存量）。server_default CURRENT_DATE 是 expand-contract
+    #    安全网：回滚到不写 checkin_date 的旧代码时 DB 仍能填值，不致 NOT NULL 违例。
+    op.add_column(
+        "check_ins",
+        sa.Column("checkin_date", sa.Date(), nullable=True,
+                  server_default=sa.text("CURRENT_DATE")),
+    )
 
     # 2. 回填：按北京时区(UTC+8)把 created_at 归一到"当日"
     op.execute(

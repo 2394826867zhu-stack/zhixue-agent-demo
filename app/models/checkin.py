@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, date, timezone
-from sqlalchemy import Text, DateTime, Date, ForeignKey, UniqueConstraint
+from sqlalchemy import Text, DateTime, Date, ForeignKey, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.core.database import Base
@@ -19,8 +19,12 @@ class CheckIn(Base):
         nullable=False, index=True,
     )
 
-    # 签到归属的"当日"（北京时区日期），唯一约束的去重键
-    checkin_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    # 签到归属的"当日"（北京时区日期），唯一约束的去重键。
+    # server_default CURRENT_DATE 是 expand-contract 安全网：回滚到不写 checkin_date 的旧代码时
+    # DB 仍能填值，不致 NOT NULL 违例（新代码始终显式按北京时区写入）。
+    checkin_date: Mapped[date] = mapped_column(
+        Date, nullable=False, index=True, server_default=text("CURRENT_DATE")
+    )
 
     raw_content: Mapped[str] = mapped_column(Text, nullable=False)
     ai_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
