@@ -54,6 +54,9 @@ services:
       # 容器内连服务用 compose 服务名，不是 localhost
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-zhiyao}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-zhiyao}
       REDIS_URL: redis://redis:6379/0
+      # Celery 用容器服务名 redis（.env.example 默认 localhost 在容器内连不上）
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
       # BGE-M3 模型缓存挂持久卷（避免每次重启重下 ~1.3GB）
       HF_HOME: /models/hf
       # 大陆从 HuggingFace 官方下载慢/不稳 → 用国内镜像（见指南）
@@ -88,6 +91,8 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-zhiyao}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-zhiyao}
       REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
       HF_HOME: /models/hf
       HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
       APP_ENV: production
