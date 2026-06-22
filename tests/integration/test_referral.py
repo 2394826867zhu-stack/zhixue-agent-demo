@@ -75,9 +75,12 @@ async def test_cannot_redeem_twice(client: AsyncClient):
     code_a = (await client.get("/v1/referral", headers={"Authorization": f"Bearer {ta}"})).json()["data"]["code"]
     HB = {"Authorization": f"Bearer {tb}"}
     assert (await client.post("/v1/referral/redeem", headers=HB, json={"code": code_a})).status_code == 200
+    bal_b1 = await _balance(client, tb)
     resp = await client.post("/v1/referral/redeem", headers=HB, json={"code": code_a})
     assert resp.status_code == 400
     assert "填过" in resp.json()["message"]
+    # P0-2 · 第二次填码不得再发星（CAS 仅赢家发奖）
+    assert await _balance(client, tb) == bal_b1
 
 
 @pytest.mark.asyncio

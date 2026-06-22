@@ -10,10 +10,11 @@
 import json
 import logging
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.exc import IntegrityError
 
 from app.models.checkin import CheckIn
 from app.models.knowledge_point import KnowledgePoint
@@ -25,12 +26,40 @@ from app.llm.prompts.checkin import checkin_extract_prompt
 logger = logging.getLogger(__name__)
 
 
+def _beijing_today() -> date:
+    """签到归属的'当日'按北京时区(UTC+8)计算——用户体感的今天。"""
+    return (datetime.now(timezone.utc) + timedelta(hours=8)).date()
+
+
+def _to_out(row: CheckIn) -> CheckInOut:
+    return CheckInOut(
+        id=str(row.id),
+        raw_content=row.raw_content,
+        ai_summary=row.ai_summary,
+        parsed_updates=row.parsed_updates,
+        created_at=row.created_at,
+    )
+
+
 class CheckInService:
 
     async def create_checkin(
         self, db: AsyncSession, user_id: str, content: str
     ) -> CheckInOut:
         uid = uuid.UUID(user_id)
+        today = _beijing_today()
+
+        # P0-1 · 幂等：当日已签到则直接返回既有记录，不跑 LLM、不发星。
+        # 无去重时一天连点 N 次会发 20×N 星刷爆经济系统（上线即被薅）。
+        existing = (
+            await db.execute(
+                select(CheckIn).where(
+                    CheckIn.user_id == uid, CheckIn.checkin_date == today
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return _to_out(existing)
 
         # G3-3/G3-4 · 入站安全：审核（命中抛 ContentBlockedError）+ PII 脱敏后落库/送 LLM
         from app.services.safety_guard import guard_inbound_text, mask_inbound_text
@@ -67,6 +96,7 @@ class CheckInService:
         # 保存签到记录
         checkin = CheckIn(
             user_id=uid,
+            checkin_date=today,
             raw_content=content,
             ai_summary=summary,
             parsed_updates={
@@ -76,10 +106,24 @@ class CheckInService:
             },
         )
         db.add(checkin)
-        await db.commit()
+        try:
+            await db.commit()
+        except IntegrityError:
+            # P0-1 · 并发竞态：另一请求已写入当日签到（命中唯一约束）→ 回退并幂等返回，不重复发星
+            await db.rollback()
+            existing = (
+                await db.execute(
+                    select(CheckIn).where(
+                        CheckIn.user_id == uid, CheckIn.checkin_date == today
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                return _to_out(existing)
+            raise
         await db.refresh(checkin)
 
-        # Award stars: base 20 + streak multiplier (fire-and-forget)
+        # Award stars: base 20 + streak multiplier（仅真实新建当日签到 · fire-and-forget）
         import asyncio
         asyncio.create_task(_post_checkin_stars(user_id))
 
@@ -251,12 +295,13 @@ async def _post_checkin_stars(user_id: str) -> None:
 
         async with async_session_factory() as session:
             uid = uuid.UUID(user_id)
-            now = datetime.now(timezone.utc)
-            # Count consecutive days up to today
+            today = _beijing_today()
+            # P0-1 · 按 DISTINCT 签到日计连击：原先 COUNT(*) 在一天多签时会把同一天算多次，
+            # 配合无去重的漏洞放大发星。唯一约束 + DISTINCT 双保险。
             result = await session.execute(
-                select(func.count()).select_from(CheckIn).where(
+                select(func.count(func.distinct(CheckIn.checkin_date))).where(
                     CheckIn.user_id == uid,
-                    CheckIn.created_at >= now - timedelta(days=7),
+                    CheckIn.checkin_date >= today - timedelta(days=6),
                 )
             )
             recent_days = min(result.scalar_one(), 7)

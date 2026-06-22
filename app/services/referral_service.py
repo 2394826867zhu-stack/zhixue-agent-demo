@@ -7,7 +7,7 @@
 import secrets
 import uuid
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError, NotFoundError
@@ -72,8 +72,20 @@ async def redeem(db: AsyncSession, user: User, code: str) -> dict:
     if referrer.id == user.id:
         raise AppError(4003, "不能填自己的邀请码哦", 400)
 
-    user.referred_by = referrer.id
-    # 双方各得知星
+    # P0-2 · 原子 CAS：仅当 referred_by 仍为空才占位，杜绝并发重复填码 + 双发知星。
+    # 先查后写(check-then-act)无锁时，两个并发请求都能穿透上面的 None 判断各发一次 50 星；
+    # 这里把"占位"压成单条带 WHERE 的 UPDATE，靠 rowcount 区分赢家。
+    cas = await db.execute(
+        update(User)
+        .where(User.id == user.id, User.referred_by.is_(None))
+        .values(referred_by=referrer.id)
+    )
+    if cas.rowcount != 1:
+        # 竞态下另一请求已抢先填码（或本就已填）→ 不重复发星
+        await db.rollback()
+        raise AppError(4003, "你已经填过邀请码啦", 400)
+
+    # 双方各得知星（仅 CAS 赢家走到这里）
     db.add(StarLedger(
         user_id=referrer.id, amount=REFERRAL_REWARD, reason="invite_friend",
         description="好友接受了你的邀请", meta={"referee_id": str(user.id)},
@@ -83,4 +95,6 @@ async def redeem(db: AsyncSession, user: User, code: str) -> dict:
         description="使用邀请码奖励", meta={"referrer_id": str(referrer.id)},
     ))
     await db.commit()
+    # 同步内存对象，保持后续 get_info / 响应一致（core update 不回写 identity map）
+    user.referred_by = referrer.id
     return {"reward_earned": REFERRAL_REWARD, "referrer_reward": REFERRAL_REWARD}

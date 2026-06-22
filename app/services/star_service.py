@@ -4,6 +4,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
+from app.models.user import User
 from app.models.star import (
     StarLedger, UserCosmetic, COSMETIC_CATALOG,
     STARTER_OUTFITS, get_starter_item_ids,
@@ -147,7 +148,14 @@ class StarService:
             raise AppError(404, "道具不存在", 404)
 
         uid = uuid.UUID(user_id)
-        # Check already owned
+        # P0-3 · 锁用户行序列化并发购买，杜绝 TOCTOU：余额是 star_ledger 的 SUM 派生值无锁，
+        # 并发买不同道具会各自读到旧余额都通过校验 → 余额被扣成负数。锁住 users 行后，
+        # 同一用户的购买在事务级串行，"查余额→扣减"成为临界区。
+        await db.execute(
+            select(User.id).where(User.id == uid).with_for_update()
+        )
+
+        # Check already owned（user_cosmetics 复合主键 (user_id,item_id) 兜底重复购买）
         result = await db.execute(
             select(UserCosmetic).where(
                 UserCosmetic.user_id == uid,
