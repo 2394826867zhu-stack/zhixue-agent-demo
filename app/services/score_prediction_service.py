@@ -36,8 +36,8 @@ def _build_result(subject: str, kps: list, training_pct: float | None) -> dict:
     composite = mastery_avg * 0.6 + effective_training * 0.4
     total = _SUBJECT_TOTAL.get(subject, 150)
     center = round(composite * total)
-    low = round(center * 0.93)
-    high = round(center * 1.07)
+    low = max(round(center * 0.93), 0)
+    high = min(round(center * 1.07), total)  # 区间上界不越过满分
     weak = [kp.name for kp in kps if kp.mastery_status in ("learning", "new")][:3]
     return {
         "subject": subject,
