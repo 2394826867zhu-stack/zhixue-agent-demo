@@ -127,28 +127,17 @@ class TrainingService:
             except Exception as _e:
                 logger.warning(f"interleave RAG call failed (skip): {_e}")
 
-        # 3. 创建 session
-        session = TrainingSession(
-            user_id=uid,
-            mode="compose",
-            subject=data.subject,
-            ss_session_id=data.ss_session_id,  # v0.27 Q-05 · 前端显式挂载
-        )
-        db.add(session)
-        await db.flush()
-
-        # 4. 按 question_count 在 KP 池上轮询出题，每题随机分配 question_types 中一种
+        # 3. 出题前置（DB 读取都在建会话前做完）
         import random
         type_pool = list(data.question_types)
         from app.llm.client import llm_client
         from app.llm.prompts.training_prompts import QUESTION_GENERATE_PROMPT, SYSTEM_TRAINING
 
-        questions: list[TrainingQuestion] = []
-        # F 召回侧：出题前召回该生历史错题，注入 prompt 以针对性强化薄弱点
+        # F 召回侧：出题前召回该生历史错题，注入 prompt 以针对性强化薄弱点（DB 读）
         mistake_hint = await self._recall_mistakes_hint(
             db, user_id, kps[0].subject if kps else None
         )
-        # v0.34 P1-3 · 构造交错池：interleave_ratio 比例来自历史 KP
+        # v0.34 P1-3 · 构造交错池：interleave_ratio 比例来自历史 KP（纯内存计算）
         n_interleave = int(round(data.question_count * interleave_ratio)) if interleave_kps else 0
         n_primary = data.question_count - n_interleave
         primary_cycle = (kps * ((n_primary // len(kps)) + 1))[:n_primary] if n_primary > 0 else []
@@ -175,6 +164,23 @@ class TrainingService:
                     inter_left -= 1
                 except StopIteration:
                     inter_left = 0
+
+        # P0-5 · 先建会话并立即 commit（持久化 + 释放 DB 连接），随后 N 次 LLM 出题期间
+        # 不再持有连接。原实现 flush 后整个出题循环占着一条连接 + 行锁，10 题=10 次串行 LLM
+        # 全程占用 → 并发组卷迅速耗尽连接池。db.add 仅暂存不 execute，循环中零连接占用。
+        session = TrainingSession(
+            user_id=uid,
+            mode="compose",
+            subject=data.subject,
+            ss_session_id=data.ss_session_id,  # v0.27 Q-05 · 前端显式挂载
+        )
+        db.add(session)
+        await db.commit()
+        await db.refresh(session)
+        session_pk = session.id
+
+        # 4. LLM 出题循环——期间不持有 DB 连接
+        questions: list[TrainingQuestion] = []
         for idx, kp in enumerate(kp_cycle):
             qtype = type_pool[idx % len(type_pool)]
             try:
@@ -196,7 +202,7 @@ class TrainingService:
                     continue
                 item = items[0]
                 q = TrainingQuestion(
-                    session_id=session.id,
+                    session_id=session_pk,
                     user_id=uid,
                     knowledge_point_id=kp.id,
                     bloom_level=kp.bloom_level,
@@ -212,9 +218,12 @@ class TrainingService:
                 logger.warning("compose_quiz LLM call failed for kp=%s: %s", kp.id, e)
 
         if not questions:
-            await db.rollback()
+            # 会话已 commit 但一题没出 → 删掉空会话，保持"什么都没创建"语义
+            await db.delete(session)
+            await db.commit()
             raise LLMError()
 
+        # 5. 一次性短事务写入全部题目 + 回填题数
         session.question_count = len(questions)
         await db.commit()
         await db.refresh(session)

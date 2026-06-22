@@ -393,6 +393,19 @@ async def run(
             # LLM 决定直接回答，退出工具循环
             break
 
+    # P0-4 · 进入最长 LLM 持有期（流式整段回答，可达数十秒）前显式释放 DB 连接。
+    # 工具轮的写入已各自 commit；这里把可能残留的只读事务一并结清，确保流式期间不占用
+    # 连接池——否则 ~31 并发对话即耗尽 30 条连接，登录/列表等无关请求全部阻塞超时。
+    # （完整修复=run() 全程不持有请求级连接，见 specs 的连接池生命周期重构计划。）
+    if db is not None:
+        try:
+            await db.commit()
+        except Exception:
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+
     # 3. 最终回答轮（流式）
     full_reply = ""
     try:
