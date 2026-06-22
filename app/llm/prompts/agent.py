@@ -268,7 +268,7 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "manage_tasks",
-            "description": "任务的查询、创建、批量创建、完成标记。",
+            "description": "任务的查询/创建/批量创建/完成标记。创建时 task_data.title 必填且要具体——写清这条任务要学什么（如「复习焓变的定义与热化学方程式」），禁用「新任务」「学习」这类泛标题。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -278,7 +278,7 @@ TOOL_DEFINITIONS = [
                     },
                     "task_data": {
                         "type": "object",
-                        "description": "create 时：{title, subject?, estimated_minutes?, due_date?, priority?}",
+                        "description": "create 时：{title(必填·具体写学什么,禁'新任务'泛标题), subject?, estimated_minutes?, due_date?, priority?}",
                     },
                     "tasks": {
                         "type": "array",

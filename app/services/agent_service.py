@@ -252,12 +252,15 @@ async def run(
             yield f'data: {json.dumps({"thinking": "正在规划…"}, ensure_ascii=False)}\n\n'
             current_plan = await do_plan(db, user_id, message, system[:2000])
             plan_history: list[dict] = [current_plan]
+            # 跨 reflect 轮共享的工具结果缓存：reflect 重规划常重复同 (tool,args)，
+            # 命中即复用，消除冗余调用 + 避免副作用工具创建重复实体 + 加速 reflect。
+            _tool_cache: dict = {}
             for reflect_i in range(MAX_REFLECT_ROUNDS + 1):
                 if not current_plan.get("steps"):
                     break
                 _n_steps = len(current_plan["steps"])
                 yield f'data: {json.dumps({"thinking": f"执行 {_n_steps} 步…"}, ensure_ascii=False)}\n\n'
-                exec_results = await do_execute(db, user_id, current_plan)
+                exec_results = await do_execute(db, user_id, current_plan, tool_cache=_tool_cache)
                 tools_called.extend([s["tool"] for s in exec_results])
                 v = await do_verify(db, user_id, current_plan, exec_results)
                 if v["ok"] or reflect_i >= MAX_REFLECT_ROUNDS:
