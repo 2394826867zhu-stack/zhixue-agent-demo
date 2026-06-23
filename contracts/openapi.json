@@ -5477,6 +5477,50 @@
         "title": "ExamUpdate",
         "type": "object"
       },
+      "ExpoManifestOut": {
+        "properties": {
+          "assets": {
+            "items": {
+              "$ref": "#/components/schemas/ManifestAsset"
+            },
+            "title": "Assets",
+            "type": "array"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "isEmbedded": {
+            "title": "Isembedded",
+            "type": "boolean"
+          },
+          "launchAsset": {
+            "$ref": "#/components/schemas/ManifestAsset"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ManifestMetadata"
+          },
+          "runtimeVersion": {
+            "title": "Runtimeversion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runtimeVersion",
+          "id",
+          "createdAt",
+          "isEmbedded",
+          "launchAsset",
+          "assets",
+          "metadata"
+        ],
+        "title": "ExpoManifestOut",
+        "type": "object"
+      },
       "FaqCategoryGroup": {
         "properties": {
           "category": {
@@ -7248,6 +7292,52 @@
           "samples"
         ],
         "title": "LowQualitySamplesOut",
+        "type": "object"
+      },
+      "ManifestAsset": {
+        "properties": {
+          "contentType": {
+            "title": "Contenttype",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "contentType",
+          "url"
+        ],
+        "title": "ManifestAsset",
+        "type": "object"
+      },
+      "ManifestMetadata": {
+        "properties": {
+          "branchName": {
+            "title": "Branchname",
+            "type": "string"
+          },
+          "commitHash": {
+            "title": "Commithash",
+            "type": "string"
+          },
+          "runtimeVersion": {
+            "title": "Runtimeversion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "branchName",
+          "commitHash",
+          "runtimeVersion"
+        ],
+        "title": "ManifestMetadata",
         "type": "object"
       },
       "MasteryDistribution": {
@@ -22746,6 +22836,28 @@
         "summary": "合成语音",
         "tags": [
           "TTS"
+        ]
+      }
+    },
+    "/v1/updates": {
+      "get": {
+        "description": "Expo 客户端每次启动时调用此端点拉取 manifest，决定是否下载新的 OTA 更新包。\n返回格式遵循 Expo Updates Protocol v0.",
+        "operationId": "get_manifest_v1_updates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpoManifestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Expo Updates Manifest（公开）",
+        "tags": [
+          "updates"
         ]
       }
     },

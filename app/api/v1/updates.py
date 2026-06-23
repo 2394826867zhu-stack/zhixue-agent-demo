@@ -1,28 +1,21 @@
 """Expo Updates Manifest 端点（OTA 推送）"""
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-import json
-from app.core.database import get_db
-from app.core.security import get_current_user
-from app.models.user import User
+from fastapi import APIRouter
+
+from app.schemas.updates import ExpoManifestOut
 
 router = APIRouter(prefix="/updates", tags=["updates"])
 
 
-@router.get("", summary="Expo Updates Manifest")
-async def get_manifest(
-    user: User | None = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
+@router.get("", summary="Expo Updates Manifest（公开）", response_model=ExpoManifestOut)
+async def get_manifest():
     """
     Expo 客户端每次启动时调用此端点拉取 manifest，决定是否下载新的 OTA 更新包。
     返回格式遵循 Expo Updates Protocol v0.
     """
-    # 当前应用版本
+    # 当前应用版本（必须与 app.json runtimeVersion 一致）
     version = "1.0.0"
 
-    # 这里应该从数据库查询最新的可用版本
-    # 目前硬编码最新的 OTA 包信息
+    # manifest 返回当前可用的最新 OTA 包
     return {
         "runtimeVersion": version,
         "id": "139618eb-db11-46da-979e-2f5050d56803",  # Update group ID from EAS

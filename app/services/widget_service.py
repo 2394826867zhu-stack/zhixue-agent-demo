@@ -28,8 +28,6 @@ _CATALOG: list[WidgetCatalogItem] = [
     WidgetCatalogItem(kind="focus_today",         title="沉浸今日",   description="今日番茄钟累计时长",           is_default=False, available_sizes=["small", "medium"]),
     WidgetCatalogItem(kind="flashcard_stats",     title="闪卡概览",   description="闪卡总量 / FSRS 状态",         is_default=False, available_sizes=["small"]),
     WidgetCatalogItem(kind="curriculum_progress", title="课程进度",   description="官方课程当前章节",             is_default=False, available_sizes=["medium"]),
-    WidgetCatalogItem(kind="rewards_overview",    title="奖励",       description="知星余额 + 最近收入",          is_default=False, available_sizes=["small"]),
-    WidgetCatalogItem(kind="shop_link",           title="商店",       description="装扮商店入口",                 is_default=False, available_sizes=["small"]),
     WidgetCatalogItem(kind="mistakes_count",      title="错题数",     description="错题本待处理数量",             is_default=False, available_sizes=["small"]),
     WidgetCatalogItem(kind="exam_countdown",      title="考试倒计时", description="最近一场考试距今天数",         is_default=False, available_sizes=["small", "medium"]),
 ]

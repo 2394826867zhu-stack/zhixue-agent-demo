@@ -68,7 +68,10 @@ async def test_create_project_returns_200_with_relations(client: AsyncClient):
     assert r.status_code == 200, r.text
     data = r.json()["data"]
     assert data["name"] == "新项目"
-    assert data["phases"] == []
+    # 直接创建会自动播种 3 个默认阶段（基础/强化/复习）——根因修复：
+    # 无阶段 → generate_tree_nodes 拿不到阶段 → 树永远 0 节点。关系已 load（无 MissingGreenlet 500）。
+    assert [p["name"] for p in data["phases"]] == ["基础", "强化", "复习"]
+    assert data["phases"][0]["is_current"] is True
     assert data["milestone_count"] == 0
 
 
@@ -83,7 +86,8 @@ async def test_update_project_returns_200_with_relations(client: AsyncClient):
     assert resp.status_code == 200, resp.text
     data = resp.json()["data"]
     assert data["name"] == "新名"
-    assert data["phases"] == []
+    # 创建已播种 3 默认阶段；update 的 refresh 也须 load 关系（审计 P1-2 回归守卫）。
+    assert len(data["phases"]) == 3
 
 
 @pytest.mark.asyncio

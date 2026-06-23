@@ -100,9 +100,18 @@ class ProjectService:
             started_at=datetime.now(timezone.utc),
         )
         db.add(proj)
+        await db.flush()
+
+        # 自动创建 3 个默认阶段（之前不创建阶段 → generate_tree_nodes 拿不到阶段 → 永远 0 节点）
+        now = datetime.now(timezone.utc)
+        default_phases = [
+            ("基础", "建立知识地图与核心概念", 0, now, now + timedelta(days=14)),
+            ("强化", "深度训练与错题修正", 1, now + timedelta(days=14), now + timedelta(days=42)),
+            ("复习", "综合复盘与模拟冲刺", 2, now + timedelta(days=42), now + timedelta(days=60)),
+        ]
+        for name, desc, sort, sd, ed in default_phases:
+            db.add(ProjectPhase(project_id=proj.id, name=name, description=desc, sort_order=sort, start_date=sd, end_date=ed, is_current=(sort == 0)))
         await db.commit()
-        # 必须显式 load 关系：端点用 ProjectListItem.model_validate(proj) 会同步
-        # 访问 proj.phases，未 load 会在异步上下文触发 MissingGreenlet。
         await db.refresh(proj, attribute_names=["phases", "milestones"])
         return proj
 
@@ -296,13 +305,14 @@ class ProjectService:
         """
         proj = await self._fetch_project(db, project_id, user_id)
 
-        # 已有节点 → 跳过（避免重复生成）
+        # 已有节点 → 返回已有数量（幂等：不重复生成）
         exists = await db.execute(
             select(func.count(ProjectTreeNode.id))
             .where(ProjectTreeNode.project_id == proj.id)
         )
-        if (exists.scalar() or 0) > 0:
-            return 0
+        existing_count = exists.scalar() or 0
+        if existing_count > 0:
+            return existing_count
 
         # 取 phases
         phases_q = await db.execute(
@@ -326,6 +336,7 @@ class ProjectService:
             total_weeks=total_weeks,
             known_kps="（无）",
         )
+        data = None
         try:
             raw = await llm.generate(
                 prompt=prompt,
@@ -335,8 +346,27 @@ class ProjectService:
             )
             data = _extract_json(raw)
         except Exception as e:
-            logger.warning("generate_tree LLM failed, project=%s: %s", project_id, e)
-            return 0
+            logger.warning("generate_tree LLM failed, project=%s: %s — using phase-based fallback", project_id, e)
+
+        # LLM 失败时用 phases 生成节点，并尝试直接绑定课程章节
+        if not data:
+            phases_list = [p.name for p in phases] if phases else ["基础", "强化", "复习"]
+            # 查同 subject 课程供绑定
+            chapters_for_nodes: list = []
+            if proj.subject:
+                chapters_for_nodes = list((await db.execute(
+                    select(CurriculumChapter).where(CurriculumChapter.subject == proj.subject).limit(len(phases_list)*3)
+                )).scalars().all())
+            data = {
+                "root": {"title": proj.name, "difficulty": "blue", "importance": 3, "is_on_main_path": True},
+                "nodes": [
+                    {"title": f"{p}阶段·{i+1}", "parent_title": proj.name, "phase_name": p,
+                     "difficulty": ["blue","purple","blue"][i % 3], "importance": 2 if i == 0 else 1,
+                     "is_on_main_path": i == 0, "depth": 1,
+                     "_chapter_id": str(chapters_for_nodes[i].id) if i < len(chapters_for_nodes) else None}
+                    for i, p in enumerate(phases_list)
+                ],
+            }
 
         # 根节点
         root_meta = data.get("root", {})
@@ -371,6 +401,7 @@ class ProjectService:
                 parent_id=parent.id,
                 depth=int(nmeta.get("depth", parent.depth + 1)),
                 phase_id=phase.id if phase else (phases[0].id if phases else None),
+                curriculum_chapter_id=uuid.UUID(nmeta["_chapter_id"]) if nmeta.get("_chapter_id") else None,
                 title=str(nmeta.get("title", f"节点 {idx+1}"))[:120],
                 difficulty=nmeta.get("difficulty", "blue"),
                 importance=int(nmeta.get("importance", 1)),
@@ -381,8 +412,52 @@ class ProjectService:
             db.add(node)
             title_to_node[node.title] = node
 
+        # 解锁第一批 depth=1 节点：至少有一节可学
+        first_depth1 = next((n for n in title_to_node.values() if n.depth == 1 and n.status == "locked"), None)
+        if first_depth1:
+            first_depth1.status = "available"
+
         await db.commit()
+
+        # 尝试匹配课程章节：把节点标题与用户同 subject 的课程章节做关联，让"开始学习"能真建会话
+        await self._link_nodes_to_curriculum(db, proj, nodes_meta, title_to_node)
+        await db.commit()
+
         return len(nodes_meta) + 1
+
+    async def _link_nodes_to_curriculum(
+        self, db: AsyncSession, proj: Project,
+        nodes_meta: list[dict], title_to_node: dict[str, ProjectTreeNode],
+    ) -> None:
+        """树节点生成后，尝试按 subject + 标题关键词匹配课程章节，补 curriculum_chapter_id。"""
+        if not proj.subject:
+            return
+        from app.models.curriculum import CurriculumChapter
+        chapters_q = await db.execute(
+            select(CurriculumChapter).where(CurriculumChapter.subject == proj.subject).limit(50)
+        )
+        chapters = list(chapters_q.scalars().all())
+        if not chapters:
+            return
+        chapter_titles = {c.lesson_title: c for c in chapters}
+        # 扩展：也按 chapter_title 匹配
+        for c in chapters:
+            chapter_titles[c.chapter_title] = c
+
+        for nmeta in nodes_meta:
+            node_title = str(nmeta.get("title", ""))
+            node = title_to_node.get(node_title)
+            if not node or node.curriculum_chapter_id:
+                continue
+            # 直接匹配
+            if node_title in chapter_titles:
+                node.curriculum_chapter_id = chapter_titles[node_title].id
+                continue
+            # 关键词包含匹配
+            for ct, chapter in chapter_titles.items():
+                if len(node_title) >= 3 and (node_title[:3] in ct or ct[:3] in node_title):
+                    node.curriculum_chapter_id = chapter.id
+                    break
 
     # ── 数据栏 ──────────────────────────────────────────────────────────
 

@@ -183,11 +183,16 @@ class OnboardingService:
     async def _finalize(self, db: AsyncSession, user_id: str, draft: dict) -> str:
         uid = uuid.UUID(user_id)
 
-        # 1. 更新用户 onboarding_completed + learning_profile
+        # 1. 更新用户 onboarding_completed + 基本档案字段
         await db.execute(
             update(User)
             .where(User.id == uid)
-            .values(onboarding_completed=True, learning_profile=draft)
+            .values(
+                onboarding_completed=True,
+                learning_profile=draft,
+                subjects=draft.get("subjects", []),
+                grade=draft.get("grade"),
+            )
         )
 
         # 2. 预填知识点
