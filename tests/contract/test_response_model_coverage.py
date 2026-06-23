@@ -27,6 +27,10 @@ def _documented_routes():
             continue
         if r.path in EXEMPT_PATHS:
             continue
+        # include_in_schema=False 的路由不进 OpenAPI，不存在"响应写成空 {}"的契约不诚实
+        # 风险（本闸的全部理由），故豁免（如 /admin/ui 内嵌 HTML 单页，FileResponse）。
+        if not r.include_in_schema:
+            continue
         if r.path.startswith("/v1") or r.path.startswith("/admin"):
             yield r
 

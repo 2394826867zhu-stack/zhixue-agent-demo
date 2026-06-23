@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>知曜 · 运维后台</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --panel:#fff; --ink:#1c2025; --muted:#6b7280; --line:#e6e8ec;
+    --accent:#4f46e5; --accent-soft:#eef0fe; --ok:#16a34a; --warn:#d97706; --bad:#dc2626;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5}
+  a{color:var(--accent);text-decoration:none}
+  button{font:inherit;cursor:pointer;border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 12px}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  button.ghost{background:transparent}
+  button:disabled{opacity:.5;cursor:default}
+  input,select,textarea{font:inherit;border:1px solid var(--line);border-radius:8px;padding:7px 10px;width:100%;background:#fff}
+  .hidden{display:none!important}
+  /* login */
+  #login{max-width:340px;margin:14vh auto;background:var(--panel);padding:28px;border-radius:14px;border:1px solid var(--line)}
+  #login h1{font-size:18px;margin:0 0 4px}
+  #login .sub{color:var(--muted);margin-bottom:18px}
+  #login .field{margin-bottom:12px}
+  #login .err{color:var(--bad);min-height:18px;margin:6px 0}
+  /* shell */
+  header{display:flex;align-items:center;gap:16px;background:var(--panel);border-bottom:1px solid var(--line);padding:10px 18px;position:sticky;top:0;z-index:5}
+  header .brand{font-weight:700}
+  nav{display:flex;gap:4px;flex:1}
+  nav button{border:none;background:transparent;border-radius:8px;padding:7px 12px;color:var(--muted);position:relative}
+  nav button.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+  .badge{display:inline-block;min-width:18px;height:18px;line-height:18px;text-align:center;background:var(--bad);color:#fff;
+    border-radius:9px;font-size:11px;padding:0 5px;margin-left:6px;vertical-align:middle}
+  main{padding:18px;max-width:1100px;margin:0 auto}
+  .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .kpi .label{color:var(--muted);font-size:12px}
+  .kpi .val{font-size:24px;font-weight:700;margin-top:4px}
+  .kpi .val small{font-size:13px;font-weight:500;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#fafbfc;color:var(--muted);font-weight:600;font-size:12px}
+  tr:last-child td{border-bottom:none}
+  .tag{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;border:1px solid var(--line)}
+  .tag.open{color:var(--warn);border-color:#f0d6a6;background:#fdf6ec}
+  .tag.resolved,.tag.closed{color:var(--ok);border-color:#bfe3c8;background:#eef8f0}
+  .tag.pending,.tag.triaged{color:var(--accent);border-color:#cdd2fb;background:var(--accent-soft)}
+  .sectionhead{display:flex;align-items:center;gap:12px;margin:8px 0 14px}
+  .sectionhead h2{font-size:16px;margin:0}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .muted{color:var(--muted)}
+  .bar-track{height:10px;background:#edeef1;border-radius:6px;overflow:hidden}
+  .bar-fill{height:100%;background:var(--accent)}
+  .bar-fill.warn{background:var(--warn)} .bar-fill.bad{background:var(--bad)}
+  .msg{padding:8px 12px;border-radius:10px;margin:6px 0;max-width:75%}
+  .msg.user{background:var(--accent-soft);margin-left:auto}
+  .msg.staff{background:#eef8f0}
+  .msg.system{background:#f3f4f6;color:var(--muted);font-size:13px}
+  .msg .who{font-size:11px;color:var(--muted);margin-bottom:2px}
+  svg .axis{stroke:var(--line)} svg text{fill:var(--muted);font-size:10px}
+</style>
+</head>
+<body>
+
+<!-- ───────── 登录 ───────── -->
+<div id="login">
+  <h1>知曜 · 运维后台</h1>
+  <div class="sub">token 监控 + 服务反馈</div>
+  <div class="field"><input id="login-email" type="email" placeholder="管理员邮箱" autocomplete="username" /></div>
+  <div class="field"><input id="login-pw" type="password" placeholder="密码" autocomplete="current-password" /></div>
+  <div class="err" id="login-err"></div>
+  <button class="primary" style="width:100%" id="login-btn">登录</button>
+</div>
+
+<!-- ───────── 主体 ───────── -->
+<div id="shell" class="hidden">
+  <header>
+    <span class="brand">知曜运维</span>
+    <nav>
+      <button data-view="dashboard" class="active">总览</button>
+      <button data-view="tokens">Token</button>
+      <button data-view="feedback">反馈<span class="badge hidden" id="b-feedback"></span></button>
+      <button data-view="support">客服<span class="badge hidden" id="b-support"></span></button>
+    </nav>
+    <span class="muted" id="who"></span>
+    <button class="ghost" id="logout">退出</button>
+  </header>
+  <main>
+    <section id="view-dashboard"></section>
+    <section id="view-tokens" class="hidden"></section>
+    <section id="view-feedback" class="hidden"></section>
+    <section id="view-support" class="hidden"></section>
+  </main>
+</div>
+
+<script>
+const TOKEN_KEY = "zhiyao_admin_token";
+const $ = (s, r=document) => r.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt = (n) => (n ?? 0).toLocaleString("en-US");
+const token = () => localStorage.getItem(TOKEN_KEY);
+
+async function api(path, {method="GET", body}={}) {
+  const res = await fetch(path, {
+    method,
+    headers: {
+      ...(token() ? {Authorization: "Bearer " + token()} : {}),
+      ...(body ? {"Content-Type":"application/json"} : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 401) { logout(); throw new Error("登录已过期"); }
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || (json.code && json.code >= 400)) throw new Error(json.message || ("请求失败 " + res.status));
+  return json.data;
+}
+
+/* ───────── 认证 ───────── */
+async function doLogin() {
+  $("#login-err").textContent = "";
+  $("#login-btn").disabled = true;
+  try {
+    const data = await api("/admin/auth/login", {method:"POST", body:{
+      email: $("#login-email").value.trim(), password: $("#login-pw").value,
+    }});
+    localStorage.setItem(TOKEN_KEY, data.access_token);
+    enterShell(data);
+  } catch (e) {
+    $("#login-err").textContent = e.message;
+  } finally {
+    $("#login-btn").disabled = false;
+  }
+}
+function logout() {
+  localStorage.removeItem(TOKEN_KEY);
+  if (pollTimer) clearInterval(pollTimer);
+  $("#shell").classList.add("hidden");
+  $("#login").classList.remove("hidden");
+}
+function enterShell(info) {
+  $("#login").classList.add("hidden");
+  $("#shell").classList.remove("hidden");
+  $("#who").textContent = info?.role ? info.role : "";
+  switchView("dashboard");
+  refreshBadges();
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(refreshBadges, 30000);
+}
+
+/* ───────── 视图切换 ───────── */
+const VIEWS = ["dashboard","tokens","feedback","support"];
+function switchView(v) {
+  VIEWS.forEach(x => {
+    $("#view-"+x).classList.toggle("hidden", x !== v);
+    const btn = document.querySelector(`nav button[data-view="${x}"]`);
+    if (btn) btn.classList.toggle("active", x === v);
+  });
+  ({dashboard:renderDashboard, tokens:renderTokens, feedback:renderFeedback, support:renderSupport}[v])();
+}
+
+/* ───────── 待办徽章（轮询到达通知） ───────── */
+let pollTimer = null;
+async function refreshBadges() {
+  try {
+    const s = await api("/admin/inbox-summary");
+    setBadge("b-feedback", s.unresolved_feedback);
+    setBadge("b-support", s.open_support_threads);
+    window.__inbox = s;
+    if (!$("#view-dashboard").classList.contains("hidden")) renderDashboard();
+  } catch (_) {}
+}
+function setBadge(id, n) {
+  const el = $("#"+id);
+  if (!el) return;
+  if (n > 0) { el.textContent = n; el.classList.remove("hidden"); }
+  else el.classList.add("hidden");
+}
+
+/* ───────── 总览 ───────── */
+async function renderDashboard() {
+  const root = $("#view-dashboard");
+  root.innerHTML = `<div class="muted">加载中…</div>`;
+  try {
+    const [d, stats] = await Promise.all([api("/admin/dashboard"), api("/admin/tokens/stats?days=7")]);
+    const inbox = window.__inbox || {};
+    const used = inbox.global_token_used_today || 0, lim = inbox.global_token_limit || 1;
+    const pct = Math.min(100, Math.round(used / lim * 100));
+    const cls = pct >= 90 ? "bad" : pct >= 70 ? "warn" : "";
+    root.innerHTML = `
+      <div class="grid">
+        ${kpi("总用户", fmt(d.total_users), `今日活跃 ${fmt(d.active_users_today)} · 7日 ${fmt(d.active_users_7d)}`)}
+        ${kpi("今日 Token", fmt(d.total_tokens_today), `成本 $${(d.total_cost_today_usd||0).toFixed(2)}`)}
+        ${kpi("7日 Token", fmt(d.total_tokens_7d), `成本 $${(d.total_cost_7d_usd||0).toFixed(2)}`)}
+        ${kpi("笔记总数", fmt(d.total_notes), `项目 ${fmt(d.total_projects)} 活跃 ${fmt(d.active_projects)}`)}
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="sectionhead"><h2>全局当日 Token 闸</h2><span class="muted">${fmt(used)} / ${fmt(lim)}（${pct}%）</span></div>
+        <div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="sectionhead"><h2>近 7 日成本趋势</h2></div>
+        ${costChart(stats.by_day || [])}
+      </div>
+      <div class="grid" style="margin-top:14px">
+        ${kpi("未处理反馈", fmt(inbox.unresolved_feedback), "feedback 待处理")}
+        ${kpi("待回复工单", fmt(inbox.open_support_threads), "support 待客服")}
+        ${kpi("未解死信", fmt(inbox.unresolved_dead_letters), "失败任务待排查")}
+      </div>`;
+  } catch (e) { root.innerHTML = errBox(e); }
+}
+function kpi(label, val, sub) {
+  return `<div class="card kpi"><div class="label">${esc(label)}</div><div class="val">${val}</div><div class="muted" style="font-size:12px;margin-top:4px">${esc(sub)}</div></div>`;
+}
+function costChart(byDay) {
+  if (!byDay.length) return `<div class="muted">暂无数据</div>`;
+  const W=640, H=160, pad=28, n=byDay.length;
+  const max = Math.max(...byDay.map(d => d.cost_usd || 0), 0.0001);
+  const bw = (W - pad*2) / n * 0.6, gap = (W - pad*2) / n;
+  const bars = byDay.map((d,i) => {
+    const h = (d.cost_usd/max) * (H - pad*2);
+    const x = pad + i*gap + (gap-bw)/2, y = H - pad - h;
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1,h).toFixed(1)}" rx="2" fill="var(--accent)"></rect>
+      <text x="${(x+bw/2).toFixed(1)}" y="${H-pad+12}" text-anchor="middle">${esc((d.date||"").slice(5))}</text>`;
+  }).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">
+    <line class="axis" x1="${pad}" y1="${H-pad}" x2="${W-pad}" y2="${H-pad}"></line>
+    <text x="${pad}" y="14">$${max.toFixed(2)}</text>${bars}</svg>`;
+}
+
+/* ───────── Token ───────── */
+async function renderTokens() {
+  const root = $("#view-tokens");
+  root.innerHTML = `<div class="muted">加载中…</div>`;
+  try {
+    const s = await api("/admin/tokens/stats?days=7");
+    root.innerHTML = `
+      <div class="grid">
+        ${kpi("7日调用", fmt(s.total_calls), "")}
+        ${kpi("7日 Token", fmt(s.total_tokens), "")}
+        ${kpi("7日成本", "$"+(s.total_cost_usd||0).toFixed(2), "")}
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="sectionhead"><h2>单用户配额</h2></div>
+        <div class="row">
+          <input id="q-uid" placeholder="user_id (UUID)" style="max-width:340px" />
+          <button id="q-get">查询</button>
+          <input id="q-limit" type="number" placeholder="日限额" style="max-width:140px" />
+          <button class="primary" id="q-set">设置</button>
+          <span class="muted" id="q-out"></span>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="sectionhead"><h2>按模型</h2></div>
+        ${tableFrom(s.by_model||[], [["model","模型"],["total_tokens","Token","n"],["cost_usd","成本","$"]])}
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="sectionhead"><h2>Top 用户</h2></div>
+        ${tableFrom(s.top_users||[], [["email","邮箱"],["user_id","ID"],["total_tokens","Token","n"]])}
+      </div>`;
+    $("#q-get").onclick = async () => {
+      try { const q = await api("/admin/quotas/"+encodeURIComponent($("#q-uid").value.trim()));
+        $("#q-limit").value = q.daily_token_limit;
+        $("#q-out").textContent = `当前 ${fmt(q.daily_token_limit)}${q.is_default?"（默认）":""}`;
+      } catch(e){ $("#q-out").textContent = e.message; }
+    };
+    $("#q-set").onclick = async () => {
+      try { const r = await api("/admin/quotas/"+encodeURIComponent($("#q-uid").value.trim()),
+          {method:"PUT", body:{daily_token_limit: parseInt($("#q-limit").value,10)}});
+        $("#q-out").textContent = `已设为 ${fmt(r.daily_token_limit)}`;
+      } catch(e){ $("#q-out").textContent = e.message; }
+    };
+  } catch (e) { root.innerHTML = errBox(e); }
+}
+function tableFrom(rows, cols) {
+  if (!rows.length) return `<div class="muted">暂无数据</div>`;
+  const head = cols.map(c => `<th>${esc(c[1])}</th>`).join("");
+  const body = rows.map(r => "<tr>" + cols.map(c => {
+    let v = r[c[0]];
+    if (c[2] === "n") v = fmt(v); else if (c[2] === "$") v = "$"+(Number(v)||0).toFixed(4);
+    return `<td>${esc(v)}</td>`;
+  }).join("") + "</tr>").join("");
+  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+/* ───────── 反馈 ───────── */
+let fbStatus = "";
+async function renderFeedback() {
+  const root = $("#view-feedback");
+  root.innerHTML = `<div class="muted">加载中…</div>`;
+  try {
+    const q = fbStatus ? "?status="+fbStatus : "";
+    const data = await api("/admin/feedback"+q);
+    const items = data.items || [];
+    root.innerHTML = `
+      <div class="sectionhead"><h2>用户反馈</h2>
+        <select id="fb-filter" style="max-width:160px">
+          <option value="">全部</option><option value="open">待处理</option>
+          <option value="triaged">已分类</option><option value="resolved">已处理</option>
+        </select>
+        <span class="muted">${fmt(data.total)} 条</span>
+      </div>
+      ${items.length ? "" : '<div class="muted">暂无反馈</div>'}
+      <div>${items.map(fbCard).join("")}</div>`;
+    $("#fb-filter").value = fbStatus;
+    $("#fb-filter").onchange = (e) => { fbStatus = e.target.value; renderFeedback(); };
+    items.forEach(it => {
+      $("#save-"+it.id).onclick = async () => {
+        try { await api("/admin/feedback/"+it.id, {method:"PATCH", body:{
+          status: $("#st-"+it.id).value, admin_note: $("#note-"+it.id).value }});
+          renderFeedback(); refreshBadges();
+        } catch(e){ alert(e.message); }
+      };
+    });
+  } catch (e) { root.innerHTML = errBox(e); }
+}
+function fbCard(it) {
+  return `<div class="card" style="margin-bottom:10px">
+    <div class="row" style="justify-content:space-between">
+      <div><span class="tag">${esc(it.category)}</span> <span class="tag ${esc(it.status)}">${esc(it.status)}</span>
+        <span class="muted" style="margin-left:8px">${esc((it.created_at||"").slice(0,16).replace("T"," "))}</span></div>
+    </div>
+    <div style="margin:8px 0;white-space:pre-wrap">${esc(it.content)}</div>
+    ${it.app_version ? `<div class="muted" style="font-size:12px">v${esc(it.app_version)}</div>`:""}
+    <div class="row" style="margin-top:8px">
+      <select id="st-${it.id}" style="max-width:140px">
+        ${["open","triaged","resolved"].map(s=>`<option value="${s}" ${s===it.status?"selected":""}>${s}</option>`).join("")}
+      </select>
+      <input id="note-${it.id}" placeholder="处理备注" value="${esc(it.admin_note||"")}" style="flex:1;min-width:160px" />
+      <button class="primary" id="save-${it.id}">保存</button>
+    </div></div>`;
+}
+
+/* ───────── 客服 ───────── */
+let supStatus = "", curThread = null;
+async function renderSupport() {
+  const root = $("#view-support");
+  if (curThread) return renderThread(root);
+  root.innerHTML = `<div class="muted">加载中…</div>`;
+  try {
+    const q = supStatus ? "?status="+supStatus : "";
+    const data = await api("/admin/support/threads"+q);
+    const items = data.items || [];
+    root.innerHTML = `
+      <div class="sectionhead"><h2>客服工单</h2>
+        <select id="sup-filter" style="max-width:160px">
+          <option value="">全部</option><option value="open">待客服</option>
+          <option value="pending">已回复</option><option value="resolved">已解决</option><option value="closed">已关闭</option>
+        </select>
+        <span class="muted">${fmt(data.total)} 条</span>
+      </div>
+      <table><thead><tr><th>主题</th><th>状态</th><th>最近</th><th></th></tr></thead><tbody>
+        ${items.map(t => `<tr>
+          <td>${esc(t.subject)}</td>
+          <td><span class="tag ${esc(t.status)}">${esc(t.status)}</span></td>
+          <td class="muted">${esc((t.last_message_at||"").slice(0,16).replace("T"," "))}</td>
+          <td><button data-tid="${esc(t.id||t.thread_id)}">打开</button></td></tr>`).join("")}
+      </tbody></table>
+      ${items.length?"":'<div class="muted" style="margin-top:10px">暂无工单</div>'}`;
+    $("#sup-filter").value = supStatus;
+    $("#sup-filter").onchange = (e) => { supStatus = e.target.value; renderSupport(); };
+    root.querySelectorAll("button[data-tid]").forEach(b => b.onclick = () => { curThread = b.dataset.tid; renderSupport(); });
+  } catch (e) { root.innerHTML = errBox(e); }
+}
+async function renderThread(root) {
+  root.innerHTML = `<div class="muted">加载中…</div>`;
+  try {
+    const d = await api("/admin/support/threads/"+curThread);
+    const msgs = d.messages || [];
+    root.innerHTML = `
+      <div class="sectionhead">
+        <button class="ghost" id="sup-back">← 返回</button>
+        <h2>${esc(d.subject)}</h2><span class="tag ${esc(d.status)}">${esc(d.status)}</span>
+      </div>
+      <div class="card">
+        ${msgs.map(m => `<div class="msg ${esc(m.sender)}"><div class="who">${esc(m.sender)} · ${esc((m.created_at||"").slice(0,16).replace("T"," "))}</div>${esc(m.content)}</div>`).join("")}
+      </div>
+      <div class="card" style="margin-top:12px">
+        <textarea id="sup-reply" rows="3" placeholder="人工回复…"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="primary" id="sup-send">回复</button>
+          <select id="sup-st" style="max-width:150px">
+            ${["open","pending","resolved","closed"].map(s=>`<option value="${s}" ${s===d.status?"selected":""}>${s}</option>`).join("")}
+          </select>
+          <button id="sup-setst">改状态</button>
+        </div>
+      </div>`;
+    $("#sup-back").onclick = () => { curThread = null; renderSupport(); };
+    $("#sup-send").onclick = async () => {
+      const c = $("#sup-reply").value.trim(); if (!c) return;
+      try { await api("/admin/support/threads/"+curThread+"/reply", {method:"POST", body:{content:c}});
+        renderThread(root); refreshBadges();
+      } catch(e){ alert(e.message); }
+    };
+    $("#sup-setst").onclick = async () => {
+      try { await api("/admin/support/threads/"+curThread+"/status", {method:"PATCH", body:{status:$("#sup-st").value}});
+        renderThread(root); refreshBadges();
+      } catch(e){ alert(e.message); }
+    };
+  } catch (e) { root.innerHTML = errBox(e); }
+}
+
+function errBox(e){ return `<div class="card" style="color:var(--bad)">加载失败：${esc(e.message)}</div>`; }
+
+/* ───────── 绑定 ───────── */
+$("#login-btn").onclick = doLogin;
+$("#login-pw").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
+$("#logout").onclick = logout;
+document.querySelectorAll("nav button[data-view]").forEach(b => b.onclick = () => switchView(b.dataset.view));
+
+/* 自动恢复会话 */
+if (token()) { api("/admin/inbox-summary").then(() => enterShell({})).catch(() => logout()); }
+</script>
+</body>
+</html>

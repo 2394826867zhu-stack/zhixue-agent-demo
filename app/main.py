@@ -181,6 +181,19 @@ app.include_router(v1_router)
 app.include_router(admin_router)
 
 
+from pathlib import Path  # noqa: E402
+from fastapi.responses import FileResponse  # noqa: E402
+
+_ADMIN_UI_FILE = Path(__file__).resolve().parent / "admin_ui" / "index.html"
+
+
+@app.get("/admin/ui", include_in_schema=False)
+async def admin_ui():
+    """内嵌运维后台单页（token 监控 + 反馈/客服）。HTML 无密钥（登录页+JS），
+    数据由 admin JWT 守卫的 /admin/* API 提供。include_in_schema=False 不进 openapi。"""
+    return FileResponse(_ADMIN_UI_FILE, media_type="text/html; charset=utf-8")
+
+
 @app.get("/health", tags=["健康检查"])
 async def health():
     # liveness：进程存活即 ok，保持轻量（不查依赖），供容器存活探针。
