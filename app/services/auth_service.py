@@ -71,6 +71,9 @@ class AuthService:
             raise TokenExpiredError()
 
         user_id = payload.get("sub")
+        # P1-11 · refresh token 轮换：旧 token 用后即拉黑，杜绝被盗 refresh token 无限重放
+        # （刷出新 token 后旧的立即失效，再次使用命中黑名单被拒）。
+        await self.logout(refresh_token)
         return {
             "access_token": create_access_token(user_id),
             "refresh_token": create_refresh_token(user_id),

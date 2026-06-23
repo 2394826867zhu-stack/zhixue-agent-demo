@@ -19,6 +19,9 @@ _RATE_LIMITS: dict[tuple[str, str], tuple[int, int]] = {
     # 认证端点 · per-IP
     ("POST", "/v1/auth/login"):             (10,  60),    # 10次/分钟
     ("POST", "/v1/auth/register"):          (5,   60),    # 5次/分钟
+    # P1-5 · 管理员登录严格限流（此前完全无限流 → 可在线爆破管理员口令）
+    ("POST", "/admin/auth/login"):          (5,   60),    # 5次/分钟
+
     # LLM 端点 · per-IP · 成本防护（F-01）
     ("POST", "/v1/agent/chat"):             (20,  3600),  # 20次/小时
     ("POST", "/v1/notes/generate"):         (20,  3600),  # 20次/小时

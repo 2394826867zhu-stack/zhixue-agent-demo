@@ -88,6 +88,27 @@ async def test_refresh_token(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_refresh_token_rotation_invalidates_old(client: AsyncClient):
+    """P1-11 · refresh 轮换：刷过的旧 refresh token 立即失效，新 token 可继续用。"""
+    reg = await client.post("/v1/auth/register", json={
+        "email": "rotate@zhiyao.ai", "password": "password123",
+    })
+    old = reg.json()["data"]["refresh_token"]
+
+    r1 = await client.post("/v1/auth/refresh", json={"refresh_token": old})
+    assert r1.status_code == 200
+    new = r1.json()["data"]["refresh_token"]
+
+    # 旧 token 再用 → 被拒（已拉黑）
+    r2 = await client.post("/v1/auth/refresh", json={"refresh_token": old})
+    assert r2.status_code in (401, 403)
+
+    # 新 token 仍可用
+    r3 = await client.post("/v1/auth/refresh", json={"refresh_token": new})
+    assert r3.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_delete_account(client: AsyncClient):
     """注销账号：DELETE /me 删除用户（DB FK ondelete=CASCADE 级联删全部数据）→ 之后该 token 取 /me 401。"""
     reg = await client.post("/v1/auth/register", json={

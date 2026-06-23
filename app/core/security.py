@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from jose import JWTError, jwt
@@ -31,7 +32,9 @@ def create_refresh_token(subject: str | Any) -> str:
         days=settings.REFRESH_TOKEN_EXPIRE_DAYS
     )
     return jwt.encode(
-        {"sub": str(subject), "exp": expire, "type": "refresh"},
+        # P1-11 · jti 保证每个 refresh token 唯一：否则同一秒内为同一用户签发的 token 因
+        # sub/exp/type 全同而字节相同，轮换拉黑旧 token 会连新 token 一起失效。
+        {"sub": str(subject), "exp": expire, "type": "refresh", "jti": str(uuid.uuid4())},
         settings.JWT_SECRET_KEY,
         algorithm=settings.JWT_ALGORITHM,
     )
