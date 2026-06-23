@@ -147,6 +147,44 @@ class AdminService:
             "total_ss_timeline_nodes": int(total_ss_timeline_nodes),
         }
 
+    async def get_inbox_summary(self, db: AsyncSession) -> dict:
+        """运维后台"到达通知"聚合（供前端轮询）：未处理反馈/待回复工单/未解死信 + 全局成本闸。
+
+        计数走 DB；全局当日 token 用量读 Redis（与 enforcement 同一真相源
+        quota:global:used:{today}），Redis 不可用时降级为 0（不阻断 summary）。
+        """
+        from app.config import settings
+        from app.models.feedback import Feedback
+        from app.models.support import SupportThread
+        from app.models.dead_letter import DeadLetterTask
+
+        unresolved_feedback = (await db.execute(
+            select(func.count()).select_from(Feedback).where(Feedback.status != "resolved")
+        )).scalar() or 0
+        open_support = (await db.execute(
+            select(func.count()).select_from(SupportThread).where(SupportThread.status == "open")
+        )).scalar() or 0
+        unresolved_dl = (await db.execute(
+            select(func.count()).select_from(DeadLetterTask).where(DeadLetterTask.resolved.is_(False))
+        )).scalar() or 0
+
+        global_used = 0
+        try:
+            from app.core.redis import get_redis
+            r = await get_redis()
+            today = date.today().isoformat()
+            global_used = int(await r.get(f"quota:global:used:{today}") or 0)
+        except Exception as e:
+            logger.warning(f"inbox-summary global token read failed (degraded to 0): {e}")
+
+        return {
+            "unresolved_feedback": int(unresolved_feedback),
+            "open_support_threads": int(open_support),
+            "unresolved_dead_letters": int(unresolved_dl),
+            "global_token_used_today": global_used,
+            "global_token_limit": settings.GLOBAL_DAILY_TOKEN_LIMIT,
+        }
+
     # ---- Users ----
 
     async def list_users(self, db: AsyncSession, search: str | None, page: int, page_size: int) -> dict:

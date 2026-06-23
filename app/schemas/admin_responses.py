@@ -31,6 +31,15 @@ class DashboardOut(BaseModel):
     total_ss_timeline_nodes: int
 
 
+class InboxSummaryOut(BaseModel):
+    """运维后台"到达通知"聚合（供前端轮询）：未处理反馈/待回复工单/未解死信 + 全局成本闸。"""
+    unresolved_feedback: int       # feedback.status != 'resolved'
+    open_support_threads: int      # support_threads.status == 'open'（待客服）
+    unresolved_dead_letters: int   # dead_letter_tasks.resolved == False
+    global_token_used_today: int   # Redis quota:global:used:{today}
+    global_token_limit: int        # settings.GLOBAL_DAILY_TOKEN_LIMIT
+
+
 class AdminUserListItem(BaseModel):
     id: str
     email: str

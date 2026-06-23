@@ -33,6 +33,7 @@ async def test_admin_read_endpoints_validate(client, monkeypatch):
     # 所有读端点：空库下应 200，且精确 response_model 序列化通过（不 500）
     reads = [
         "/admin/dashboard",
+        "/admin/inbox-summary",
         "/admin/users",
         "/admin/tokens/stats",
         "/admin/config",

@@ -2935,6 +2935,28 @@
         "title": "Envelope[GuidanceSessionOut]",
         "type": "object"
       },
+      "Envelope_InboxSummaryOut_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/InboxSummaryOut"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[InboxSummaryOut]",
+        "type": "object"
+      },
       "Envelope_InsightsOut_": {
         "properties": {
           "code": {
@@ -6459,6 +6481,40 @@
           "minutes"
         ],
         "title": "HeatmapDay",
+        "type": "object"
+      },
+      "InboxSummaryOut": {
+        "description": "运维后台\"到达通知\"聚合（供前端轮询）：未处理反馈/待回复工单/未解死信 + 全局成本闸。",
+        "properties": {
+          "global_token_limit": {
+            "title": "Global Token Limit",
+            "type": "integer"
+          },
+          "global_token_used_today": {
+            "title": "Global Token Used Today",
+            "type": "integer"
+          },
+          "open_support_threads": {
+            "title": "Open Support Threads",
+            "type": "integer"
+          },
+          "unresolved_dead_letters": {
+            "title": "Unresolved Dead Letters",
+            "type": "integer"
+          },
+          "unresolved_feedback": {
+            "title": "Unresolved Feedback",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unresolved_feedback",
+          "open_support_threads",
+          "unresolved_dead_letters",
+          "global_token_used_today",
+          "global_token_limit"
+        ],
+        "title": "InboxSummaryOut",
         "type": "object"
       },
       "InsightsOut": {
@@ -13431,6 +13487,32 @@
           }
         ],
         "summary": "更新反馈状态 / 备注",
+        "tags": [
+          "管理后台"
+        ]
+      }
+    },
+    "/admin/inbox-summary": {
+      "get": {
+        "operationId": "get_inbox_summary_admin_inbox_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_InboxSummaryOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "待办聚合（到达通知，供轮询）",
         "tags": [
           "管理后台"
         ]
