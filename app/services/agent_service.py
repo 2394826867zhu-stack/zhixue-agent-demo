@@ -97,7 +97,8 @@ async def run(
         if any(pii_counts.values()):
             logger.info(f"PII masked for user {user_id}: {pii_counts}")
     except Exception:
-        pass
+        # P1-13 · PII 脱敏失败不阻断对话，但必须可观测（脱敏失败=原文可能含 PII 流向 LLM）
+        logger.warning("PII mask failed (message passes unmasked)", exc_info=True)
 
     # v0.34 P1-12 · 内容审核（关键词快速过 + 命中走引导式劝退）
     # G3-3 fail-open 修复：原 except 静默 pass 放行——对未成年人产品，审核系统
@@ -168,7 +169,8 @@ async def run(
                             "is_key": chapter.is_key,
                         }
         except Exception:
-            pass  # StudySpace context is optional; don't break chat if it fails
+            # StudySpace context is optional; don't break chat if it fails（P1-13 加可观测）
+            logger.warning("StudySpace context load failed (continuing without it)", exc_info=True)
 
     system = build_system_prompt(ctx, studyspace_ctx=studyspace_ctx)
 
@@ -206,7 +208,8 @@ async def run(
                 hits=hits,
             )
         except Exception:
-            pass
+            # P1-13 · RAG 召回埋点落库失败不阻断对话，但记 warning 暴露可观测盲区
+            logger.warning("rag record_retrieval failed", exc_info=True)
         rag_block = format_for_prompt(hits)
         if rag_block:
             system = system + "\n\n" + rag_block
@@ -366,7 +369,8 @@ async def run(
                     from app.services.agent_state_service import agent_state_service
                     await agent_state_service.set_thinking(db, user_id, about=tool_name)
                 except Exception:
-                    pass
+                    # P1-13 · 状态机切换失败不阻断工具执行，但记 warning 暴露可观测盲区
+                    logger.warning("agent set_thinking failed", exc_info=True)
 
                 # StudySpace 教学模式：把会话 UUID 注入 ss-aware 工具 args。
                 # LLM 不知道这个 UUID，只有服务端持有 → 必须在此注入，否则
@@ -477,7 +481,8 @@ async def run(
         if cur.current_state in ("thinking", "speaking"):
             await agent_state_service.set_idle(db, user_id)
     except Exception:
-        pass
+        # P1-13 · 状态机复位失败不阻断结束，但记 warning 暴露可观测盲区
+        logger.warning("agent set_idle (reset) failed", exc_info=True)
 
     # v0.25 · 写入 Agent 浏览记录（PRD 9.7 行 669-673）
     # v0.27 Q-06 · 早期已经在流式开始前 upsert 过一次 message_increment=1

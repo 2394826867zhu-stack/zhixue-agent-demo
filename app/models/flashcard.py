@@ -10,6 +10,8 @@ NOTEBOOK_ORIGIN = PgEnum("official", "user_project", name="project_source", crea
 
 class Flashcard(Base):
     __tablename__ = "flashcards"
+    # P1-12 复核：FSRS 最热查询 `WHERE user_id=? AND due_date<=?` 的复合索引
+    # ix_flashcards_user_due 已由 migration 002 创建（审计误报"缺索引"——索引在迁移层非模型层）。
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
