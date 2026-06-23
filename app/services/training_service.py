@@ -234,26 +234,29 @@ class TrainingService:
     ) -> list[KnowledgePoint]:
         """组卷模式范围解析。优先级：tree_node_id > project_id > subject > kp_ids > 全部。"""
         if data.tree_node_id:
+            # 存在性检查保留（契约：节点不存在 → NotFoundError）。
             node_result = await db.execute(
-                select(ProjectTreeNode).where(ProjectTreeNode.id == data.tree_node_id)
+                select(ProjectTreeNode.id).where(ProjectTreeNode.id == data.tree_node_id)
             )
-            node = node_result.scalar_one_or_none()
-            if not node:
+            if node_result.scalar_one_or_none() is None:
                 raise NotFoundError("树节点不存在")
-            kp_ids = []
-            if node.kp_id:
-                kp_ids.append(node.kp_id)
-            # 递归收集子节点的 kp_id
-            stack = [node.id]
-            while stack:
-                pid = stack.pop()
-                child_q = await db.execute(
-                    select(ProjectTreeNode).where(ProjectTreeNode.parent_id == pid)
+            # P1-12a：以单条 WITH RECURSIVE CTE 一次拉全子树的 kp_id，替换原 while-stack 逐层
+            # 查询的 N+1（深树 = O(节点数) 次往返）。base = 根节点；recursive = 逐层 join 子节点。
+            subtree = (
+                select(ProjectTreeNode.id, ProjectTreeNode.kp_id)
+                .where(ProjectTreeNode.id == data.tree_node_id)
+                .cte(name="kp_subtree", recursive=True)
+            )
+            parent = subtree.alias("p")
+            subtree = subtree.union_all(
+                select(ProjectTreeNode.id, ProjectTreeNode.kp_id).where(
+                    ProjectTreeNode.parent_id == parent.c.id
                 )
-                for child in child_q.scalars().all():
-                    if child.kp_id:
-                        kp_ids.append(child.kp_id)
-                    stack.append(child.id)
+            )
+            kp_rows = await db.execute(
+                select(subtree.c.kp_id).where(subtree.c.kp_id.isnot(None))
+            )
+            kp_ids = [row[0] for row in kp_rows.all()]
             if not kp_ids:
                 return []
             r = await db.execute(
