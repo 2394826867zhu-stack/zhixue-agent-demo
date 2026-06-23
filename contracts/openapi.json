@@ -14261,6 +14261,26 @@
         ]
       }
     },
+    "/health/ready": {
+      "get": {
+        "description": "P1-6 · 就绪探针：真探 DB + Redis 依赖。任一不可用返回 503，供 Nginx 上游 /\n部署健康闸 / 监控判断是否摘流量（此前 /health 是假探针，pg/redis 宕仍返 ok）。",
+        "operationId": "health_ready_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health Ready",
+        "tags": [
+          "健康检查"
+        ]
+      }
+    },
     "/v1/agent/chat": {
       "post": {
         "operationId": "agent_chat_v1_agent_chat_post",
