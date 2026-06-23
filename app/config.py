@@ -96,6 +96,9 @@ class Settings(BaseSettings):
     # 应用
     APP_ENV: Literal["development", "production"] = "development"
     LOG_LEVEL: str = "INFO"
+    # P1-7 日志格式：空 = 按环境自动（生产 json 便于聚合，开发 plain 便于人读）；
+    # 显式 "json"/"plain" 可覆盖。
+    LOG_FORMAT: Literal["", "json", "plain"] = ""
 
     # G2-4 可观测 · Sentry 错误上报（审计 P0）。
     # 留空（默认）= 不 init、不上报，本地开发零依赖；非空才接入。
@@ -149,6 +152,12 @@ class Settings(BaseSettings):
         if len(self.ADMIN_JWT_SECRET) < 32 or _looks_like_placeholder(self.ADMIN_JWT_SECRET):
             raise ValueError(
                 "ADMIN_JWT_SECRET 在生产环境必须是 ≥32 字符的强随机串，禁用占位串。"
+            )
+
+        # P1-8 可观测：生产必须配 SENTRY_DSN，否则线上错误无人知晓（灰度=盲飞）。
+        if not self.SENTRY_DSN:
+            raise ValueError(
+                "SENTRY_DSN 在生产环境必须配置（线上错误上报命门，灰度禁盲飞）；本地开发留空即可。"
             )
 
         return self

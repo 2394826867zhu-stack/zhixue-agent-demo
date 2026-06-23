@@ -13,6 +13,7 @@ from app.config import Settings
 _STRONG_JWT = "a" * 64
 _STRONG_ADMIN = "b" * 64
 _DB = "postgresql+asyncpg://u:p@localhost:5432/db"
+_SENTRY = "https://abc@o0.ingest.sentry.io/123"
 
 
 def _make(**overrides):
@@ -68,8 +69,19 @@ def test_production_rejects_short_admin_secret():
 
 
 def test_production_accepts_strong_independent_secrets():
-    s = _make(APP_ENV="production", ADMIN_JWT_SECRET=_STRONG_ADMIN)
+    s = _make(APP_ENV="production", ADMIN_JWT_SECRET=_STRONG_ADMIN, SENTRY_DSN=_SENTRY)
     assert s.APP_ENV == "production"
+
+
+def test_production_rejects_empty_sentry_dsn():
+    # P1-8：生产必须配 SENTRY_DSN（线上错误上报命门），强密钥但缺 DSN 仍拒。
+    with pytest.raises(ValueError):
+        _make(APP_ENV="production", ADMIN_JWT_SECRET=_STRONG_ADMIN, SENTRY_DSN="")
+
+
+def test_development_allows_empty_sentry_dsn():
+    s = _make(APP_ENV="development", ADMIN_JWT_SECRET="", SENTRY_DSN="")
+    assert s.SENTRY_DSN == ""
 
 
 # ---------- 开发零摩擦 ----------

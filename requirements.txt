@@ -48,3 +48,6 @@ pypdf>=4.0.0
 filetype>=1.2.0
 # G2-4 可观测 · 外部错误上报（Sentry）。仅 SENTRY_DSN 非空才 init，本地零依赖
 sentry-sdk[fastapi]==2.63.0
+# P1-7/P1-8 可观测 · 结构化 JSON 日志 + Prometheus /metrics 指标
+python-json-logger==2.0.7
+prometheus-fastapi-instrumentator==7.0.0

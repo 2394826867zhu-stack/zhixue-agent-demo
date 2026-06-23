@@ -7,11 +7,21 @@
 #   3. 健康检查：curl http://127.0.0.1:8000/health
 # Nginx 在宿主机反代 127.0.0.1:8000 → 域名 HTTPS（见 deploy/nginx-zhiyao.conf）
 # ----------------------------------------------------------------------------
+
+# P1-7 · 容器日志轮转：json-file 驱动单文件 10m × 3 份上限（默认无上限 → 单机磁盘会被
+# 日志撑爆，盘满后 pg 写失败全栈瘫）。所有服务共用此锚点。
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
     image: pgvector/pgvector:pg17
     container_name: zhiyao_pg
     restart: unless-stopped
+    logging: *default-logging
     # P0-6 · 内存上限：防止任一容器内存失控触发内核 OOM-killer 随机杀进程（常误杀 pg）。
     # 单容器超限只杀自己并 restart，保护其余进程。值为 2核4G 上的保守起点，
     # 上线后用 `docker stats` 实测调优（见 RELEASE_AND_DEPLOYMENT_SOP）。
@@ -36,6 +46,7 @@ services:
     image: redis:7-alpine
     container_name: zhiyao_redis
     restart: unless-stopped
+    logging: *default-logging
     mem_limit: 512m
     # 不设 maxmemory 淘汰策略：redis 同时是 Celery broker，allkeys-lru 会驱逐在途任务键致丢任务。
     command: ["redis-server", "--appendonly", "yes"]
@@ -55,6 +66,7 @@ services:
       dockerfile: Dockerfile
     container_name: zhiyao_backend
     restart: unless-stopped
+    logging: *default-logging
     # 生发性上限（BGE-M3 + uvicorn 1 worker 正常 ~1.8G）；作运行时失控backstop，非紧贴峰值。
     mem_limit: 2g
     env_file: .env
@@ -96,6 +108,7 @@ services:
       dockerfile: Dockerfile
     container_name: zhiyao_celery
     restart: unless-stopped
+    logging: *default-logging
     mem_limit: 1800m
     env_file: .env
     environment:
@@ -127,6 +140,7 @@ services:
       dockerfile: Dockerfile
     container_name: zhiyao_celery_beat
     restart: unless-stopped
+    logging: *default-logging
     mem_limit: 512m
     env_file: .env
     environment:

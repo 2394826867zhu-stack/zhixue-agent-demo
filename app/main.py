@@ -11,8 +11,12 @@ from app.core.database import engine
 from app.core.redis import close_redis
 from app.core.exceptions import AppError, app_error_handler
 from app.core.observability import init_sentry, capture_exception
+from app.core.logging_setup import configure_logging, request_id_var, new_request_id
 from app.api.v1 import router as v1_router
 from app.api.admin import router as admin_router
+
+# P1-7 · 进程加载即配置结构化日志（早于任何 logger 使用）
+configure_logging()
 
 # (method, path) -> (max_requests, window_seconds)
 _RATE_LIMITS: dict[tuple[str, str], tuple[int, int]] = {
@@ -50,6 +54,21 @@ def _mem_rate_check(key: str, limit: int, window: int) -> bool:
         for k in oldest:
             del _mem_windows[k]
     return False
+
+
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    """P1-7 · 每请求关联 ID：透传上游 X-Request-ID 或生成新 ID，注入 ContextVar
+    供日志串联，并回写响应头便于端到端追踪。"""
+
+    async def dispatch(self, request: Request, call_next):
+        rid = request.headers.get("X-Request-ID") or new_request_id()
+        token = request_id_var.set(rid)
+        try:
+            response = await call_next(request)
+        finally:
+            request_id_var.reset(token)
+        response.headers["X-Request-ID"] = rid
+        return response
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -134,6 +153,13 @@ app.add_middleware(
 )
 
 app.add_middleware(RateLimitMiddleware)
+# 最后添加 = 最外层：request_id 在限流/CORS 之前就绪，全链路日志可串联。
+app.add_middleware(RequestIdMiddleware)
+
+# P1-8 · Prometheus 指标。/metrics 不进 openapi（include_in_schema=False），避免契约漂移。
+from prometheus_fastapi_instrumentator import Instrumentator  # noqa: E402
+
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 # 统一异常处理
 app.add_exception_handler(AppError, app_error_handler)
