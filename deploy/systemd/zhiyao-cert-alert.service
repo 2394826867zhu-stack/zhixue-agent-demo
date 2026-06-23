@@ -1,0 +1,16 @@
+# 知曜 · 证书到期告警（P1-9）— systemd oneshot service
+# 安装：复制到 /etc/systemd/system/，按需改 DOMAIN/THRESHOLD_DAYS/ALERT_WEBHOOK，
+#       然后 systemctl enable --now zhiyao-cert-alert.timer
+[Unit]
+Description=知曜 HTTPS 证书到期告警检查
+After=network-online.target
+
+[Service]
+Type=oneshot
+# ↓ 改成你的真实域名 + 告警 webhook（飞书/钉钉/Slack 自定义机器人）
+Environment=DOMAIN=api.zhiyao.app
+Environment=THRESHOLD_DAYS=14
+Environment=ALERT_WEBHOOK=
+ExecStart=/opt/zhiyao/deploy/cert-expiry-alert.sh
+# 退出码 2（临近到期）不视为服务失败（告警已发），仅 1（证书缺失/解析失败）失败
+SuccessExitStatus=0 2

@@ -1,0 +1,13 @@
+# 知曜 · 证书到期告警（P1-9）— 每日定时触发
+# 安装：systemctl enable --now zhiyao-cert-alert.timer
+[Unit]
+Description=每日检查知曜 HTTPS 证书剩余有效期
+
+[Timer]
+# 每天 08:00 触发（含错过补跑 Persistent，关机期间错过开机后补一次）
+OnCalendar=*-*-* 08:00:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
