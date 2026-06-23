@@ -33,6 +33,18 @@ def generate_all_users():
 
 
 async def _generate_all_async() -> dict:
+    """P1-10：整任务 SETNX 单跑锁——同一 ISO 周只跑一次（防重投/多 beat 重复全量生成 + LLM 击穿）。"""
+    from app.tasks.beat_lock import beat_singleflight
+
+    iso = date.today().isocalendar()
+    window = f"{iso[0]}-W{iso[1]:02d}"
+    async with beat_singleflight("weekly_reflection_all", window, ttl_seconds=86400 * 2) as go:
+        if not go:
+            return {"generated": 0, "failed": 0, "skipped_locked": True}
+        return await _generate_all_locked()
+
+
+async def _generate_all_locked() -> dict:
     from sqlalchemy import select
     from app.core.database import AsyncSessionLocal
     from app.models.user import User

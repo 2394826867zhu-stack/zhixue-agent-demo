@@ -55,6 +55,18 @@ def scan_checkin_reminder():
 
 
 async def _scan_async() -> dict:
+    """P1-10：整任务 SETNX 单跑锁——同一小时窗（北京时）只跑一次（防重投/多 beat 重复扫描）。"""
+    from app.tasks.beat_lock import beat_singleflight
+
+    bj_now = datetime.now(timezone.utc) + timedelta(hours=8)
+    window = f"{bj_now.date().isoformat()}:{bj_now.hour}"
+    async with beat_singleflight("scan_checkin_reminder", window, ttl_seconds=3600) as go:
+        if not go:
+            return {"pushed": 0, "skipped": 0, "skipped_locked": True}
+        return await _scan_checkin_locked()
+
+
+async def _scan_checkin_locked() -> dict:
     from sqlalchemy import select, func
     from app.core.database import AsyncSessionLocal
     from app.models.user import User

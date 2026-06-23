@@ -57,6 +57,18 @@ def scan_review_due():
 
 
 async def _scan_async() -> dict:
+    """P1-10：整任务 SETNX 单跑锁——同一小时窗只跑一次（防 acks_late 重投/多 beat 重复扫描）。"""
+    from app.tasks.beat_lock import beat_singleflight
+
+    now = datetime.now(timezone.utc)
+    window = f"{date.today().isoformat()}:{now.hour}"
+    async with beat_singleflight("scan_review_due", window, ttl_seconds=3600) as go:
+        if not go:
+            return {"pushed": 0, "skipped": 0, "skipped_locked": True}
+        return await _scan_due_locked()
+
+
+async def _scan_due_locked() -> dict:
     from sqlalchemy import select, func
     from app.core.database import AsyncSessionLocal
     from app.models.flashcard import Flashcard
