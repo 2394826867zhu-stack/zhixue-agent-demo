@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, update
 
 from app.models.training import TrainingSession, TrainingQuestion
 from app.models.knowledge_point import KnowledgePoint
@@ -345,21 +345,37 @@ class TrainingService:
         if session.status == "completed":
             raise ValidationError("该训练已结束")
 
-        q_result = await db.execute(
-            select(TrainingQuestion).where(
-                TrainingQuestion.id == uuid.UUID(question_id),
+        # P1-3 · 原子抢占：把"标记已作答"压成带 WHERE user_answer IS NULL 的 UPDATE 并立即
+        # commit。并发双击只有一个 rowcount==1 的赢家继续评分，杜绝 answered_count +2 /
+        # BKT 掌握度被同题答两次污染 / 错题孪生写两份。先 commit 释放行锁再做 LLM 评分。
+        qid = uuid.UUID(question_id)
+        claim = await db.execute(
+            update(TrainingQuestion)
+            .where(
+                TrainingQuestion.id == qid,
                 TrainingQuestion.session_id == session.id,
+                TrainingQuestion.user_answer.is_(None),
             )
+            .values(user_answer=data.user_answer, answered_at=datetime.now(timezone.utc))
         )
-        question = q_result.scalar_one_or_none()
-        if not question:
-            raise NotFoundError("题目")
-        if question.user_answer is not None:
-            raise ValidationError("该题已作答")
+        if claim.rowcount != 1:
+            # 没抢到：要么题不存在/不属于本会话，要么已被作答
+            exists = (await db.execute(
+                select(TrainingQuestion.id).where(
+                    TrainingQuestion.id == qid,
+                    TrainingQuestion.session_id == session.id,
+                )
+            )).scalar_one_or_none()
+            await db.rollback()
+            raise NotFoundError("题目") if exists is None else ValidationError("该题已作答")
+        await db.commit()
+
+        question = (await db.execute(
+            select(TrainingQuestion).where(TrainingQuestion.id == qid)
+        )).scalar_one()
 
         score, feedback, is_wrong, error_reason = await self._grade_answer(question, data.user_answer)
 
-        question.user_answer = data.user_answer
         question.ai_score = score
         question.ai_feedback = feedback
         question.is_wrong = is_wrong

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError, PermissionDeniedError, AppError
@@ -128,14 +128,27 @@ class StudySpaceService:
 
         stars_earned = 30  # lesson_complete reward
 
-        session.status = "completed"
-        session.progress = 100
-        session.completed_at = datetime.now(timezone.utc)
-        session.stars_earned = stars_earned
-        await db.commit()
-        await db.refresh(session)
+        # P1-4 · 原子完成：只有把 active→completed 翻成功(rowcount==1)的请求发星，杜绝并发
+        # 重复完成双发 30 星。先不 commit，award 的提交把"完成"与"发星"合到同一事务
+        # （崩溃不会出现"已完成却漏发星"且不可补发的状态）。
+        trans = await db.execute(
+            update(StudySpaceSession)
+            .where(
+                StudySpaceSession.id == session_id,
+                StudySpaceSession.status != "completed",
+            )
+            .values(
+                status="completed",
+                progress=100,
+                completed_at=datetime.now(timezone.utc),
+                stars_earned=stars_earned,
+            )
+        )
+        if trans.rowcount != 1:
+            await db.rollback()
+            raise AppError(400, "会话已完成", 400)
 
-        # Award stars
+        # Award stars（award 内部 commit → 完成 + 发星同一次提交，原子）
         lesson_label = chapter.lesson_title if chapter else "课时"
         star_svc = StarService()
         await star_svc.award(
@@ -145,6 +158,7 @@ class StudySpaceService:
             description=f"完成课时：{lesson_label}",
             meta={"session_id": str(session_id)},
         )
+        await db.refresh(session)
 
         # Auto-complete matching system tasks
         from app.services.task_service import task_service as _task_svc
