@@ -11,7 +11,7 @@ set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"   # 仓库根
 COMPOSE="docker compose -f docker-compose.prod.yml"
 BACKUP_DIR="${BACKUP_DIR:-/opt/backup}"
-HEALTH_URL="http://127.0.0.1:8000/health"
+HEALTH_URL="http://127.0.0.1:8000/health/ready"   # P1-6 · 探真就绪（DB+Redis），非假 ok
 BRANCH="${DEPLOY_BRANCH:-main}"
 
 echo "==> [1/6] 记录当前 commit（回滚点）"
@@ -47,7 +47,7 @@ echo "==> [6/6] 启动 + 健康闸（最多等 120s）"
 $COMPOSE up -d
 ok=0
 for i in $(seq 1 24); do
-  if curl -sf -m 3 "$HEALTH_URL" 2>/dev/null | grep -q '"status":"ok"'; then ok=1; break; fi
+  if curl -sf -m 3 "$HEALTH_URL" 2>/dev/null | grep -q '"status":"ready"'; then ok=1; break; fi
   sleep 5
 done
 

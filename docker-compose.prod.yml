@@ -83,7 +83,8 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status==200 else 1)\""]
+      # P1-6 · 探就绪端点（真查 DB+Redis）；依赖不可用时 503 → urlopen 抛错 → 判 unhealthy
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/ready',timeout=3).status==200 else 1)\""]
       interval: 15s
       timeout: 5s
       retries: 5

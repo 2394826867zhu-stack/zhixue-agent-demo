@@ -157,4 +157,32 @@ app.include_router(admin_router)
 
 @app.get("/health", tags=["健康检查"])
 async def health():
+    # liveness：进程存活即 ok，保持轻量（不查依赖），供容器存活探针。
     return {"status": "ok", "version": "0.1.0"}
+
+
+@app.get("/health/ready", tags=["健康检查"])
+async def health_ready():
+    """P1-6 · 就绪探针：真探 DB + Redis 依赖。任一不可用返回 503，供 Nginx 上游 /
+    部署健康闸 / 监控判断是否摘流量（此前 /health 是假探针，pg/redis 宕仍返 ok）。"""
+    from sqlalchemy import text as _text
+    from app.core.database import AsyncSessionLocal
+    checks = {"db": False, "redis": False}
+    try:
+        async with AsyncSessionLocal() as s:
+            await s.execute(_text("SELECT 1"))
+        checks["db"] = True
+    except Exception:
+        pass
+    try:
+        from app.core.redis import get_redis
+        r = await get_redis()
+        await r.ping()
+        checks["redis"] = True
+    except Exception:
+        pass
+    ready = all(checks.values())
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={"status": "ready" if ready else "not_ready", "checks": checks},
+    )
