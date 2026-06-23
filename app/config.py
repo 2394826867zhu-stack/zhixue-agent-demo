@@ -78,6 +78,12 @@ class Settings(BaseSettings):
     # True = fail-open 放行（运维明确可承受成本风险时再开）。
     QUOTA_FAIL_OPEN: bool = False
 
+    # 配额预扣估算量（P1-1 TOCTOU 修复·reserve-reconcile）：LLM 调用前用 Lua 原子预扣此估算
+    # token，调用后按真实 usage 回补差值（reconcile），失败退还。原子 INCRBY 把并发串行化，
+    # 根除 check-then-act 集体绕过。估算值=最大补全 4096 + prompt 头寸冗余，仅约束并发瞬时
+    # 超额上界，真实日终计数由 reconcile 校正，不影响准确性。可 env 覆盖。
+    QUOTA_RESERVE_ESTIMATE_TOKENS: int = 8000
+
     # 文件存储
     STORAGE_TYPE: Literal["local", "oss"] = "local"
     LOCAL_UPLOAD_DIR: str = "./uploads"
