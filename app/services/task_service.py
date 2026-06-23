@@ -10,6 +10,9 @@ from app.models.task import DailyTask, PomodoroRecord
 from app.models.flashcard import Flashcard
 from app.models.training import TrainingQuestion
 from app.models.knowledge_point import KnowledgePoint
+from app.models.curriculum import CurriculumChapter
+from app.models.studyspace import StudySpaceSession
+from app.models.user import User
 from app.schemas.task import DailyTaskCreate, DailyTaskUpdate, PomodoroCreate
 from app.core.exceptions import NotFoundError, PermissionDeniedError, ValidationError
 
@@ -97,16 +100,22 @@ class TaskService:
                 "meta": {"wrong_count": cnt},
             })
 
+        # 3. new_lesson tasks — suggest next unstarted chapter for user's enrolled subjects.
+        # Runs even when raw_tasks is empty (crucial for new users with no flashcards/mistakes).
+        new_lesson_tasks = await self._next_lesson_tasks(db, uid)
+        raw_tasks.extend(new_lesson_tasks)
+
         if not raw_tasks:
             return []
 
-        # 3. AI priority scoring
+        # 5 (was 3). AI priority scoring
         scored = await self._ai_rank(raw_tasks, today)
 
-        # 4. write to db sorted by ai_priority_score desc
+        # 5. write to db sorted by ai_priority_score desc
         scored.sort(key=lambda x: x["ai_priority_score"], reverse=True)
         tasks = []
         for i, item in enumerate(scored):
+            src_id = item.get("source_ref_id")
             task = DailyTask(
                 user_id=uid,
                 task_date=today,
@@ -118,6 +127,7 @@ class TaskService:
                 ai_priority_score=item["ai_priority_score"],
                 ai_priority_reason=item.get("ai_priority_reason"),
                 sort_order=i,
+                source_ref_id=uuid.UUID(src_id) if src_id else None,
             )
             db.add(task)
             tasks.append(task)
@@ -317,6 +327,66 @@ class TaskService:
             .order_by(DailyTask.sort_order.asc())
         )
         return list(result.scalars().all())
+
+    async def _next_lesson_tasks(self, db: AsyncSession, uid: uuid.UUID) -> list[dict]:
+        """Find next unstarted chapter for each of the user's enrolled subjects.
+
+        A chapter is 'started' if it has at least one StudySpaceSession completed by this user.
+        Returns at most one 'new_lesson' task per subject (capped at 3 subjects to keep the
+        daily task list focused).
+        """
+        user_row = await db.execute(select(User).where(User.id == uid))
+        user = user_row.scalar_one_or_none()
+        if not user or not user.subjects:
+            return []
+
+        # Determine grade filter from user.grade (format: "senior_high_2", "junior_high_1", etc.)
+        grade_type = "senior_high"
+        grade_year = 2
+        if user.grade:
+            parts = user.grade.rsplit("_", 1)
+            if len(parts) == 2 and parts[1].isdigit():
+                grade_year = int(parts[1])
+                grade_type = "_".join(parts[:-1]) if "_" in parts[0] else parts[0]
+
+        # Chapters already visited by this user
+        visited = await db.execute(
+            select(StudySpaceSession.chapter_id).where(
+                StudySpaceSession.user_id == uid,
+                StudySpaceSession.chapter_id.isnot(None),
+            )
+        )
+        visited_ids = {r[0] for r in visited.fetchall()}
+
+        tasks = []
+        for subject in user.subjects[:3]:  # cap at 3 subjects
+            chapter_row = await db.execute(
+                select(CurriculumChapter)
+                .where(
+                    CurriculumChapter.subject == subject,
+                    CurriculumChapter.grade_type == grade_type,
+                    CurriculumChapter.grade_year == grade_year,
+                    CurriculumChapter.id.notin_(visited_ids) if visited_ids else True,
+                )
+                .order_by(
+                    CurriculumChapter.semester.asc(),
+                    CurriculumChapter.chapter_index.asc(),
+                    CurriculumChapter.lesson_index.asc(),
+                )
+                .limit(1)
+            )
+            chapter = chapter_row.scalar_one_or_none()
+            if not chapter:
+                continue
+            tasks.append({
+                "task_type": "new_lesson",
+                "title": f"开始学习·{chapter.lesson_title}",
+                "subject": subject,
+                "estimated_minutes": 30,
+                "source_ref_id": str(chapter.id),
+                "meta": {"chapter_id": str(chapter.id), "chapter_title": chapter.lesson_title},
+            })
+        return tasks
 
     async def _get_task(self, db: AsyncSession, task_id: str, user_id: str) -> DailyTask:
         # 非法 UUID 永远不可能命中真实任务 → 语义上就是「不存在」(404)，
