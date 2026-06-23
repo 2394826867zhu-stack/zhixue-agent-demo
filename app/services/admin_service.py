@@ -312,13 +312,15 @@ class AdminService:
             select(func.sum(TokenUsage.cost_usd)).where(TokenUsage.created_at >= since)
         )).scalar() or 0.0
 
+        # 标签避开单字母 t/c：SQLAlchemy 2.0 把 Row.t/.c 等保留为已弃用库属性，
+        # 会遮蔽同名列 → r.t 返回 Row 而非求和值（空数据时不触发，有数据即 500）。
         by_model_rows = (await db.execute(
-            select(TokenUsage.model, func.sum(TokenUsage.total_tokens).label("t"), func.sum(TokenUsage.cost_usd).label("c"))
+            select(TokenUsage.model, func.sum(TokenUsage.total_tokens).label("tok_sum"), func.sum(TokenUsage.cost_usd).label("cost_sum"))
             .where(TokenUsage.created_at >= since)
             .group_by(TokenUsage.model)
-            .order_by(text("t DESC"))
+            .order_by(text("tok_sum DESC"))
         )).fetchall()
-        by_model = [{"model": r.model, "total_tokens": int(r.t or 0), "cost_usd": round(float(r.c or 0), 6)} for r in by_model_rows]
+        by_model = [{"model": r.model, "total_tokens": int(r.tok_sum or 0), "cost_usd": round(float(r.cost_sum or 0), 6)} for r in by_model_rows]
 
         by_day = []
         today = date.today()
@@ -331,17 +333,17 @@ class AdminService:
             by_day.append({"date": d.isoformat(), "total_tokens": t, "cost_usd": round(float(c), 6)})
 
         top_rows = (await db.execute(
-            select(TokenUsage.user_id, func.sum(TokenUsage.total_tokens).label("t"))
+            select(TokenUsage.user_id, func.sum(TokenUsage.total_tokens).label("tok_sum"))
             .where(TokenUsage.created_at >= since)
             .where(TokenUsage.user_id.isnot(None))
             .group_by(TokenUsage.user_id)
-            .order_by(text("t DESC"))
+            .order_by(text("tok_sum DESC"))
             .limit(10)
         )).fetchall()
         top_users = []
         for row in top_rows:
             u = (await db.execute(select(User).where(User.id == row.user_id))).scalar_one_or_none()
-            top_users.append({"user_id": str(row.user_id), "email": u.email if u else "?", "total_tokens": int(row.t or 0)})
+            top_users.append({"user_id": str(row.user_id), "email": u.email if u else "?", "total_tokens": int(row.tok_sum or 0)})
 
         return {
             "total_calls": total_calls,
