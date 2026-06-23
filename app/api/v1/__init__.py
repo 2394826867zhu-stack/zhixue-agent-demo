@@ -30,6 +30,8 @@ from app.api.v1 import (
     referral,
     # E-12 共同专注
     cowork,
+    # OTA 推送
+    updates,
 )
 
 router = APIRouter(prefix="/v1")
@@ -86,3 +88,5 @@ router.include_router(faq.router)
 router.include_router(referral.router)
 # E-12 · 共同专注
 router.include_router(cowork.router)
+# OTA 推送 manifest
+router.include_router(updates.router)
