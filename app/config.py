@@ -105,6 +105,10 @@ class Settings(BaseSettings):
     # 学习内核 P3：增益函数排序（feature flag，默认关——未经真实数据校准前不上生产，设计§3.3 兜底）
     LEARNING_GAIN_ENABLED: bool = False
 
+    # 灰度纯免费开关：False=付费墙关闭，所有 Pro 功能（周报/知识库上传等）对全体免费开放。
+    # 订阅代码（webhook/trial/require_pro）保留不动，商业化时翻 True 即恢复门控。
+    PAYWALL_ENABLED: bool = False
+
     # Subscription (RevenueCat)
     REVENUECAT_WEBHOOK_SECRET: str = ""  # Set in .env for production; empty = webhook disabled
 

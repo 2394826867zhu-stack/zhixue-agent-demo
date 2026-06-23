@@ -6,6 +6,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
+from app.config import settings as _settings
+
+
+@pytest.fixture(autouse=True)
+def _paywall_on(monkeypatch):
+    """试用/订阅机制只在付费墙开启时有意义；生产灰度默认 PAYWALL_ENABLED=False（纯免费）。"""
+    monkeypatch.setattr(_settings, "PAYWALL_ENABLED", True)
 
 
 async def _register(client: AsyncClient, email: str) -> str:

@@ -5,7 +5,26 @@ def test_subscription_event_model_importable():
 
 from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock
+import pytest
+from app.config import settings as _settings
 from app.services.subscription_service import is_pro, get_status, verify_webhook_auth
+
+
+@pytest.fixture(autouse=True)
+def _paywall_on(monkeypatch):
+    """本模块验证付费墙机制（plan→Pro→门控），须在 PAYWALL_ENABLED=True 下跑；
+    生产灰度默认 PAYWALL_ENABLED=False（纯免费）则全体视为 Pro，另有专测覆盖。"""
+    monkeypatch.setattr(_settings, "PAYWALL_ENABLED", True)
+
+
+def test_paywall_off_makes_everyone_pro(monkeypatch):
+    """灰度纯免费：付费墙关闭 → free 用户也视为 Pro，功能全开。"""
+    monkeypatch.setattr(_settings, "PAYWALL_ENABLED", False)
+    assert is_pro(_user("free")) is True
+    status = get_status(_user("free"))
+    assert status["is_pro"] is True
+    assert status["features"]["advanced_reports"] is True
+    assert status["features"]["knowledge_base_upload"] is True
 
 
 def _user(plan_type: str, expires_at=None, trial_used: bool = False, trial_ends_at=None) -> MagicMock:

@@ -32,6 +32,11 @@ _REVOKE_EVENTS = {"EXPIRATION"}
 
 def is_pro(user) -> bool:
     """Return True if user currently has active Pro (or Edu) access."""
+    # 灰度纯免费：付费墙关闭时全体视为 Pro（require_pro 放行 + get_status 功能全开 →
+    # 前端 UI 解锁）。订阅代码保留，PAYWALL_ENABLED=True 即恢复门控。
+    from app.config import settings
+    if not settings.PAYWALL_ENABLED:
+        return True
     if user.plan_type == "edu":
         return True
     if user.plan_type == "pro":
