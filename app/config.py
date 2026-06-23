@@ -1,6 +1,9 @@
+import logging
 from pydantic_settings import BaseSettings
 from pydantic import model_validator
 from typing import Literal
+
+logger = logging.getLogger("app.config")
 
 
 # .env.example 占位串特征（含中文「必填」「生产用」及英文 change/replace/example 等）。
@@ -154,10 +157,13 @@ class Settings(BaseSettings):
                 "ADMIN_JWT_SECRET 在生产环境必须是 ≥32 字符的强随机串，禁用占位串。"
             )
 
-        # P1-8 可观测：生产必须配 SENTRY_DSN，否则线上错误无人知晓（灰度=盲飞）。
+        # P1-8 可观测：生产缺 SENTRY_DSN 大声警告但放行（不硬拦启动）。
+        # 分级——安全项(JWT/ADMIN 密钥)缺失=硬拒启动；观测项(SENTRY_DSN)缺失=警告即可：
+        # 观测缺失不该让服务起不来（拒启动 = 完全不可用，比"在线但暂无错误上报"更糟）。
         if not self.SENTRY_DSN:
-            raise ValueError(
-                "SENTRY_DSN 在生产环境必须配置（线上错误上报命门，灰度禁盲飞）；本地开发留空即可。"
+            logger.warning(
+                "⚠️ 生产未配置 SENTRY_DSN：线上错误不会上报（灰度盲飞风险）。"
+                "尽快在 .env 配置 Sentry DSN。"
             )
 
         return self

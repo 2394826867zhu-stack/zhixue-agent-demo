@@ -73,10 +73,14 @@ def test_production_accepts_strong_independent_secrets():
     assert s.APP_ENV == "production"
 
 
-def test_production_rejects_empty_sentry_dsn():
-    # P1-8：生产必须配 SENTRY_DSN（线上错误上报命门），强密钥但缺 DSN 仍拒。
-    with pytest.raises(ValueError):
-        _make(APP_ENV="production", ADMIN_JWT_SECRET=_STRONG_ADMIN, SENTRY_DSN="")
+def test_production_missing_sentry_dsn_warns_not_fails(caplog):
+    # P1-8（B 放宽）：生产缺 SENTRY_DSN 大声警告但放行——观测项缺失不该硬拦启动
+    # （拒启动=完全不可用，比"在线但暂无错误上报"更糟）。安全项 JWT/ADMIN 仍硬拦。
+    import logging
+    with caplog.at_level(logging.WARNING, logger="app.config"):
+        s = _make(APP_ENV="production", ADMIN_JWT_SECRET=_STRONG_ADMIN, SENTRY_DSN="")
+    assert s.APP_ENV == "production"           # 不抛 = 可启动
+    assert any("SENTRY_DSN" in r.message for r in caplog.records)  # 但有警告
 
 
 def test_development_allows_empty_sentry_dsn():
