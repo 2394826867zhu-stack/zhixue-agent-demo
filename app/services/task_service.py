@@ -105,6 +105,10 @@ class TaskService:
         new_lesson_tasks = await self._next_lesson_tasks(db, uid)
         raw_tasks.extend(new_lesson_tasks)
 
+        # 3b. INC-4 每日任务认项目：surface 每个活跃项目的下一个 available 树节点（继续学习）。
+        # 这让无官方课程的学科(法语/大学)也进每日计划 → 闭环在「任务」tab 可见。
+        raw_tasks.extend(await self._next_project_node_tasks(db, uid))
+
         if not raw_tasks:
             return []
 
@@ -335,6 +339,52 @@ class TaskService:
         Returns at most one 'new_lesson' task per subject (capped at 3 subjects to keep the
         daily task list focused).
         """
+        return await self.__next_lesson_tasks_impl(db, uid)
+
+    async def _next_project_node_tasks(self, db: AsyncSession, uid: uuid.UUID) -> list[dict]:
+        """INC-4：为每个活跃项目 surface 下一个 available 树节点作为「继续学习」任务。
+
+        让项目学习(尤其无官方课程的学科)进入每日计划。每项目至多 1 个,最多 3 个项目。
+        task_type 复用 new_lesson;meta.tree_node_id 区别于官方章节的 meta.chapter_id,
+        前端据此路由到 ProjectDetail/StudySpace。
+        """
+        from app.models.project import Project, ProjectTreeNode
+        projs = (await db.execute(
+            select(Project)
+            .where(Project.user_id == uid, Project.status == "active")
+            .order_by(Project.sort_order.asc())
+            .limit(3)
+        )).scalars().all()
+        tasks: list[dict] = []
+        for proj in projs:
+            node = (await db.execute(
+                select(ProjectTreeNode)
+                .where(
+                    ProjectTreeNode.project_id == proj.id,
+                    ProjectTreeNode.status == "available",
+                    ProjectTreeNode.depth > 0,
+                )
+                .order_by(ProjectTreeNode.sort_order.asc())
+                .limit(1)
+            )).scalar_one_or_none()
+            if not node:
+                continue
+            tasks.append({
+                "task_type": "new_lesson",
+                "title": f"继续学习·{node.title}",
+                "subject": proj.subject,
+                "estimated_minutes": 30,
+                "source_ref_id": str(node.id),
+                "meta": {
+                    "project_id": str(proj.id),
+                    "tree_node_id": str(node.id),
+                    "node_title": node.title,
+                },
+            })
+        return tasks
+
+    async def __next_lesson_tasks_impl(self, db: AsyncSession, uid: uuid.UUID) -> list[dict]:
+        """官方课程「下一课」任务（原 _next_lesson_tasks 主体）。"""
         user_row = await db.execute(select(User).where(User.id == uid))
         user = user_row.scalar_one_or_none()
         if not user or not user.subjects:
