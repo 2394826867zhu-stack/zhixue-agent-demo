@@ -350,6 +350,7 @@ class ProjectService:
 
         # LLM 失败时用 phases 生成节点，并尝试直接绑定课程章节
         if not data:
+            from app.models.curriculum import CurriculumChapter  # 局部导入（与 _link_nodes_to_curriculum 同口径）：修 fallback 路径 NameError（LLM 宕机时建树会崩）
             phases_list = [p.name for p in phases] if phases else ["基础", "强化", "复习"]
             # 查同 subject 课程供绑定
             chapters_for_nodes: list = []
@@ -421,9 +422,44 @@ class ProjectService:
 
         # 尝试匹配课程章节：把节点标题与用户同 subject 的课程章节做关联，让"开始学习"能真建会话
         await self._link_nodes_to_curriculum(db, proj, nodes_meta, title_to_node)
+        # INC-1：为每个 depth≥1 节点预生成项目级 KP 并锚定（node.kp_id）——
+        # 无官方课程的学科也因此有 KP 锚点 → probe/建卡/掌握度全接得上。
+        await self._anchor_nodes_to_kps(db, proj, title_to_node)
         await db.commit()
 
         return len(nodes_meta) + 1
+
+    async def _anchor_nodes_to_kps(
+        self, db: AsyncSession, proj: Project,
+        title_to_node: dict[str, ProjectTreeNode],
+    ) -> None:
+        """INC-1 建树预生成 KP：每个 depth≥1 树节点锚定一个项目级 KP。
+
+        直接建模型、不走 KP 服务——裸 KP 无内容,不入 RAG 索引(避免无意义向量)；
+        内容随后续教学/笔记补齐后再由既有写入侧触发 RAG。幂等：已有 kp_id 的节点跳过。
+        """
+        from app.models.knowledge_point import KnowledgePoint
+        pending: list[tuple[ProjectTreeNode, KnowledgePoint]] = []
+        for node in title_to_node.values():
+            if node.depth < 1 or node.kp_id:
+                continue
+            kp = KnowledgePoint(
+                user_id=proj.user_id,
+                project_id=proj.id,
+                chapter_id=node.curriculum_chapter_id,
+                name=str(node.title)[:255],
+                subject=proj.subject,
+                difficulty_tier=node.difficulty if node.difficulty in ("blue", "purple", "gold") else "blue",
+                mastery_status="new",
+                notebook_origin="user_project",
+            )
+            db.add(kp)
+            pending.append((node, kp))
+        if not pending:
+            return
+        await db.flush()  # 拿到 kp.id
+        for node, kp in pending:
+            node.kp_id = kp.id
 
     async def _link_nodes_to_curriculum(
         self, db: AsyncSession, proj: Project,
