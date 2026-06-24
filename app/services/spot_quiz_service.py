@@ -242,12 +242,15 @@ class SpotQuizService:
             # 讲完一个核心概念→推进 PathStepper（lesson_plan.current_index 前进一步）。
             # 仅在真出了题（created 非空，早 return 分支已排除 LLM/parse 失败）
             # 且 ss session 存在并带 lesson_plan.steps 时推进；封顶于 len(steps) 不越界。
-            # 复用上文 ownership 校验已加载的 ss 对象，避免重复 db.get。
+            # INC-11：复用上文 ownership 校验已加载的 ss 对象，避免重复 db.get。
             if created and ss and isinstance(ss.lesson_plan, dict) and ss.lesson_plan.get("steps"):
                 lp = dict(ss.lesson_plan)
                 steps_len = len(lp.get("steps") or [])
                 lp["current_index"] = min(steps_len, int(lp.get("current_index", 0)) + 1)
                 ss.lesson_plan = lp  # 整体赋新 dict 触发变更检测（A3 JSONB 惯例）
+                # 步进更新 progress：教学过程中每次随堂测验完成 → 进度可信推进
+                if steps_len > 0:
+                    ss.progress = min(100, round(lp["current_index"] / steps_len * 100))
                 await db.commit()
 
         logger.info(f"spot_quiz: user={user_id} kp={kp_id} created {len(created)} qs")

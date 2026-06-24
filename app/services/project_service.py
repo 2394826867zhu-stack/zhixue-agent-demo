@@ -32,6 +32,89 @@ from app.llm.prompts.project_tree import SYSTEM_PROJECT_TREE, PROJECT_TREE_GENER
 
 logger = logging.getLogger(__name__)
 
+# ── 阶段模板按学科调性（INC-8 · 2026-06-24）─────────────────────────────────
+# 不再对所有项目硬编码"基础/强化/复习"——按 subject 关键词选阶段骨架。
+# 存量项目不受影响（阶段已入库）；仅新建项目走此模板。
+
+_LANGUAGE_SUBJECTS = {
+    "日语", "英语", "法语", "韩语", "德语", "西班牙语", "俄语", "意大利语",
+    "葡萄牙语", "阿拉伯语", "泰语", "越南语", "印尼语", "马来语",
+    "japanese", "english", "french", "korean", "german", "spanish",
+}
+_SCIENCE_SUBJECTS = {
+    "数学", "物理", "化学", "生物", "信息", "信息技术",
+    "math", "physics", "chemistry", "biology",
+}
+_HUMANITIES_SUBJECTS = {
+    "历史", "语文", "政治", "地理", "社会", "道法",
+    "history", "chinese", "politics", "geography",
+}
+_EXAM_KEYWORDS = {"备考", "EJU", "托福", "雅思", "高考", "中考", "考研", "TOEFL", "IELTS", "SAT",
+                  "JLPT", "N1", "N2", "N3", "N4", "N5", "CEFR", "DELF", "DALF"}
+
+# 阶段模板：(name, description, days)
+_TONE_PHASES: dict[str, list[tuple[str, str, int]]] = {
+    "language": [
+        ("语音与文字", "建立发音与书写基础", 14),
+        ("核心词汇与语法", "高频词汇与关键语法点", 28),
+        ("场景应用", "日常对话与实用表达", 28),
+        ("综合表达", "叙述、论述与文化理解", 14),
+    ],
+    "science": [
+        ("概念与定理", "建立核心概念与定理基础", 21),
+        ("证明与推导", "掌握推理方法与证明技巧", 28),
+        ("应用与建模", "实际问题建模与综合应用", 21),
+    ],
+    "humanities": [
+        ("主题与史实", "建立主题框架与关键史实", 21),
+        ("证据与因果", "分析证据链与因果逻辑", 21),
+        ("论证与批判", "多视角论证与批判性思维", 21),
+    ],
+    "exam": [
+        ("能力诊断", "识别强弱项与靶向目标", 7),
+        ("弱项靶向", "针对性强化薄弱环节", 28),
+        ("真题模考", "限时模拟与实战训练", 21),
+        ("冲刺", "高频考点速查与易错排查", 7),
+    ],
+    "default": [
+        ("基础", "建立知识地图与核心概念", 14),
+        ("强化", "深度训练与错题修正", 28),
+        ("复习", "综合复盘与模拟冲刺", 18),
+    ],
+}
+
+
+def _detect_tone(subject: str | None, source: str | None = None, summary: str | None = None) -> str:
+    """根据学科+来源识别学习调性，返回阶段模板 key。"""
+    s = (subject or "").strip()
+    src = (source or "").strip()
+    desc = (summary or "").strip()
+    combined = f"{s} {desc}".lower()
+
+    # 考试关键词优先（无论学科，提到备考就走 exam 模板）
+    for kw in _EXAM_KEYWORDS:
+        if kw.lower() in combined:
+            return "exam"
+
+    # 学科关键词匹配
+    for lang_kw in _LANGUAGE_SUBJECTS:
+        if lang_kw.lower() in s.lower():
+            return "language"
+    for sci_kw in _SCIENCE_SUBJECTS:
+        if sci_kw.lower() in s.lower():
+            return "science"
+    for hum_kw in _HUMANITIES_SUBJECTS:
+        if hum_kw.lower() in s.lower():
+            return "humanities"
+
+    # 无学科 → 默认（保持现有"基础/强化/复习"，向后兼容）
+    return "default"
+
+
+def _build_phases_for_tone(tone: str) -> list[tuple[str, str, int]]:
+    """返回阶段模板列表。"""
+    return _TONE_PHASES.get(tone, _TONE_PHASES["default"])
+
 
 class ProjectService:
 
@@ -102,15 +185,20 @@ class ProjectService:
         db.add(proj)
         await db.flush()
 
-        # 自动创建 3 个默认阶段（之前不创建阶段 → generate_tree_nodes 拿不到阶段 → 永远 0 节点）
+        # 按学科调性生成阶段（INC-8 · 2026-06-24）
+        # 不再硬编码"基础/强化/复习"——语言/理科/文科/备考各有阶段骨架。
         now = datetime.now(timezone.utc)
-        default_phases = [
-            ("基础", "建立知识地图与核心概念", 0, now, now + timedelta(days=14)),
-            ("强化", "深度训练与错题修正", 1, now + timedelta(days=14), now + timedelta(days=42)),
-            ("复习", "综合复盘与模拟冲刺", 2, now + timedelta(days=42), now + timedelta(days=60)),
-        ]
-        for name, desc, sort, sd, ed in default_phases:
-            db.add(ProjectPhase(project_id=proj.id, name=name, description=desc, sort_order=sort, start_date=sd, end_date=ed, is_current=(sort == 0)))
+        tone = _detect_tone(data.subject, data.source, data.summary)
+        phase_templates = _build_phases_for_tone(tone)
+        cursor = now
+        for idx, (name, desc, days) in enumerate(phase_templates):
+            end = cursor + timedelta(days=days)
+            db.add(ProjectPhase(
+                project_id=proj.id, name=name, description=desc,
+                sort_order=idx, start_date=cursor, end_date=end,
+                is_current=(idx == 0),
+            ))
+            cursor = end
         await db.commit()
         await db.refresh(proj, attribute_names=["phases", "milestones"])
         return proj
@@ -122,12 +210,12 @@ class ProjectService:
 
         PRD 行 333：用户点击确认之前必须看到 Agent 理解的项目骨架。
         """
-        # 默认四阶段
+        # 按学科调性生成阶段预览（INC-8 · 2026-06-24）
+        tone = _detect_tone(draft.subject, "user_project", draft.summary if hasattr(draft, 'summary') else None)
+        phase_templates = _build_phases_for_tone(tone)
         phases = [
-            {"name": "基础", "description": "建立知识地图与核心概念", "est_weeks": 2},
-            {"name": "强化", "description": "深度训练与错题修正", "est_weeks": 2},
-            {"name": "复习", "description": "FSRS 复盘与查漏补缺", "est_weeks": 1},
-            {"name": "冲刺", "description": "限时模拟与最终调整", "est_weeks": 1},
+            {"name": name, "description": desc, "est_weeks": max(1, round(days / 7))}
+            for name, desc, days in phase_templates
         ]
         # 关键事件初版只埋入目标完成日期
         milestones = []
@@ -351,7 +439,8 @@ class ProjectService:
         # LLM 失败时用 phases 生成节点，并尝试直接绑定课程章节
         if not data:
             from app.models.curriculum import CurriculumChapter  # 局部导入（与 _link_nodes_to_curriculum 同口径）：修 fallback 路径 NameError（LLM 宕机时建树会崩）
-            phases_list = [p.name for p in phases] if phases else ["基础", "强化", "复习"]
+            # 兜底阶段名按调性（INC-8）
+            phases_list = [p.name for p in phases] if phases else [name for name, _, _ in _build_phases_for_tone("default")]
             # 查同 subject 课程供绑定
             chapters_for_nodes: list = []
             if proj.subject:

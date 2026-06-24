@@ -158,6 +158,18 @@ class StudySpaceService:
 
         stars_earned = 30  # lesson_complete reward
 
+        # INC-11：有 lesson_plan 时 progress 已在教学过程中步进更新，complete 不跳 100；
+        # 无 lesson_plan（章节会话）保持 100 标记完成。
+        if session.lesson_plan and session.lesson_plan.get("steps"):
+            steps = session.lesson_plan["steps"]
+            ci = session.lesson_plan.get("current_index", 0)
+            if len(steps) > 0:
+                final_progress = min(100, round(ci / len(steps) * 100))
+            else:
+                final_progress = 100
+        else:
+            final_progress = 100
+
         # P1-4 · 原子完成：只有把 active→completed 翻成功(rowcount==1)的请求发星，杜绝并发
         # 重复完成双发 30 星。先不 commit，award 的提交把"完成"与"发星"合到同一事务
         # （崩溃不会出现"已完成却漏发星"且不可补发的状态）。
@@ -169,7 +181,7 @@ class StudySpaceService:
             )
             .values(
                 status="completed",
-                progress=100,
+                progress=final_progress,
                 completed_at=datetime.now(timezone.utc),
                 stars_earned=stars_earned,
             )

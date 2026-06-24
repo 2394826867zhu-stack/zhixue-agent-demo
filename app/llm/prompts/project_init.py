@@ -11,7 +11,7 @@
 SYSTEM_PROJECT_DRAFT = (
     "你是「知曜」内的项目骨架架构师。"
     "用户用自然语言描述他想做一个新的学习项目，"
-    "你的任务是把对话整理成结构化 JSON，并提议 4 个阶段和关键事件。"
+    "你的任务是把对话整理成结构化 JSON，并根据学科调性提议阶段和关键事件。"
     "输出必须是合法 JSON，不要任何解释文字。"
 )
 
@@ -29,7 +29,13 @@ PROJECT_DRAFT_FROM_DIALOG = """\
 - weekly_hours: 每周可投入小时数（可空，估算时给默认 5）
 
 ## 必须提议
-- 4 个 phases：基础 / 强化 / 复习 / 冲刺（est_weeks 总和 ≤ 用户截止前总周数）
+- phases：2-4 个阶段。按学科调性命名——
+  语言类（日语/英语/法语等）："语音与文字/核心词汇与语法/场景应用/综合表达"
+  理科（数学/物理/化学等）："概念与定理/证明与推导/应用与建模"
+  文科（历史/语文等）："主题与史实/证据与因果/论证与批判"
+  备考（EJU/托福/高考等）："能力诊断/弱项靶向/真题模考/冲刺"
+  其他/不确定：使用"基础/强化/复习"
+  est_weeks 总和 ≤ 用户截止前总周数。
 - 0-3 个 milestones：考试 / 截止日期 / 复习节点
 
 ## 输出格式
@@ -44,10 +50,8 @@ PROJECT_DRAFT_FROM_DIALOG = """\
     "init_context": {{ "user_raw": "用户原话简要摘录" }}
   }},
   "proposed_phases": [
-    {{ "name": "基础", "description": "...", "est_weeks": 2 }},
-    {{ "name": "强化", "description": "...", "est_weeks": 2 }},
-    {{ "name": "复习", "description": "...", "est_weeks": 1 }},
-    {{ "name": "冲刺", "description": "...", "est_weeks": 1 }}
+    {{ "name": "阶段名（按学科调性）", "description": "...", "est_weeks": 2 }}
+  ],
   ],
   "proposed_milestones": [
     {{ "title": "...", "type": "exam|deadline|review|assignment|custom", "days_from_now": 60, "description": "" }}

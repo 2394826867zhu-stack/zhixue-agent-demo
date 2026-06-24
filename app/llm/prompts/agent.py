@@ -129,19 +129,59 @@ def build_system_prompt(ctx: AgentContext, studyspace_ctx: dict | None = None) -
 4. 期间不调用工具，专注出题和批改
 5. 语气平静，像监考老师而不是鼓励师"""
         else:
+            # INC-9 · 结构化教学上下文：注入节点位置/先修/后继/掌握度
             key_label = "（重点考查章节）" if studyspace_ctx.get("is_key") else ""
+            difficulty = studyspace_ctx.get("node_difficulty", "")
+            difficulty_label = {"blue": "基础", "purple": "进阶", "gold": "拔高"}.get(difficulty, "")
+            phase_label = f" · {studyspace_ctx['phase_name']}" if studyspace_ctx.get("phase_name") else ""
+            main_path_label = " · 主干路径" if studyspace_ctx.get("is_on_main_path") else ""
+            kp_name = studyspace_ctx.get("kp_name", "")
+            kp_mastery = studyspace_ctx.get("kp_mastery")
+            mastery_str = f"（当前掌握度 {kp_mastery:.0%}）" if kp_mastery is not None else ""
+
+            # 先修链
+            prereq_lines = ""
+            prereqs = studyspace_ctx.get("prerequisites", []) or []
+            weak_prereqs = [p for p in prereqs if (p.get("p_mastery") or 0) < 0.4]
+            if prereqs:
+                prereq_parts = []
+                for p in prereqs:
+                    pm = p.get("p_mastery")
+                    pm_str = f"({pm:.0%})" if pm is not None else ""
+                    prereq_parts.append(f"{p['name']}{pm_str}")
+                prereq_lines = f"先修知识：{' → '.join(prereq_parts)}"
+                if weak_prereqs:
+                    weak_names = [p["name"] for p in weak_prereqs]
+                    prereq_lines += f"\n⚠️ 以下先修掌握度不足（<40%），必要时降级回顾：{', '.join(weak_names)}"
+
+            # 后继
+            succ_lines = ""
+            succs = studyspace_ctx.get("successors", []) or []
+            if succs:
+                succ_names = [s["name"] for s in succs]
+                succ_lines = f"学完后解锁：{' · '.join(succ_names)}"
+
             studyspace_block = f"""
 ## StudySpace 课时上下文
 当前课时：{studyspace_ctx['subject']} — {studyspace_ctx['chapter_title']} — {studyspace_ctx['lesson_title']}{key_label}
+难度：{difficulty_label}{phase_label}{main_path_label}
+{'知识点：' + kp_name + mastery_str if kp_name else ''}
+{prereq_lines}
+{succ_lines}
 你正在辅导用户学习这节课，这是你当前唯一的任务。"""
-            studyspace_rules = """
+
+            # 如果先修弱，追加降级规则
+            weak_rule = ""
+            if weak_prereqs:
+                weak_rule = "\n7. 如果学生在本节内容上表现困惑，先花 1-2 分钟回顾先修弱项（如上标注），再继续讲新内容。"
+            studyspace_rules = f"""
 ## StudySpace 行为规则
 1. 开场先梳理本课时 3-5 个核心概念，调用 set_lesson_plan(steps=[概念名...]) 落分步框架，然后开始讲第 1 个概念（也可同时生成一份 Mermaid 思维导图）
 2. 然后逐步讲解，每讲完一个核心概念后暂停，等用户确认或提问，不要一次性输出全部内容
 3. **每讲完一个核心概念后调用 spot_quiz 工具自动出随堂测验题**（传入 kp_id），等用户作答后给反馈
 4. 用户答错时切换到更基础的解释路径，不要直接给出答案
 5. 涉及公式或图示时，建议用户打开画板配合推导
-6. 课时讲解结束后，调用 set_agent_state('celebrate') 庆祝"""
+6. 课时讲解结束后，调用 set_agent_state('celebrate') 庆祝{weak_rule}"""
 
     return (
         "\n\n".join([_IDENTITY, profile, memory_block, _RULES])

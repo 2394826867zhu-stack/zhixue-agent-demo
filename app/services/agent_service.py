@@ -170,16 +170,65 @@ async def run(
                         }
                 elif ss.tree_node_id:
                     # 项目树节点会话（无官方课程）：据节点标题 + 所属项目开讲。
-                    from app.models.project import ProjectTreeNode, Project
+                    from app.models.project import ProjectTreeNode, Project, ProjectPhase
+                    from app.models.knowledge_point import KnowledgePoint
+                    from app.models.prerequisite_edge import PrerequisiteEdge
                     node = await db.get(ProjectTreeNode, ss.tree_node_id)
                     if node:
                         proj = await db.get(Project, node.project_id)
+                        # INC-9 · 结构化教学上下文：阶段/KP/先修/后继/难度/主干路径
+                        phase_name = ""
+                        if node.phase_id:
+                            phase = await db.get(ProjectPhase, node.phase_id)
+                            phase_name = phase.name if phase else ""
+                        kp_name = ""
+                        kp_mastery = None
+                        prerequisites: list[dict] = []
+                        successors: list[dict] = []
+                        if node.kp_id:
+                            kp = await db.get(KnowledgePoint, node.kp_id)
+                            if kp:
+                                kp_name = kp.name or ""
+                                kp_mastery = kp.p_mastery
+                            # 查先修边（别人 → 本 KP）
+                            from sqlalchemy import select as _sel
+                            edge_rows = (await db.execute(
+                                _sel(PrerequisiteEdge).where(PrerequisiteEdge.to_kp_id == node.kp_id)
+                            )).scalars().all()
+                            prereq_kp_ids = [e.from_kp_id for e in edge_rows]
+                            if prereq_kp_ids:
+                                prereq_kps = (await db.execute(
+                                    _sel(KnowledgePoint).where(KnowledgePoint.id.in_(prereq_kp_ids))
+                                )).scalars().all()
+                                prerequisites = [
+                                    {"name": pkp.name or "", "p_mastery": pkp.p_mastery}
+                                    for pkp in prereq_kps
+                                ]
+                            # 查后继边（本 KP → 别人）
+                            succ_rows = (await db.execute(
+                                _sel(PrerequisiteEdge).where(PrerequisiteEdge.from_kp_id == node.kp_id)
+                            )).scalars().all()
+                            succ_kp_ids = [e.to_kp_id for e in succ_rows[:3]]
+                            if succ_kp_ids:
+                                succ_kps = (await db.execute(
+                                    _sel(KnowledgePoint).where(KnowledgePoint.id.in_(succ_kp_ids))
+                                )).scalars().all()
+                                successors = [{"name": skp.name or ""} for skp in succ_kps]
                         studyspace_ctx = {
                             "session_type": "lesson",
                             "chapter_title": proj.name if proj else "",
                             "lesson_title": node.title,
                             "subject": (proj.subject if proj else "") or "",
                             "is_key": node.importance >= 2,
+                            # INC-9 新字段：结构化位置
+                            "node_difficulty": node.difficulty or "blue",
+                            "node_depth": node.depth or 1,
+                            "is_on_main_path": node.is_on_main_path if node.is_on_main_path is not None else False,
+                            "phase_name": phase_name,
+                            "kp_name": kp_name,
+                            "kp_mastery": kp_mastery,
+                            "prerequisites": prerequisites,
+                            "successors": successors,
                         }
         except Exception:
             # StudySpace context is optional; don't break chat if it fails（P1-13 加可观测）
