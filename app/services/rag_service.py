@@ -158,13 +158,12 @@ async def search(
         FROM document_embeddings
         WHERE embedding_model = :model
           AND (
-            user_id = :uid
+            ({self_clause})
             {org_clause}
             {official_clause}
           )
           {kind_clause}
           {project_clause}
-          {subject_clause}
         ORDER BY embedding <=> CAST(:qvec AS vector)
         LIMIT :k
     """
@@ -174,11 +173,24 @@ async def search(
         "uid": user_id,
         "k": min(top_k, SEARCH_TOP_K_CAP),
     }
+    # F6b 跨科隔离：subject 按来源分级过滤——
+    #   自己的内容(user_id=me)：宽松（subject 匹配 OR 无标签），不漏掉自己未标注的笔记/KP；
+    #   官方内容(user_id/org 皆 NULL)：**严格**（必须 subject 完全匹配，**不放行无标签/跨科**）。
+    # 旧实现用全局 `subject=:subj OR subject IS NULL`，无标签的官方英语章节(主旨大意)对德语 query
+    # 也命中 → 教学串科。现把"无标签放行"只留给用户自己的内容。
+    subj_self, subj_official, subj_org = "", "", ""
+    if subject:
+        params["subj"] = subject
+        subj_self = "AND (doc_metadata->>'subject' = :subj OR doc_metadata->>'subject' IS NULL)"
+        subj_org = "AND (doc_metadata->>'subject' = :subj OR doc_metadata->>'subject' IS NULL)"
+        subj_official = "AND doc_metadata->>'subject' = :subj"  # 官方严格，无 NULL 逃逸
+
+    self_clause = f"user_id = :uid {subj_self}"
     # 三级隔离：self（user_id=me）/ tenant（org_id=我的机构共享库）/ official（两者皆 NULL）
-    org_clause = "OR org_id = :org_id" if org_id is not None else ""
+    org_clause = f"OR (org_id = :org_id {subj_org})" if org_id is not None else ""
     if org_id is not None:
         params["org_id"] = org_id
-    official_clause = "OR (user_id IS NULL AND org_id IS NULL)" if include_official else ""
+    official_clause = f"OR (user_id IS NULL AND org_id IS NULL {subj_official})" if include_official else ""
     kind_clause = ""
     if doc_kinds:
         kind_clause = "AND doc_kind = ANY(:kinds)"
@@ -187,17 +199,13 @@ async def search(
     if project_id is not None:
         project_clause = "AND (project_id = :pid OR project_id IS NULL)"
         params["pid"] = project_id
-    subject_clause = ""
-    if subject:
-        subject_clause = "AND (doc_metadata->>'subject' = :subj OR doc_metadata->>'subject' IS NULL)"
-        params["subj"] = subject
 
     sql_final = sql.format(
+        self_clause=self_clause,
         org_clause=org_clause,
         official_clause=official_clause,
         kind_clause=kind_clause,
         project_clause=project_clause,
-        subject_clause=subject_clause,
     )
     res = await db.execute(text(sql_final), params)
     rows = res.fetchall()
