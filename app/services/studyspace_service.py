@@ -134,6 +134,13 @@ class StudySpaceService:
         if session.status == "completed":
             raise AppError(400, "会话已完成", 400)
 
+        # 节点会话有 lesson_plan 时：所有步走完才能 complete
+        if session.tree_node_id and session.lesson_plan:
+            steps = session.lesson_plan.get("steps", [])
+            ci = session.lesson_plan.get("current_index", 0)
+            if len(steps) > 0 and ci < len(steps):
+                raise AppError(400, "请先完成本节所有学习步骤", 400)
+
         chapter = await db.get(CurriculumChapter, session.chapter_id)
 
         # Count KPs and flashcards created during this session (via agent session)
@@ -182,6 +189,16 @@ class StudySpaceService:
             meta={"session_id": str(session_id)},
         )
         await db.refresh(session)
+
+        # INC-2 节点会话 → 富化节点 KP（回填教学内容 + 记一次正向掌握信号）：
+        # 让既有自动建卡(需 name+content)能为该 KP 出卡 + 掌握度真更新。必须在下方
+        # 自动建卡之前执行。
+        if session.tree_node_id:
+            await self._enrich_node_kp_on_complete(db, session, uuid.UUID(user_id))
+
+        # 节点会话 → 回写树节点进度（闭环：学完→标记完成→解锁下一节→更新项目进度+掌握度）
+        if session.tree_node_id and session.project_id:
+            await self._complete_tree_node(db, session.tree_node_id, session.project_id)
 
         # Auto-complete matching system tasks
         from app.services.task_service import task_service as _task_svc
@@ -303,8 +320,9 @@ class StudySpaceService:
         except Exception as _e:
             logger.warning(f"ss_completed episode hook failed: {_e}")
 
-        # Find next lesson in same chapter or next chapter
-        next_lesson = await self._find_next_lesson(db, chapter)
+        # Find next lesson in same chapter or next chapter（节点会话无 chapter → 跳过，
+        # 否则 _find_next_lesson(None) 访问 .subject 会崩；下一步推进由树节点解锁负责）
+        next_lesson = await self._find_next_lesson(db, chapter) if chapter else None
 
         return CompleteSessionResponse(
             session_id=session.id,
@@ -386,6 +404,118 @@ class StudySpaceService:
                 last_session_at=row.last_session_at,
             ))
         return progress_list
+
+    async def _enrich_node_kp_on_complete(
+        self, db: AsyncSession, session, user_id: uuid.UUID,
+    ) -> None:
+        """INC-2：节点会话学完 → 富化节点锚定的 KP。
+
+        ① 把本会话教学内容（agent_message / content 时间线节点取最长一条）回填到 KP.content，
+           让既有「自动建卡」(需 name+content) 能为该 KP 出卡（学完建卡）。
+        ② 记一次正向掌握信号(BKT)：new→learning、p_mastery 从先验上调（学完=接触+初步掌握，
+           非「已精通」——真正精通由后续 probe/复习证明）。
+        不 commit（事务边界交 complete_session 后续 commit）；任何异常吞掉不拖垮完成主流程。
+        """
+        try:
+            from app.models.project import ProjectTreeNode
+            from app.models.knowledge_point import KnowledgePoint
+            from app.models.studyspace_timeline import StudySpaceTimelineNode
+            from app.services import measurement_service
+            node = await db.get(ProjectTreeNode, session.tree_node_id)
+            if not node or not node.kp_id:
+                return
+            kp = await db.get(KnowledgePoint, node.kp_id)
+            if not kp:
+                return
+            if not kp.content:
+                rows = await db.execute(
+                    select(StudySpaceTimelineNode.content).where(
+                        StudySpaceTimelineNode.session_id == session.id,
+                        StudySpaceTimelineNode.kind.in_(["agent_message", "content"]),
+                        StudySpaceTimelineNode.content.isnot(None),
+                    )
+                )
+                msgs = [c for (c,) in rows.fetchall() if c and c.strip()]
+                if msgs:
+                    kp.content = max(msgs, key=len)[:1000]
+            await measurement_service.update_mastery_on_answer(db, kp.id, correct=True)
+            # 离散态:学完=已接触,new→learning(真正 mastered 由后续 probe/复习证明,不在此跳)
+            if kp.mastery_status == "new":
+                kp.mastery_status = "learning"
+            await db.flush()
+        except Exception as _e:  # noqa: BLE001
+            logger.warning(f"_enrich_node_kp_on_complete skipped: {_e}")
+
+    async def _complete_tree_node(
+        self, db: AsyncSession, tree_node_id: uuid.UUID, project_id: uuid.UUID,
+    ) -> None:
+        """节点会话完成 → 标记节点 completed、解锁下一批、重算项目进度 + 掌握度。"""
+        from app.models.project import ProjectTreeNode, Project
+        from app.models.knowledge_point import KnowledgePoint
+        from sqlalchemy import func, update as _sql_update
+
+        # 1. 标记当前节点为已完成
+        await db.execute(
+            _sql_update(ProjectTreeNode)
+            .where(ProjectTreeNode.id == tree_node_id)
+            .values(
+                status="completed",
+                completion_pct=100.0,
+                completed_at=datetime.now(timezone.utc),
+                last_studied_at=datetime.now(timezone.utc),
+            )
+        )
+
+        # 2. 解锁下一批 locked 节点（最多 3 个，按 sort_order）
+        next_nodes = await db.execute(
+            select(ProjectTreeNode.id)
+            .where(
+                ProjectTreeNode.project_id == project_id,
+                ProjectTreeNode.status == "locked",
+                ProjectTreeNode.depth > 0,
+            )
+            .order_by(ProjectTreeNode.sort_order.asc())
+            .limit(3)
+        )
+        next_ids = [r[0] for r in next_nodes.fetchall()]
+        if next_ids:
+            await db.execute(
+                _sql_update(ProjectTreeNode)
+                .where(ProjectTreeNode.id.in_(next_ids))
+                .values(status="available")
+            )
+
+        # 3. 重算项目进度
+        total = await db.scalar(
+            select(func.count(ProjectTreeNode.id))
+            .where(ProjectTreeNode.project_id == project_id, ProjectTreeNode.depth > 0)
+        )
+        completed = await db.scalar(
+            select(func.count(ProjectTreeNode.id))
+            .where(ProjectTreeNode.project_id == project_id, ProjectTreeNode.status == "completed")
+        )
+        # 项目掌握度 = 该项目所有节点锚定 KP 的平均 p_mastery（×100），无 probed KP 时留 0
+        mastery_avg = await db.scalar(
+            select(func.avg(KnowledgePoint.p_mastery))
+            .select_from(ProjectTreeNode)
+            .join(KnowledgePoint, KnowledgePoint.id == ProjectTreeNode.kp_id)
+            .where(
+                ProjectTreeNode.project_id == project_id,
+                KnowledgePoint.p_mastery.isnot(None),
+            )
+        )
+        if total and total > 0:
+            pct = round(completed / total * 100, 1)
+            # 注意：tree_completed_count 是 ProjectDetail 端点的计算字段，不是 Project 列，
+            # 不能写进 UPDATE（写了会 CompileError 崩整个完成流程）。只写真列 completion_pct/mastery_pct。
+            values = {"completion_pct": pct}
+            if mastery_avg is not None:
+                values["mastery_pct"] = round(float(mastery_avg) * 100, 1)
+            await db.execute(
+                _sql_update(Project)
+                .where(Project.id == project_id)
+                .values(**values)
+            )
 
     async def _to_out(
         self, db: AsyncSession, session: StudySpaceSession, chapter: CurriculumChapter | None
