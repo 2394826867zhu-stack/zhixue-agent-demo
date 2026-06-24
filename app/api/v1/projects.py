@@ -103,6 +103,7 @@ async def get_project(
         source=proj.source,
         subject=proj.subject,
         status=proj.status,
+        framework_status=proj.framework_status,
         completion_pct=proj.completion_pct,
         mastery_pct=proj.mastery_pct,
         init_context=proj.init_context,

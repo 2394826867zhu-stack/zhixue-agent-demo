@@ -357,12 +357,13 @@ class TaskService:
         )).scalars().all()
         tasks: list[dict] = []
         for proj in projs:
+            # 只认有 kp_id 的可学「课时」（大章节是容器，无 kp_id，不进任务）
             node = (await db.execute(
                 select(ProjectTreeNode)
                 .where(
                     ProjectTreeNode.project_id == proj.id,
                     ProjectTreeNode.status == "available",
-                    ProjectTreeNode.depth > 0,
+                    ProjectTreeNode.kp_id.isnot(None),
                 )
                 .order_by(ProjectTreeNode.sort_order.asc())
                 .limit(1)

@@ -30,6 +30,7 @@ from app.core.exceptions import NotFoundError, PermissionDeniedError, Validation
 from app.llm.client import LLMClient
 from app.llm.prompts.project_init import SYSTEM_PROJECT_DRAFT, PROJECT_DRAFT_FROM_DIALOG
 from app.llm.prompts.project_tree import SYSTEM_PROJECT_TREE, PROJECT_TREE_GENERATE
+from app.services.framework_service import generate_framework
 
 logger = logging.getLogger(__name__)
 
@@ -410,121 +411,140 @@ class ProjectService:
         if existing_count > 0:
             return existing_count
 
-        # 取 phases
+        # 估算总周数（框架用；存量阶段提供粗略上限）
         phases_q = await db.execute(
             select(ProjectPhase)
             .where(ProjectPhase.project_id == proj.id)
             .order_by(ProjectPhase.sort_order.asc())
         )
         phases = list(phases_q.scalars().all())
-        phase_lookup = {p.name: p for p in phases}
         total_weeks = sum(
             (p.end_date - p.start_date).days // 7
             for p in phases if p.start_date and p.end_date
-        ) or 6
+        ) or 8
 
-        llm = LLMClient()
-        prompt = PROJECT_TREE_GENERATE.format(
-            name=proj.name,
-            summary=proj.summary or "",
-            subject=proj.subject or "通用",
-            phases=", ".join(p.name for p in phases),
-            total_weeks=total_weeks,
-            known_kps="（无）",
+        # F1b 纯生成式知识框架（弃模板/弃官方背书）：LLM 为这个项目量身生成
+        # 阶段 + 大章节(depth1) > 小课时(depth2) + 每课 KP + 顺序先修边。
+        framework = await generate_framework(
+            name=proj.name, subject=proj.subject, summary=proj.summary,
+            weeks=total_weeks, user_id=user_id,
         )
-        data = None
-        try:
-            raw = await llm.generate(
-                prompt=prompt,
-                system=SYSTEM_PROJECT_TREE,
-                user_id=user_id,
-                endpoint="project.generate_tree",
+        if not framework:
+            # 纯生成式失败 → 不退模板、不留半成品，置 failed 态（前端展示「生成失败·重试」，F2）
+            proj.framework_status = "failed"
+            await db.commit()
+            logger.warning("framework generation failed for project=%s → framework_status=failed", project_id)
+            return 0
+
+        node_count = await self._build_tree_from_framework(db, proj, framework)
+        proj.framework_status = "ready"
+        await db.commit()
+        return node_count
+
+    async def _build_tree_from_framework(
+        self, db: AsyncSession, proj: Project, framework: dict,
+    ) -> int:
+        """F1b：按纯生成式框架建 阶段 + 大章节(depth1)>小课时(depth2) + 每课 KP + 顺序先修边。
+
+        模型语义：**大章节(depth1)=容器(无 KP，恒 available)；小课时(depth2)=可学单元(有 kp_id，
+        locked/available/completed 生命周期)**。所有「可学/解锁/开始/任务」逻辑只认有 kp_id 的课时。
+        用框架阶段重建 phases（作废 INC-8 模板；此时尚无 tree 节点引用旧 phase，删建安全）。
+        """
+        from app.models.knowledge_point import KnowledgePoint
+        from app.models.prerequisite_edge import PrerequisiteEdge
+
+        _DIFF = ["blue", "purple", "gold"]
+
+        # 1. 用框架阶段替换旧阶段（纯生成式阶段，作废 INC-8 模板）
+        await db.execute(delete(ProjectPhase).where(ProjectPhase.project_id == proj.id))
+        cursor = datetime.now(timezone.utc)
+        phase_lookup: dict[str, ProjectPhase] = {}
+        fw_phases = [p for p in framework.get("phases", []) if isinstance(p, dict) and str(p.get("name", "")).strip()]
+        for i, p in enumerate(fw_phases):
+            wks = max(1, int(p.get("weeks", 4) or 4))
+            ph = ProjectPhase(
+                project_id=proj.id, name=str(p["name"])[:60],
+                description=str(p.get("description", ""))[:500],
+                start_date=cursor, end_date=cursor + timedelta(weeks=wks),
+                sort_order=i, is_current=(i == 0),
             )
-            data = _extract_json(raw)
-        except Exception as e:
-            logger.warning("generate_tree LLM failed, project=%s: %s — using phase-based fallback", project_id, e)
+            db.add(ph)
+            phase_lookup[ph.name] = ph
+            cursor = cursor + timedelta(weeks=wks)
+        await db.flush()
+        default_phase = next(iter(phase_lookup.values()), None)
 
-        # LLM 失败时用 phases 生成节点，并尝试直接绑定课程章节
-        if not data:
-            from app.models.curriculum import CurriculumChapter  # 局部导入（与 _link_nodes_to_curriculum 同口径）：修 fallback 路径 NameError（LLM 宕机时建树会崩）
-            # 兜底阶段名按调性（INC-8）
-            phases_list = [p.name for p in phases] if phases else [name for name, _, _ in _build_phases_for_tone("default")]
-            # 查同 subject 课程供绑定
-            chapters_for_nodes: list = []
-            if proj.subject:
-                chapters_for_nodes = list((await db.execute(
-                    select(CurriculumChapter).where(CurriculumChapter.subject == proj.subject).limit(len(phases_list)*3)
-                )).scalars().all())
-            data = {
-                "root": {"title": proj.name, "difficulty": "blue", "importance": 3, "is_on_main_path": True},
-                "nodes": [
-                    {"title": f"{p}阶段·{i+1}", "parent_title": proj.name, "phase_name": p,
-                     "difficulty": ["blue","purple","blue"][i % 3], "importance": 2 if i == 0 else 1,
-                     "is_on_main_path": i == 0, "depth": 1,
-                     "_chapter_id": str(chapters_for_nodes[i].id) if i < len(chapters_for_nodes) else None}
-                    for i, p in enumerate(phases_list)
-                ],
-            }
+        def _diff_for(phase_name) -> str:
+            ph = phase_lookup.get(phase_name or "")
+            return _DIFF[min(ph.sort_order, 2)] if ph else "blue"
 
-        # 根节点
-        root_meta = data.get("root", {})
+        # 2. 根节点
         root = ProjectTreeNode(
-            project_id=proj.id,
-            parent_id=None,
-            depth=0,
-            phase_id=phases[0].id if phases else None,
-            title=root_meta.get("title", proj.name)[:120],
-            difficulty=root_meta.get("difficulty", "blue"),
-            importance=int(root_meta.get("importance", 3)),
-            is_on_main_path=bool(root_meta.get("is_on_main_path", True)),
-            status="available",
-            sort_order=0,
+            project_id=proj.id, parent_id=None, depth=0,
+            phase_id=(default_phase.id if default_phase else None),
+            title=proj.name[:120], difficulty="blue", importance=3,
+            is_on_main_path=True, status="available", sort_order=0,
         )
         db.add(root)
         await db.flush()
 
-        # 子节点（两轮，第一轮挂在 root / 第二轮挂在第一轮的标题上）
-        title_to_node: dict[str, ProjectTreeNode] = {root.title: root}
-        nodes_meta = data.get("nodes", [])
-        # 按 depth 升序，确保 parent 先创建
-        nodes_meta.sort(key=lambda n: int(n.get("depth", 1)))
-
-        for idx, nmeta in enumerate(nodes_meta):
-            parent_title = nmeta.get("parent_title", root.title)
-            parent = title_to_node.get(parent_title, root)
-            phase_name = nmeta.get("phase_name")
-            phase = phase_lookup.get(phase_name) if phase_name else None
-            node = ProjectTreeNode(
-                project_id=proj.id,
-                parent_id=parent.id,
-                depth=int(nmeta.get("depth", parent.depth + 1)),
-                phase_id=phase.id if phase else (phases[0].id if phases else None),
-                curriculum_chapter_id=uuid.UUID(nmeta["_chapter_id"]) if nmeta.get("_chapter_id") else None,
-                title=str(nmeta.get("title", f"节点 {idx+1}"))[:120],
-                difficulty=nmeta.get("difficulty", "blue"),
-                importance=int(nmeta.get("importance", 1)),
-                is_on_main_path=bool(nmeta.get("is_on_main_path", False)),
-                status="locked",
-                sort_order=idx,
+        # 3. 大章节(depth1) > 小课时(depth2) + 每课 KP
+        node_count = 1
+        sort = 1
+        lesson_kp_ids: list[uuid.UUID] = []  # 按课时顺序 → 顺序先修边
+        for ch in framework.get("chapters", []):
+            if not isinstance(ch, dict) or not str(ch.get("title", "")).strip():
+                continue
+            ph = phase_lookup.get(ch.get("phase_name")) or default_phase
+            diff = _diff_for(ch.get("phase_name"))
+            chap = ProjectTreeNode(
+                project_id=proj.id, parent_id=root.id, depth=1,
+                phase_id=(ph.id if ph else None), title=str(ch["title"])[:120],
+                difficulty=diff, importance=2, is_on_main_path=True,
+                status="available", sort_order=sort,  # 章节是容器，恒 available
             )
-            db.add(node)
-            title_to_node[node.title] = node
+            db.add(chap)
+            await db.flush()
+            node_count += 1
+            sort += 1
+            for ls in ch.get("lessons", []):
+                if not isinstance(ls, dict) or not str(ls.get("title", "")).strip():
+                    continue
+                kp = KnowledgePoint(
+                    user_id=proj.user_id, project_id=proj.id,
+                    name=str(ls["title"])[:255], subject=proj.subject,
+                    difficulty_tier=diff, mastery_status="new",
+                    notebook_origin="user_project",
+                )
+                db.add(kp)
+                await db.flush()
+                lesson = ProjectTreeNode(
+                    project_id=proj.id, parent_id=chap.id, depth=2,
+                    phase_id=(ph.id if ph else None), kp_id=kp.id,
+                    title=str(ls["title"])[:120], difficulty=diff, importance=1,
+                    is_on_main_path=True, status="locked", sort_order=sort,
+                )
+                db.add(lesson)
+                node_count += 1
+                sort += 1
+                lesson_kp_ids.append(kp.id)
+        await db.flush()
 
-        # 解锁第一批 depth=1 节点：至少有一节可学
-        first_depth1 = next((n for n in title_to_node.values() if n.depth == 1 and n.status == "locked"), None)
-        if first_depth1:
-            first_depth1.status = "available"
+        # 4. 解锁第一节课时（至少一节可学）
+        if lesson_kp_ids:
+            first_lesson = (await db.execute(
+                select(ProjectTreeNode)
+                .where(ProjectTreeNode.project_id == proj.id, ProjectTreeNode.depth == 2)
+                .order_by(ProjectTreeNode.sort_order.asc()).limit(1)
+            )).scalar_one_or_none()
+            if first_lesson:
+                first_lesson.status = "available"
 
-        await db.commit()
+        # 5. 顺序先修边（课时链）→ 给内核 frontier 依赖链（F4 据此驱动解锁）
+        for a, b in zip(lesson_kp_ids, lesson_kp_ids[1:]):
+            db.add(PrerequisiteEdge(user_id=proj.user_id, from_kp_id=a, to_kp_id=b, confidence=0.6, source="llm"))
 
-        # 尝试匹配课程章节：把节点标题与用户同 subject 的课程章节做关联，让"开始学习"能真建会话
-        await self._link_nodes_to_curriculum(db, proj, nodes_meta, title_to_node)
-        # INC-1：为每个 depth≥1 节点预生成项目级 KP 并锚定（node.kp_id）——
-        # 无官方课程的学科也因此有 KP 锚点 → probe/建卡/掌握度全接得上。
-        await self._anchor_nodes_to_kps(db, proj, title_to_node)
-        await db.commit()
-
-        return len(nodes_meta) + 1
+        return node_count
 
     async def _anchor_nodes_to_kps(
         self, db: AsyncSession, proj: Project,

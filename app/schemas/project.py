@@ -152,6 +152,7 @@ class ProjectListItem(BaseModel):
     source: Literal["official", "user_project"]
     subject: str | None
     status: Literal["active", "paused", "completed", "archived"]
+    framework_status: Literal["building", "ready", "failed"] = "ready"
     completion_pct: float
     mastery_pct: float
     sort_order: int
@@ -179,6 +180,7 @@ class ProjectDetail(BaseModel):
     source: Literal["official", "user_project"]
     subject: str | None
     status: Literal["active", "paused", "completed", "archived"]
+    framework_status: Literal["building", "ready", "failed"] = "ready"
     completion_pct: float
     mastery_pct: float
     init_context: dict

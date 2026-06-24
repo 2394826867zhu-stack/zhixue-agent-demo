@@ -15,9 +15,11 @@ async def _auth(client: AsyncClient, email: str) -> dict:
 
 @pytest.mark.asyncio
 async def test_daily_tasks_include_project_node(client: AsyncClient, monkeypatch):
-    async def _boom(self, *a, **k):
-        raise RuntimeError("no llm in test")
-    monkeypatch.setattr("app.llm.client.LLMClient.generate", _boom)
+    async def _gen(**k):
+        return {"phases": [{"name": "基础", "weeks": 4}],
+                "chapters": [{"title": "第一章", "phase_name": "基础",
+                              "lessons": [{"title": "第一课", "kp_names": ["k1"]}]}]}
+    monkeypatch.setattr("app.services.project_service.generate_framework", _gen)
 
     h = await _auth(client, "dailyproj@zhiyao.ai")
     pid = (await client.post(
@@ -26,8 +28,9 @@ async def test_daily_tasks_include_project_node(client: AsyncClient, monkeypatch
     await client.post(f"/v1/projects/{pid}/tree/generate", headers=h, json={})
 
     tree = (await client.get(f"/v1/projects/{pid}/tree", headers=h)).json()["data"]
-    node_ids = {n["id"] for n in tree if n["status"] == "available" and n["depth"] > 0}
-    assert node_ids, "项目应有 available 节点"
+    # 可学单元 = 有 kp_id 的课时（大章节是容器,无 kp_id,不进任务）
+    node_ids = {n["id"] for n in tree if n["status"] == "available" and n["kp_id"]}
+    assert node_ids, "项目应有 available 课时"
 
     gen = await client.post("/v1/tasks/generate", headers=h, json={})
     assert gen.status_code == 200, gen.text

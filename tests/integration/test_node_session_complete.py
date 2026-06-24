@@ -21,9 +21,17 @@ async def _auth(client: AsyncClient, email: str) -> dict:
 
 @pytest.mark.asyncio
 async def test_complete_node_session_closes_loop(client: AsyncClient, db: AsyncSession, monkeypatch):
-    async def _boom(self, *a, **k):
-        raise RuntimeError("no llm in test")
-    monkeypatch.setattr("app.llm.client.LLMClient.generate", _boom)
+    _FW = {
+        "phases": [{"name": "基础", "description": "x", "weeks": 4}],
+        "chapters": [{"title": "第一章", "phase_name": "基础", "lessons": [
+            {"title": "法语字母与发音", "kp_names": ["元音"]},
+            {"title": "名词阴阳性", "kp_names": ["性"]},
+        ]}],
+        "prereqs": [["元音", "性"]],
+    }
+    async def _gen(**k):
+        return _FW
+    monkeypatch.setattr("app.services.project_service.generate_framework", _gen)
 
     h = await _auth(client, "nodecomplete@zhiyao.ai")
     pid = (await client.post(
@@ -32,8 +40,8 @@ async def test_complete_node_session_closes_loop(client: AsyncClient, db: AsyncS
     await client.post(f"/v1/projects/{pid}/tree/generate", headers=h, json={})
 
     tree = (await client.get(f"/v1/projects/{pid}/tree", headers=h)).json()["data"]
-    node = next(n for n in tree if n["depth"] == 1 and n["status"] == "available")
-    assert node["kp_id"], "INC-1 前置:节点须已锚 KP"
+    # 可学单元 = 有 kp_id 的课时(depth2),取第一节 available
+    node = next(n for n in tree if n["kp_id"] and n["status"] == "available")
     locked_before = len([n for n in tree if n["status"] == "locked"])
 
     # 建节点会话 + 写一条教学内容（供 KP 富化取内容 → 自动建卡）
@@ -77,15 +85,17 @@ async def test_complete_node_session_closes_loop(client: AsyncClient, db: AsyncS
 @pytest.mark.asyncio
 async def test_complete_guard_blocks_unfinished_plan(client: AsyncClient, db: AsyncSession, monkeypatch):
     """BUG-D 守卫:有 lesson_plan 且未走完所有步 → complete 被 400 挡。"""
-    async def _boom(self, *a, **k):
-        raise RuntimeError("no llm in test")
-    monkeypatch.setattr("app.llm.client.LLMClient.generate", _boom)
+    async def _gen(**k):
+        return {"phases": [{"name": "基础", "weeks": 4}],
+                "chapters": [{"title": "第一章", "phase_name": "基础",
+                              "lessons": [{"title": "第一课", "kp_names": ["k"]}]}]}
+    monkeypatch.setattr("app.services.project_service.generate_framework", _gen)
 
     h = await _auth(client, "guard@zhiyao.ai")
     pid = (await client.post("/v1/projects", headers=h, json={"name": "西语", "subject": "西语"})).json()["data"]["id"]
     await client.post(f"/v1/projects/{pid}/tree/generate", headers=h, json={})
     tree = (await client.get(f"/v1/projects/{pid}/tree", headers=h)).json()["data"]
-    node = next(n for n in tree if n["depth"] == 1 and n["status"] == "available")
+    node = next(n for n in tree if n["kp_id"] and n["status"] == "available")
     sess = (await client.post("/v1/studyspace/sessions", headers=h, json={"tree_node_id": node["id"]})).json()["data"]
 
     # 直接给会话塞一个未走完的 lesson_plan

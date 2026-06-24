@@ -77,6 +77,10 @@ class Project(Base):
     # 状态
     status: Mapped[str] = mapped_column(PROJECT_STATUS, nullable=False, server_default="active")
 
+    # F2 知识框架构建态：building（纯生成中，加载态）/ ready（可进入学习）/ failed（生成失败，可重试）。
+    # String 而非 enum（避免 enum 迁移痛）；server_default='ready' 让存量项目不被卡在加载态。
+    framework_status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="ready")
+
     # Agent 初始化原始上下文（用户表达 + Agent 整理结果）
     init_context: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False, server_default="{}")
 

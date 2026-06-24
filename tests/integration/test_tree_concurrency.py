@@ -20,9 +20,12 @@ async def _auth(client: AsyncClient, email: str) -> dict:
 
 @pytest.mark.asyncio
 async def test_repeat_generate_no_duplicate_nodes(client: AsyncClient, monkeypatch):
-    async def _boom(self, *a, **k):
-        raise RuntimeError("no llm in test")
-    monkeypatch.setattr("app.llm.client.LLMClient.generate", _boom)
+    async def _gen(**k):
+        return {"phases": [{"name": "基础", "weeks": 4}],
+                "chapters": [{"title": "第一章", "phase_name": "基础",
+                              "lessons": [{"title": "第一课", "kp_names": ["k1"]},
+                                          {"title": "第二课", "kp_names": ["k2"]}]}]}
+    monkeypatch.setattr("app.services.project_service.generate_framework", _gen)
 
     h = await _auth(client, "treedup@zhiyao.ai")
     pid = (await client.post(

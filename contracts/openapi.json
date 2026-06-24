@@ -9082,6 +9082,16 @@
             ],
             "title": "Current Phase Id"
           },
+          "framework_status": {
+            "default": "ready",
+            "enum": [
+              "building",
+              "ready",
+              "failed"
+            ],
+            "title": "Framework Status",
+            "type": "string"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -9291,6 +9301,16 @@
           "completion_pct": {
             "title": "Completion Pct",
             "type": "number"
+          },
+          "framework_status": {
+            "default": "ready",
+            "enum": [
+              "building",
+              "ready",
+              "failed"
+            ],
+            "title": "Framework Status",
+            "type": "string"
           },
           "id": {
             "format": "uuid",

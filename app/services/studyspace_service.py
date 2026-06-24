@@ -478,16 +478,17 @@ class StudySpaceService:
             )
         )
 
-        # 2. 解锁下一批 locked 节点（最多 3 个，按 sort_order）
+        # 2. 解锁下一节「课时」（只认有 kp_id 的可学单元；大章节是容器不参与解锁）。
+        #    用 kp_id IS NOT NULL 而非 depth，兼容旧扁平树(depth1 带 kp)与新分层树(depth2 课时)。
         next_nodes = await db.execute(
             select(ProjectTreeNode.id)
             .where(
                 ProjectTreeNode.project_id == project_id,
                 ProjectTreeNode.status == "locked",
-                ProjectTreeNode.depth > 0,
+                ProjectTreeNode.kp_id.isnot(None),
             )
             .order_by(ProjectTreeNode.sort_order.asc())
-            .limit(3)
+            .limit(1)
         )
         next_ids = [r[0] for r in next_nodes.fetchall()]
         if next_ids:
@@ -497,14 +498,18 @@ class StudySpaceService:
                 .values(status="available")
             )
 
-        # 3. 重算项目进度
+        # 3. 重算项目进度（分母=可学课时，不含大章节容器）
         total = await db.scalar(
             select(func.count(ProjectTreeNode.id))
-            .where(ProjectTreeNode.project_id == project_id, ProjectTreeNode.depth > 0)
+            .where(ProjectTreeNode.project_id == project_id, ProjectTreeNode.kp_id.isnot(None))
         )
         completed = await db.scalar(
             select(func.count(ProjectTreeNode.id))
-            .where(ProjectTreeNode.project_id == project_id, ProjectTreeNode.status == "completed")
+            .where(
+                ProjectTreeNode.project_id == project_id,
+                ProjectTreeNode.status == "completed",
+                ProjectTreeNode.kp_id.isnot(None),
+            )
         )
         # 项目掌握度 = 该项目所有节点锚定 KP 的平均 p_mastery（×100），无 probed KP 时留 0
         mastery_avg = await db.scalar(
