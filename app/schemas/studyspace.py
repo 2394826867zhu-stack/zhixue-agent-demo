@@ -5,7 +5,9 @@ from app.schemas.curriculum import CurriculumLessonOut
 
 
 class StartSessionRequest(BaseModel):
-    chapter_id: uuid.UUID
+    # 二选一：官方课程章节（结构化内容）或项目树节点（任意学科，AI 据节点+项目上下文开讲）。
+    chapter_id: uuid.UUID | None = None
+    tree_node_id: uuid.UUID | None = None
 
 
 class UpdateSessionRequest(BaseModel):
@@ -16,7 +18,7 @@ class UpdateSessionRequest(BaseModel):
 
 class StudySpaceSessionOut(BaseModel):
     id: uuid.UUID
-    chapter_id: uuid.UUID
+    chapter_id: uuid.UUID | None        # 树节点会话无 chapter（标题来自节点/项目）
     chapter_title: str
     lesson_title: str
     subject: str

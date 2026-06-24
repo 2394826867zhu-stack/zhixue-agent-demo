@@ -10636,14 +10636,30 @@
       "StartSessionRequest": {
         "properties": {
           "chapter_id": {
-            "format": "uuid",
-            "title": "Chapter Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chapter Id"
+          },
+          "tree_node_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tree Node Id"
           }
         },
-        "required": [
-          "chapter_id"
-        ],
         "title": "StartSessionRequest",
         "type": "object"
       },
@@ -10689,9 +10705,16 @@
             "title": "Agent Session Id"
           },
           "chapter_id": {
-            "format": "uuid",
-            "title": "Chapter Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chapter Id"
           },
           "chapter_title": {
             "title": "Chapter Title",

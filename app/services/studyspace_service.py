@@ -23,19 +23,40 @@ class StudySpaceService:
         user_id: str,
         req: StartSessionRequest,
     ) -> StudySpaceSessionOut:
-        # Verify chapter exists
-        chapter = await db.get(CurriculumChapter, req.chapter_id)
-        if not chapter:
-            raise NotFoundError("课时不存在")
-
         uid = uuid.UUID(user_id)
 
-        # v0.27 Bug-02 · 强制单 active SS session（PRD 9.3 行 638 中途退出保留进度）
-        # 如果同一 chapter 已有 active session，直接复用
+        # 二选一：官方课程章节 或 项目树节点。两者都没有 → 422 由 schema/此处兜。
+        chapter: CurriculumChapter | None = None
+        node = None
+        project_id = None
+        if req.chapter_id:
+            chapter = await db.get(CurriculumChapter, req.chapter_id)
+            if not chapter:
+                raise NotFoundError("课时不存在")
+        elif req.tree_node_id:
+            from app.models.project import ProjectTreeNode, Project
+            node = await db.get(ProjectTreeNode, req.tree_node_id)
+            if not node:
+                raise NotFoundError("项目节点不存在")
+            proj = await db.get(Project, node.project_id)
+            if not proj or str(proj.user_id) != user_id:
+                raise NotFoundError("项目节点不存在")
+            project_id = node.project_id
+            # 节点已绑定官方课程 → 退回 chapter 路径（结构化内容优先）
+            if node.curriculum_chapter_id:
+                chapter = await db.get(CurriculumChapter, node.curriculum_chapter_id)
+        else:
+            raise AppError(400, "需提供 chapter_id 或 tree_node_id", 400)
+
+        # 复用同一锚点的 active session（PRD 9.3 行 638 中途退出保留进度）
+        anchor = (
+            (StudySpaceSession.chapter_id == chapter.id) if chapter
+            else (StudySpaceSession.tree_node_id == req.tree_node_id)
+        )
         existing = await db.execute(
             select(StudySpaceSession).where(
                 StudySpaceSession.user_id == uid,
-                StudySpaceSession.chapter_id == req.chapter_id,
+                anchor,
                 StudySpaceSession.status == "active",
             )
         )
@@ -43,7 +64,7 @@ class StudySpaceService:
         if active:
             return await self._to_out(db, active, chapter)
 
-        # 其他 chapter 的 active session → 自动 paused（保证 find_active_ss_session_id 返回唯一）
+        # 其他锚点的 active session → 自动 paused（保证 find_active_ss_session_id 返回唯一）
         from sqlalchemy import update as _sql_update
         await db.execute(
             _sql_update(StudySpaceSession)
@@ -55,8 +76,10 @@ class StudySpaceService:
         )
 
         session = StudySpaceSession(
-            user_id=uuid.UUID(user_id),
-            chapter_id=req.chapter_id,
+            user_id=uid,
+            chapter_id=chapter.id if chapter else None,
+            tree_node_id=req.tree_node_id if (node and not chapter) else None,
+            project_id=project_id if (node and not chapter) else None,
             status="active",
             progress=0,
         )
@@ -367,12 +390,25 @@ class StudySpaceService:
     async def _to_out(
         self, db: AsyncSession, session: StudySpaceSession, chapter: CurriculumChapter | None
     ) -> StudySpaceSessionOut:
+        chapter_title = chapter.chapter_title if chapter else ""
+        lesson_title = chapter.lesson_title if chapter else ""
+        subject = chapter.subject if chapter else ""
+        # 树节点会话：标题来自节点 + 所属项目
+        if not chapter and session.tree_node_id:
+            from app.models.project import ProjectTreeNode, Project
+            node = await db.get(ProjectTreeNode, session.tree_node_id)
+            if node:
+                lesson_title = node.title
+                proj = await db.get(Project, node.project_id)
+                if proj:
+                    chapter_title = proj.name
+                    subject = proj.subject or ""
         return StudySpaceSessionOut(
             id=session.id,
             chapter_id=session.chapter_id,
-            chapter_title=chapter.chapter_title if chapter else "",
-            lesson_title=chapter.lesson_title if chapter else "",
-            subject=chapter.subject if chapter else "",
+            chapter_title=chapter_title,
+            lesson_title=lesson_title,
+            subject=subject,
             status=session.status,
             progress=session.progress,
             agent_session_id=session.agent_session_id,

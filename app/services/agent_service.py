@@ -168,6 +168,19 @@ async def run(
                             "subject": chapter.subject,
                             "is_key": chapter.is_key,
                         }
+                elif ss.tree_node_id:
+                    # 项目树节点会话（无官方课程）：据节点标题 + 所属项目开讲。
+                    from app.models.project import ProjectTreeNode, Project
+                    node = await db.get(ProjectTreeNode, ss.tree_node_id)
+                    if node:
+                        proj = await db.get(Project, node.project_id)
+                        studyspace_ctx = {
+                            "session_type": "lesson",
+                            "chapter_title": proj.name if proj else "",
+                            "lesson_title": node.title,
+                            "subject": (proj.subject if proj else "") or "",
+                            "is_key": node.importance >= 2,
+                        }
         except Exception:
             # StudySpace context is optional; don't break chat if it fails（P1-13 加可观测）
             logger.warning("StudySpace context load failed (continuing without it)", exc_info=True)
