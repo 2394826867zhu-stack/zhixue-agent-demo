@@ -12,7 +12,8 @@ import uuid
 import logging
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, update, delete
+import hashlib
+from sqlalchemy import select, func, update, delete, text
 from sqlalchemy.orm import selectinload
 
 from app.models.project import (
@@ -392,6 +393,13 @@ class ProjectService:
         返回插入的节点数。
         """
         proj = await self._fetch_project(db, project_id, user_id)
+
+        # F6a 并发锁：同一项目同时只允许一个生成事务。前端轮询/重试会双发 generate，
+        # 无锁时两个事务都见 count=0 → 都插入 → 重复节点（德语实测 ×4）。事务级 advisory
+        # lock 在首次 commit(节点入库后) 自动释放；后到的事务等锁→拿锁→见 count>0→直接返回。
+        # 镜像 task_service.generate_today 的做法。
+        lock_key = int(hashlib.md5(f"tree:{proj.id}".encode()).hexdigest()[:8], 16) % (2**31)
+        await db.execute(text(f"SELECT pg_advisory_xact_lock({lock_key})"))
 
         # 已有节点 → 返回已有数量（幂等：不重复生成）
         exists = await db.execute(
