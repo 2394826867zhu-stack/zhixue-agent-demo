@@ -127,7 +127,7 @@ async def _study_streak(db: AsyncSession, uid: uuid.UUID, today: date) -> int:
 
         rows = await db.execute(
             select(DailyTask.task_date).where(
-                and_(DailyTask.user_id == uid, DailyTask.is_done.is_(True))
+                and_(DailyTask.user_id == uid, DailyTask.status == "done")
             ).distinct()
         )
         done_days = {r for (r,) in rows.all()}
