@@ -28,7 +28,8 @@ class NoteService:
         """主入口：AI主动生成"""
         from app.services._origin_resolver import resolve_origin_context
         uid = uuid.UUID(user_id)
-        proj_id, origin = await resolve_origin_context(db, uid)
+        # 显式 project_id 优先（前端在项目上下文生成时传入）；否则回退活跃 SS 会话/兜底。
+        proj_id, origin = await resolve_origin_context(db, uid, explicit_project_id=data.project_id)
         note = Note(
             user_id=uid,
             title=data.topic[:50],

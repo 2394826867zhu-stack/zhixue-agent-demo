@@ -8,6 +8,9 @@ class NoteGenerateRequest(BaseModel):
     """主入口：AI主动生成"""
     topic: str
     subject: str | None = None
+    # 显式归属项目：前端在项目/课时上下文生成笔记时传入，让笔记挂到该项目（否则无活跃
+    # StudySpace 会话时会落到 project_id=None，项目笔记栏筛不出来）。
+    project_id: uuid.UUID | None = None
 
     @field_validator("topic")
     @classmethod

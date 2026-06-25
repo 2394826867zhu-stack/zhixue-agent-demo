@@ -212,9 +212,12 @@ class StudySpaceService:
         if session.tree_node_id and session.project_id:
             await self._complete_tree_node(db, session.tree_node_id, session.project_id)
 
-        # Auto-complete matching system tasks
+        # Auto-complete matching system tasks（trigger 机制，留存）
         from app.services.task_service import task_service as _task_svc
         await _task_svc.auto_complete_system_tasks(db, user_id, "lesson_complete")
+        # 闭环：学完课时 → 精确完成指向该节点的 new_lesson 每日任务（不靠死的 trigger 机制）
+        if session.tree_node_id:
+            await _task_svc.complete_lesson_tasks(db, user_id, session.tree_node_id)
 
         # v0.27 Q-04 · Agent 切换 celebrate 状态（PRD 2.1 行 167）
         try:

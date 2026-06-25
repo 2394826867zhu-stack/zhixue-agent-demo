@@ -7730,6 +7730,18 @@
       "NoteGenerateRequest": {
         "description": "主入口：AI主动生成",
         "properties": {
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
           "subject": {
             "anyOf": [
               {

@@ -215,6 +215,34 @@ class TaskService:
             await db.commit()
         return len(tasks)
 
+    async def complete_lesson_tasks(
+        self, db: AsyncSession, user_id: str, tree_node_id, *, commit: bool = True
+    ) -> int:
+        """学完某课时 → 精确完成指向该树节点的 new_lesson 每日任务（闭环：学完即任务完成）。
+
+        按 source_ref_id==tree_node_id 精确匹配（非 source=='system' 触发器——既有触发器机制
+        因 source/auto_complete_trigger 从未在写入侧赋值而恒空、形同死代码；且触发器按 trigger+
+        当天粗匹配会误完成同日其它课的任务）。source 无关，故生成的 'user' 任务也能被学完闭合。
+        """
+        uid = uuid.UUID(user_id)
+        res = await db.execute(
+            select(DailyTask).where(
+                DailyTask.user_id == uid,
+                DailyTask.task_type == "new_lesson",
+                DailyTask.source_ref_id == tree_node_id,
+                DailyTask.status != "done",
+            )
+        )
+        now = datetime.now(timezone.utc)
+        n = 0
+        for t in res.scalars().all():
+            t.status = "done"
+            t.completed_at = now
+            n += 1
+        if n and commit:
+            await db.commit()
+        return n
+
     async def delete_task(self, db: AsyncSession, task_id: str, user_id: str) -> None:
         task = await self._get_task(db, task_id, user_id)
         await db.delete(task)
