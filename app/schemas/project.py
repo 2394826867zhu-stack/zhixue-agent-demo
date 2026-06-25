@@ -80,6 +80,15 @@ class ProjectCreate(BaseModel):
     curriculum_chapter_id: uuid.UUID | None = None
     target_completion_date: datetime | None = None
     weekly_hours: float | None = None
+    # —— 项目创建体系 v3（spec §3.2）——
+    goal_type: Literal["exam", "skill", "interest", "remedial"] = "interest"
+    goal_spec: dict = {}
+    starting_mode: Literal["from_scratch", "by_self_report"] = "from_scratch"
+    starting_payload: dict = {}
+    prior_knowledge_strategy: Literal["skip", "review"] | None = None
+    mastery_depth: Literal["surface", "working", "deep"] | None = None
+    scope_mode: Literal["full_subject", "selected_topics", "prerequisites_only"] = "full_subject"
+    scope_topics: list[str] = []
 
 
 class ProjectUpdate(BaseModel):
@@ -114,6 +123,22 @@ class ProjectInitDraft(BaseModel):
     target_completion_date: datetime | None = None
     weekly_hours: float | None = None
     create_mode: Literal["user", "agent_assisted"] = "agent_assisted"
+    # —— 项目创建体系 v3（spec §3.2）——
+    goal_type: Literal["exam", "skill", "interest", "remedial"] = "interest"
+    goal_spec: dict = {}
+    starting_mode: Literal["from_scratch", "by_self_report"] = "from_scratch"
+    starting_payload: dict = {}                                    # { mastered_chapter_ids: [...] }
+    prior_knowledge_strategy: Literal["skip", "review"] | None = None
+    mastery_depth: Literal["surface", "working", "deep"] | None = None
+    scope_mode: Literal["full_subject", "selected_topics", "prerequisites_only"] = "full_subject"
+    scope_topics: list[str] = []
+
+
+class FrameworkPreviewNode(BaseModel):
+    """框架预览的真章节/课时树（v3 D9：供用户审阅 + 勾「我已掌握」）。"""
+    chapter_title: str
+    phase_name: str
+    lessons: list[dict] = []          # [{ title, kp_names: [...], difficulty }]
 
 
 class ProjectPreviewCard(BaseModel):
@@ -126,6 +151,10 @@ class ProjectPreviewCard(BaseModel):
     proposed_milestones: list[dict]   # [{ title, type, days_from_now }]
     proposed_tree_summary: dict       # { total_nodes, blue_count, purple_count, gold_count }
     estimated_total_hours: float
+    # —— v3（spec §3.2）：真框架预览 + 缓存 + 可行性 ——
+    framework_preview: list[FrameworkPreviewNode] = []   # D9：章节>课时 真树
+    framework_json: dict = {}          # 缓存完整框架，confirm 据此建树（不重生成）
+    feasibility: dict = {}             # { ratio, band, available_hours, estimated_hours, advice }
 
 
 class ProjectConfirmRequest(BaseModel):

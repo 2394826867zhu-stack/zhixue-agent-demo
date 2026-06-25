@@ -6277,6 +6277,33 @@
         "title": "FlashcardResponse",
         "type": "object"
       },
+      "FrameworkPreviewNode": {
+        "description": "框架预览的真章节/课时树（v3 D9：供用户审阅 + 勾「我已掌握」）。",
+        "properties": {
+          "chapter_title": {
+            "title": "Chapter Title",
+            "type": "string"
+          },
+          "lessons": {
+            "default": [],
+            "items": {
+              "type": "object"
+            },
+            "title": "Lessons",
+            "type": "array"
+          },
+          "phase_name": {
+            "title": "Phase Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chapter_title",
+          "phase_name"
+        ],
+        "title": "FrameworkPreviewNode",
+        "type": "object"
+      },
       "GenerateChapterNoteResponse": {
         "properties": {
           "note_id": {
@@ -8930,11 +8957,76 @@
             ],
             "title": "Curriculum Chapter Id"
           },
+          "goal_spec": {
+            "default": {},
+            "title": "Goal Spec",
+            "type": "object"
+          },
+          "goal_type": {
+            "default": "interest",
+            "enum": [
+              "exam",
+              "skill",
+              "interest",
+              "remedial"
+            ],
+            "title": "Goal Type",
+            "type": "string"
+          },
+          "mastery_depth": {
+            "anyOf": [
+              {
+                "enum": [
+                  "surface",
+                  "working",
+                  "deep"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mastery Depth"
+          },
           "name": {
             "maxLength": 120,
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "prior_knowledge_strategy": {
+            "anyOf": [
+              {
+                "enum": [
+                  "skip",
+                  "review"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prior Knowledge Strategy"
+          },
+          "scope_mode": {
+            "default": "full_subject",
+            "enum": [
+              "full_subject",
+              "selected_topics",
+              "prerequisites_only"
+            ],
+            "title": "Scope Mode",
+            "type": "string"
+          },
+          "scope_topics": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Scope Topics",
+            "type": "array"
           },
           "source": {
             "default": "user_project",
@@ -8944,6 +9036,20 @@
             ],
             "title": "Source",
             "type": "string"
+          },
+          "starting_mode": {
+            "default": "from_scratch",
+            "enum": [
+              "from_scratch",
+              "by_self_report"
+            ],
+            "title": "Starting Mode",
+            "type": "string"
+          },
+          "starting_payload": {
+            "default": {},
+            "title": "Starting Payload",
+            "type": "object"
           },
           "subject": {
             "anyOf": [
@@ -9253,14 +9359,93 @@
             "title": "Create Mode",
             "type": "string"
           },
+          "goal_spec": {
+            "default": {},
+            "title": "Goal Spec",
+            "type": "object"
+          },
+          "goal_type": {
+            "default": "interest",
+            "enum": [
+              "exam",
+              "skill",
+              "interest",
+              "remedial"
+            ],
+            "title": "Goal Type",
+            "type": "string"
+          },
           "init_context": {
             "default": {},
             "title": "Init Context",
             "type": "object"
           },
+          "mastery_depth": {
+            "anyOf": [
+              {
+                "enum": [
+                  "surface",
+                  "working",
+                  "deep"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mastery Depth"
+          },
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "prior_knowledge_strategy": {
+            "anyOf": [
+              {
+                "enum": [
+                  "skip",
+                  "review"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prior Knowledge Strategy"
+          },
+          "scope_mode": {
+            "default": "full_subject",
+            "enum": [
+              "full_subject",
+              "selected_topics",
+              "prerequisites_only"
+            ],
+            "title": "Scope Mode",
+            "type": "string"
+          },
+          "scope_topics": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Scope Topics",
+            "type": "array"
+          },
+          "starting_mode": {
+            "default": "from_scratch",
+            "enum": [
+              "from_scratch",
+              "by_self_report"
+            ],
+            "title": "Starting Mode",
+            "type": "string"
+          },
+          "starting_payload": {
+            "default": {},
+            "title": "Starting Payload",
+            "type": "object"
           },
           "subject": {
             "anyOf": [
@@ -9474,6 +9659,24 @@
           "estimated_total_hours": {
             "title": "Estimated Total Hours",
             "type": "number"
+          },
+          "feasibility": {
+            "default": {},
+            "title": "Feasibility",
+            "type": "object"
+          },
+          "framework_json": {
+            "default": {},
+            "title": "Framework Json",
+            "type": "object"
+          },
+          "framework_preview": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FrameworkPreviewNode"
+            },
+            "title": "Framework Preview",
+            "type": "array"
           },
           "proposed_milestones": {
             "items": {

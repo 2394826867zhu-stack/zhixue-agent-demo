@@ -68,7 +68,7 @@ class Project(Base):
 
     # 来源与归属
     source: Mapped[str] = mapped_column(PROJECT_SOURCE, nullable=False, server_default="user_project")
-    subject: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    subject: Mapped[str | None] = mapped_column(String(80), nullable=True)  # v3: "{category} > {subject}" 两层格式
     # 如果是官方课程派生，关联 curriculum 主章节
     curriculum_chapter_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("curriculum_chapters.id", ondelete="SET NULL"), nullable=True,
@@ -87,6 +87,28 @@ class Project(Base):
     # 学习计划参数（PRD 行 328：当前进度/希望完成时间/大事件/每周可投入）
     target_completion_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     weekly_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # ─────────────────────────────────────────
+    # 项目创建体系 v3（migration 055）— 三阶漏斗 intake
+    # 设计：docs/superpowers/specs/2026-06-25-project-creation-system-v3-design.md
+    # 全部 server_default → 存量项目零破坏（interest / from_scratch / full_subject）
+    # ─────────────────────────────────────────
+    # 第一层 · 为什么学：goal_type 定覆盖度与刚性
+    goal_type: Mapped[str] = mapped_column(String(20), nullable=False, server_default="interest")
+    # exam / skill / interest / remedial（无 prerequisite — 降为 scope_mode 表达）
+    goal_spec: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False, server_default="{}")
+    # 第二层 · 从哪开始：起点声明
+    starting_mode: Mapped[str] = mapped_column(String(20), nullable=False, server_default="from_scratch")
+    # from_scratch / by_self_report
+    starting_payload: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False, server_default="{}")
+    prior_knowledge_strategy: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # "skip" | "review" | None（from_scratch 时 None）
+    # 第三层 · 怎么学：深度 + 范围
+    mastery_depth: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # surface / working / deep（None → 按 goal_type 推断）
+    scope_mode: Mapped[str] = mapped_column(String(20), nullable=False, server_default="full_subject")
+    # full_subject / selected_topics / prerequisites_only
+    scope_topics: Mapped[list] = mapped_column(ARRAY(String), default=list, nullable=False, server_default="{}")
 
     # 完成度（流程推进）vs 掌握度（测验结果）— PRD 行 408-410 必须分离
     completion_pct: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
