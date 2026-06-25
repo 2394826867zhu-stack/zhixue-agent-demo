@@ -73,6 +73,9 @@ async def generate_framework(
             raw = await llm.generate(
                 prompt=prompt, system=SYSTEM_FRAMEWORK,
                 user_id=user_id, endpoint="framework_gen",
+                # 完整分层框架是大 JSON；4096 默认会被推理 + 输出撑爆 → 空内容/截断。
+                # 给足预算（含 DeepSeek 推理 token）+ 放宽超时（大生成 ~40-90s）。
+                max_tokens=8000, timeout=150,
             )
             data = _extract_json(raw)
             if validate_framework(data):

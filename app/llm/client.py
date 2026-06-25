@@ -96,6 +96,8 @@ class LLMClient:
         image_b64: str | None = None,
         user_id: str | None = None,
         endpoint: str | None = None,
+        max_tokens: int = 4096,
+        timeout: int = 60,
     ) -> str:
         reserved = await self._reserve_quota(user_id, endpoint)
         last_error: Exception | None = None
@@ -104,7 +106,8 @@ class LLMClient:
             if self._deepseek:
                 try:
                     content, usage = await self._call_openai_compat_with_usage(
-                        self._deepseek, settings.DEEPSEEK_MODEL, prompt, system, image_b64=image_b64
+                        self._deepseek, settings.DEEPSEEK_MODEL, prompt, system,
+                        image_b64=image_b64, max_tokens=max_tokens, timeout=timeout,
                     )
                     await self._record(user_id, settings.DEEPSEEK_MODEL, endpoint, usage, reserved=reserved)
                     reserved = 0  # 已 reconcile，finally 不再退还
@@ -128,7 +131,8 @@ class LLMClient:
             if self._openai:
                 try:
                     content, usage = await self._call_openai_compat_with_usage(
-                        self._openai, "gpt-4o", prompt, system, image_b64=image_b64
+                        self._openai, "gpt-4o", prompt, system,
+                        image_b64=image_b64, max_tokens=max_tokens, timeout=timeout,
                     )
                     await self._record(user_id, "gpt-4o", endpoint, usage, reserved=reserved)
                     reserved = 0
@@ -150,6 +154,8 @@ class LLMClient:
         prompt: str,
         system: str,
         image_b64: str | None = None,
+        max_tokens: int = 4096,
+        timeout: int = 60,
     ) -> tuple[str, dict]:
         messages = []
         if system:
@@ -166,8 +172,8 @@ class LLMClient:
         resp = await client.chat.completions.create(
             model=model,
             messages=messages,
-            max_tokens=4096,
-            timeout=60,
+            max_tokens=max_tokens,
+            timeout=timeout,
         )
         text = resp.choices[0].message.content or ""
         usage = _extract_usage(resp.usage)
