@@ -214,9 +214,16 @@ async def run(
                                     _sel(KnowledgePoint).where(KnowledgePoint.id.in_(succ_kp_ids))
                                 )).scalars().all()
                                 successors = [{"name": skp.name or ""} for skp in succ_kps]
+                        # F3 锚框架：lesson 的真实「大章节」= 父节点(depth1)标题，而非项目名——
+                        # 让教学知道自己精确处在框架的哪一章（如「发音与拼读」而非项目名「德语」）。
+                        chapter_title = proj.name if proj else ""
+                        if node.parent_id:
+                            parent_node = await db.get(ProjectTreeNode, node.parent_id)
+                            if parent_node and (parent_node.depth or 0) >= 1 and parent_node.title:
+                                chapter_title = parent_node.title
                         studyspace_ctx = {
                             "session_type": "lesson",
-                            "chapter_title": proj.name if proj else "",
+                            "chapter_title": chapter_title,
                             "lesson_title": node.title,
                             "subject": (proj.subject if proj else "") or "",
                             "is_key": node.importance >= 2,
