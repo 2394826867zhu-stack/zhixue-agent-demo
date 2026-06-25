@@ -307,7 +307,13 @@ async def run(
             classify_complexity, plan as do_plan, execute as do_execute,
             verify as do_verify, format_for_followup, MAX_REFLECT_ROUNDS,
         )
-        complexity, reason = await classify_complexity(db, user_id, message)
+        # F5 延迟治理：StudySpace 教学是单轮流式讲解，永远不需要 Plan-Execute 多步规划。
+        # 跳过分类器（否则 ≥25 字消息要付一次 ~40s DeepSeek 推理调用做分类，且"系统/全面"等
+        # 词会误判 complex → plan-execute 3+ 次串行 LLM 调用 ~2min）。教学直接走简单 ReAct。
+        if studyspace_ctx:
+            complexity, reason = "simple", "teaching_context"
+        else:
+            complexity, reason = await classify_complexity(db, user_id, message)
         if complexity == "complex":
             yield f'data: {json.dumps({"thinking": "正在规划…"}, ensure_ascii=False)}\n\n'
             current_plan = await do_plan(db, user_id, message, system[:2000])
