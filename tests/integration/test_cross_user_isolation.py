@@ -21,9 +21,11 @@ def _denied(status: int) -> bool:
 
 @pytest.mark.asyncio
 async def test_user_b_cannot_reach_user_a_resources(client: AsyncClient, db: AsyncSession, monkeypatch):
-    async def _boom(self, *a, **k):
-        raise RuntimeError("no llm in test")
-    monkeypatch.setattr("app.llm.client.LLMClient.generate", _boom)
+    async def _gen(**k):
+        return {"phases": [{"name": "基础", "weeks": 4}],
+                "chapters": [{"title": "第一章", "phase_name": "基础",
+                              "lessons": [{"title": "第一课", "kp_names": ["k"]}]}]}
+    monkeypatch.setattr("app.services.project_service.generate_framework", _gen)
 
     a = await _auth(client, "iso_a@zhiyao.ai")
     b = await _auth(client, "iso_b@zhiyao.ai")
@@ -32,7 +34,7 @@ async def test_user_b_cannot_reach_user_a_resources(client: AsyncClient, db: Asy
     a_pid = (await client.post("/v1/projects", headers=a, json={"name": "A的法语", "subject": "法语"})).json()["data"]["id"]
     await client.post(f"/v1/projects/{a_pid}/tree/generate", headers=a, json={})
     a_tree = (await client.get(f"/v1/projects/{a_pid}/tree", headers=a)).json()["data"]
-    a_node = next(n for n in a_tree if n["depth"] == 1)
+    a_node = next(n for n in a_tree if n["kp_id"])  # 可学课时（有 kp_id）
     a_kid = (await client.post("/v1/knowledge-points", headers=a, json={"name": "A的KP", "subject": "法语"})).json()["data"]["id"]
     a_sid = (await client.post("/v1/studyspace/sessions", headers=a, json={"tree_node_id": a_node["id"]})).json()["data"]["id"]
 
