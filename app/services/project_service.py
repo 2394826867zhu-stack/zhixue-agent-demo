@@ -29,8 +29,8 @@ from app.schemas.project import (
 from app.core.exceptions import NotFoundError, PermissionDeniedError, ValidationError
 from app.llm.client import LLMClient
 from app.llm.prompts.project_init import SYSTEM_PROJECT_DRAFT, PROJECT_DRAFT_FROM_DIALOG
-from app.llm.prompts.project_tree import SYSTEM_PROJECT_TREE, PROJECT_TREE_GENERATE
 from app.services.framework_service import generate_framework
+from app.services import subject_taxonomy
 
 logger = logging.getLogger(__name__)
 
@@ -428,6 +428,11 @@ class ProjectService:
         framework = await generate_framework(
             name=proj.name, subject=proj.subject, summary=proj.summary,
             weeks=total_weeks, user_id=user_id,
+            # INC-C：goal_type / mastery_depth / 领域骨架 / scope 注入富化生成
+            goal_type=proj.goal_type, mastery_depth=proj.mastery_depth,
+            domain_template=subject_taxonomy.domain_template_for(proj.subject),
+            scope_mode=proj.scope_mode, scope_topics=list(proj.scope_topics or []),
+            # feasibility_advice 留 INC-D/E 注入
         )
         if not framework:
             # 纯生成式失败 → 不退模板、不留半成品，置 failed 态（前端展示「生成失败·重试」，F2）
@@ -454,6 +459,10 @@ class ProjectService:
         from app.models.prerequisite_edge import PrerequisiteEdge
 
         _DIFF = ["blue", "purple", "gold"]
+        _DIFF_RANK = {"blue": 0, "purple": 1, "gold": 2}
+
+        def _valid_diff(v):
+            return v if isinstance(v, str) and v in _DIFF_RANK else None
 
         # 1. 用框架阶段替换旧阶段（纯生成式阶段，作废 INC-8 模板）
         await db.execute(delete(ProjectPhase).where(ProjectPhase.project_id == proj.id))
@@ -488,32 +497,37 @@ class ProjectService:
         db.add(root)
         await db.flush()
 
-        # 3. 大章节(depth1) > 小课时(depth2) + 每课 KP
+        # 3. 大章节(depth1) > 小课时(depth2) + 每课 KP（难度取 LLM 每课返回值，INC-C）
         node_count = 1
         sort = 1
-        lesson_kp_ids: list[uuid.UUID] = []  # 按课时顺序 → 顺序先修边
+        lesson_kp_ids: list[uuid.UUID] = []        # 课时顺序 → 先修兜底链
+        kp_name_to_id: dict[str, uuid.UUID] = {}   # 课时名 / kp_name → kp_id（先修边解析）
         for ch in framework.get("chapters", []):
             if not isinstance(ch, dict) or not str(ch.get("title", "")).strip():
                 continue
             ph = phase_lookup.get(ch.get("phase_name")) or default_phase
-            diff = _diff_for(ch.get("phase_name"))
+            phase_diff = _diff_for(ch.get("phase_name"))  # 缺失难度的兜底
+            raw_lessons = [ls for ls in ch.get("lessons", [])
+                           if isinstance(ls, dict) and str(ls.get("title", "")).strip()]
+            lesson_diffs = [_valid_diff(ls.get("difficulty")) or phase_diff for ls in raw_lessons]
+            # 章节(容器)难度 = 其课时里最高难度（无则 phase 兜底）
+            chap_diff = max(lesson_diffs, key=lambda d: _DIFF_RANK[d]) if lesson_diffs else phase_diff
             chap = ProjectTreeNode(
                 project_id=proj.id, parent_id=root.id, depth=1,
                 phase_id=(ph.id if ph else None), title=str(ch["title"])[:120],
-                difficulty=diff, importance=2, is_on_main_path=True,
+                difficulty=chap_diff, importance=2, is_on_main_path=True,
                 status="available", sort_order=sort,  # 章节是容器，恒 available
             )
             db.add(chap)
             await db.flush()
             node_count += 1
             sort += 1
-            for ls in ch.get("lessons", []):
-                if not isinstance(ls, dict) or not str(ls.get("title", "")).strip():
-                    continue
+            for ls, ls_diff in zip(raw_lessons, lesson_diffs):
+                optional = bool(ls.get("optional", False))
                 kp = KnowledgePoint(
                     user_id=proj.user_id, project_id=proj.id,
                     name=str(ls["title"])[:255], subject=proj.subject,
-                    difficulty_tier=diff, mastery_status="new",
+                    difficulty_tier=ls_diff, mastery_status="new",
                     notebook_origin="user_project",
                 )
                 db.add(kp)
@@ -521,13 +535,19 @@ class ProjectService:
                 lesson = ProjectTreeNode(
                     project_id=proj.id, parent_id=chap.id, depth=2,
                     phase_id=(ph.id if ph else None), kp_id=kp.id,
-                    title=str(ls["title"])[:120], difficulty=diff, importance=1,
-                    is_on_main_path=True, status="locked", sort_order=sort,
+                    title=str(ls["title"])[:120], difficulty=ls_diff, importance=1,
+                    is_on_main_path=(not optional),  # optional 课时移出主干高亮
+                    status="locked", sort_order=sort,
                 )
                 db.add(lesson)
                 node_count += 1
                 sort += 1
                 lesson_kp_ids.append(kp.id)
+                # 先修解析映射：课时名 + 该课所有 kp_names → 此 kp_id
+                kp_name_to_id[str(ls["title"]).strip()] = kp.id
+                for n in ls.get("kp_names", []) or []:
+                    if isinstance(n, str) and n.strip():
+                        kp_name_to_id.setdefault(n.strip(), kp.id)
         await db.flush()
 
         # 4. 解锁第一节课时（至少一节可学）
@@ -540,9 +560,22 @@ class ProjectService:
             if first_lesson:
                 first_lesson.status = "available"
 
-        # 5. 顺序先修边（课时链）→ 给内核 frontier 依赖链（F4 据此驱动解锁）
-        for a, b in zip(lesson_kp_ids, lesson_kp_ids[1:]):
-            db.add(PrerequisiteEdge(user_id=proj.user_id, from_kp_id=a, to_kp_id=b, confidence=0.6, source="llm"))
+        # 5. 先修边：优先框架 prereqs[]（真依赖，KP 名对 → kp_id）；无可解析则退顺序链兜底。
+        #    给内核 frontier 真依赖链（F4 据此驱动解锁，替代纯 sort_order）。
+        edge_pairs: set[tuple[uuid.UUID, uuid.UUID]] = set()
+        for pr in framework.get("prereqs", []) or []:
+            if not (isinstance(pr, (list, tuple)) and len(pr) == 2):
+                continue
+            a_id = kp_name_to_id.get(str(pr[0]).strip())
+            b_id = kp_name_to_id.get(str(pr[1]).strip())
+            # 去自环 + 去 2-环（a→b 已在则不再加 b→a）
+            if a_id and b_id and a_id != b_id and (b_id, a_id) not in edge_pairs:
+                edge_pairs.add((a_id, b_id))
+        if not edge_pairs:  # 框架无可解析先修 → 顺序链兜底（至少给内核一条依赖链）
+            edge_pairs = {(a, b) for a, b in zip(lesson_kp_ids, lesson_kp_ids[1:])}
+        for a_id, b_id in edge_pairs:
+            db.add(PrerequisiteEdge(user_id=proj.user_id, from_kp_id=a_id, to_kp_id=b_id,
+                                    confidence=0.6, source="llm"))
 
         return node_count
 

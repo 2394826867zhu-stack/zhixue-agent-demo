@@ -5,14 +5,39 @@ import pytest
 from app.services import framework_service as fs
 
 
-_VALID = {
-    "phases": [{"name": "语音与文字", "description": "发音基础", "weeks": 14}],
-    "chapters": [
-        {"title": "德语字母表", "phase_name": "语音与文字",
-         "lessons": [{"title": "元音 a/e/i/o/u 发音", "kp_names": ["元音 a", "元音 e"]}]},
-    ],
-    "prereqs": [["元音 a", "元音 e"]],
-}
+def _well_formed() -> dict:
+    """真实规模的合格框架（INC-C 后硬闸要求 total_lessons >= max(chapters, 8)）。"""
+    chapters = [
+        {"title": "德语字母表", "phase_name": "语音与文字", "lessons": [
+            {"title": "元音 a/e/i/o/u 发音", "kp_names": ["元音a", "元音e"], "difficulty": "blue"},
+            {"title": "辅音发音", "kp_names": ["辅音b", "辅音d"], "difficulty": "blue"},
+        ]},
+        {"title": "基础词汇", "phase_name": "语音与文字", "lessons": [
+            {"title": "数字与时间", "kp_names": ["数字1-100"], "difficulty": "blue"},
+            {"title": "日常问候", "kp_names": ["问候语"], "difficulty": "blue"},
+        ]},
+        {"title": "名词与冠词", "phase_name": "基础语法", "lessons": [
+            {"title": "三种性别冠词", "kp_names": ["定冠词", "不定冠词"], "difficulty": "purple"},
+            {"title": "名词复数", "kp_names": ["复数规则"], "difficulty": "purple"},
+        ]},
+        {"title": "动词变位", "phase_name": "基础语法", "lessons": [
+            {"title": "现在时变位", "kp_names": ["规则动词变位"], "difficulty": "purple"},
+            {"title": "情态动词", "kp_names": ["情态动词用法"], "difficulty": "gold"},
+        ]},
+        {"title": "句子结构", "phase_name": "基础语法", "lessons": [
+            {"title": "语序规则", "kp_names": ["框型结构"], "difficulty": "gold"},
+            {"title": "从句", "kp_names": ["从句语序"], "difficulty": "gold", "optional": True},
+        ]},
+    ]
+    return {
+        "phases": [{"name": "语音与文字", "description": "发音基础", "weeks": 4},
+                   {"name": "基础语法", "description": "语法骨架", "weeks": 10}],
+        "chapters": chapters,
+        "prereqs": [["元音a", "辅音b"], ["定冠词", "复数规则"], ["规则动词变位", "情态动词用法"]],
+    }
+
+
+_VALID = _well_formed()
 
 
 def test_validate_accepts_well_formed():
@@ -61,3 +86,36 @@ async def test_generate_all_fail_returns_none(monkeypatch):
     monkeypatch.setattr("app.llm.client.LLMClient.generate", _boom)
     out = await fs.generate_framework(name="德语", subject="德语", summary="", weeks=84)
     assert out is None, "纯生成式全失败应返回 None（调用方置 failed，不退模板）"
+
+
+def test_validate_rejects_flat_placeholder():
+    """INC-C 反扁平占位（feasibility-audit 断点①）：章节有但课时太少 → 拒。"""
+    flat = {
+        "phases": [{"name": "p"}],
+        "chapters": [
+            {"title": f"章{i}", "phase_name": "p", "lessons": [{"title": f"课{i}"}]}
+            for i in range(4)
+        ],
+    }  # 4 章 4 课 < max(chapters=4, 8)
+    assert fs.validate_framework(flat) is False
+
+
+@pytest.mark.asyncio
+async def test_generate_accepts_inc_c_params(monkeypatch):
+    """INC-C 富化签名（goal_type/mastery_depth/domain_template/scope）被接受并注入 prompt。"""
+    captured = {}
+
+    async def _gen(self, **k):
+        captured["prompt"] = k.get("prompt", "")
+        return json.dumps(_VALID, ensure_ascii=False)
+
+    monkeypatch.setattr("app.llm.client.LLMClient.generate", _gen)
+    out = await fs.generate_framework(
+        name="德语", subject="语言文学 > 法语/德语/西语", summary="",
+        weeks=14, goal_type="exam", mastery_depth="deep",
+        domain_template="语音 → 词汇 → 语法", scope_mode="full_subject",
+    )
+    assert out is not None
+    # goal_type=exam 的刚性措辞 + mastery_depth=deep 的难度分布措辞注入了 prompt
+    assert "考试备考" in captured["prompt"]
+    assert "迁移" in captured["prompt"]
