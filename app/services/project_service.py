@@ -32,6 +32,7 @@ from app.llm.prompts.project_init import SYSTEM_PROJECT_DRAFT, PROJECT_DRAFT_FRO
 from app.services.framework_service import generate_framework
 from app.services import subject_taxonomy
 from app.services import feasibility_service
+from app.services.learner_state_service import mastery_threshold
 
 logger = logging.getLogger(__name__)
 
@@ -592,6 +593,19 @@ class ProjectService:
         db.add(root)
         await db.flush()
 
+        # INC-F 先验知识播种准备：by_self_report 勾掌握的章节 → 按 strategy 播种节点 + KP（喂 L2）
+        mastered_titles: set[str] = set()
+        strategy = proj.prior_knowledge_strategy or "review"
+        if proj.starting_mode == "by_self_report":
+            mastered_titles = {
+                str(t).strip()
+                for t in (proj.starting_payload or {}).get("mastered_chapter_ids", [])
+                if str(t).strip()
+            }
+        _thr = mastery_threshold(proj.mastery_depth)   # 项目掌握线（按深度，spec §5.2）
+        skip_pm = round(max(0.85, _thr), 2)            # skip：至少清掌握线
+        review_pm = round(max(0.6, _thr - 0.15), 2)    # review：略低于掌握线，需复习巩固
+
         # 3. 大章节(depth1) > 小课时(depth2) + 每课 KP（难度取 LLM 每课返回值，INC-C）
         node_count = 1
         sort = 1
@@ -617,12 +631,23 @@ class ProjectService:
             await db.flush()
             node_count += 1
             sort += 1
+            ch_mastered = str(ch["title"]).strip() in mastered_titles
             for ls, ls_diff in zip(raw_lessons, lesson_diffs):
                 optional = bool(ls.get("optional", False))
+                # INC-F：勾掌握章节按 strategy 播种（skip→completed / review→available + p_mastery 种子）
+                if ch_mastered and strategy == "skip":
+                    kp_status, kp_pm = "mastered", skip_pm
+                    ls_status, ls_comp, ls_mast = "completed", 1.0, skip_pm
+                elif ch_mastered:
+                    kp_status, kp_pm = "reviewing", review_pm
+                    ls_status, ls_comp, ls_mast = "available", 0.0, review_pm
+                else:
+                    kp_status, kp_pm = "new", None
+                    ls_status, ls_comp, ls_mast = "locked", 0.0, 0.0
                 kp = KnowledgePoint(
                     user_id=proj.user_id, project_id=proj.id,
                     name=str(ls["title"])[:255], subject=proj.subject,
-                    difficulty_tier=ls_diff, mastery_status="new",
+                    difficulty_tier=ls_diff, mastery_status=kp_status, p_mastery=kp_pm,
                     notebook_origin="user_project",
                 )
                 db.add(kp)
@@ -632,7 +657,9 @@ class ProjectService:
                     phase_id=(ph.id if ph else None), kp_id=kp.id,
                     title=str(ls["title"])[:120], difficulty=ls_diff, importance=1,
                     is_on_main_path=(not optional),  # optional 课时移出主干高亮
-                    status="locked", sort_order=sort,
+                    status=ls_status, completion_pct=ls_comp, mastery_pct=ls_mast,
+                    sort_order=sort,
+                    completed_at=(datetime.now(timezone.utc) if ls_status == "completed" else None),
                 )
                 db.add(lesson)
                 node_count += 1
@@ -645,15 +672,16 @@ class ProjectService:
                         kp_name_to_id.setdefault(n.strip(), kp.id)
         await db.flush()
 
-        # 4. 解锁第一节课时（至少一节可学）
+        # 4. 确保至少一节可学：解锁首个仍 locked 的课时（INC-F seeded 的 completed/available 保留）
         if lesson_kp_ids:
-            first_lesson = (await db.execute(
+            first_locked = (await db.execute(
                 select(ProjectTreeNode)
-                .where(ProjectTreeNode.project_id == proj.id, ProjectTreeNode.depth == 2)
+                .where(ProjectTreeNode.project_id == proj.id, ProjectTreeNode.depth == 2,
+                       ProjectTreeNode.status == "locked")
                 .order_by(ProjectTreeNode.sort_order.asc()).limit(1)
             )).scalar_one_or_none()
-            if first_lesson:
-                first_lesson.status = "available"
+            if first_locked:
+                first_locked.status = "available"
 
         # 5. 先修边：优先框架 prereqs[]（真依赖，KP 名对 → kp_id）；无可解析则退顺序链兜底。
         #    给内核 frontier 真依赖链（F4 据此驱动解锁，替代纯 sort_order）。

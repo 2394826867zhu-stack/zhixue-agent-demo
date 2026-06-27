@@ -20,6 +20,17 @@ from app.models.exam import Exam
 from app.models.prerequisite_edge import PrerequisiteEdge
 from app.services import graph_service
 
+# 项目掌握阈值（mastery_depth → p_mastery 完成线，spec §5.2）。
+# 治理铁律：这是 L2 完成判断的**输入参数**，不是另立完成闸——L2 仍是"算不算完"的唯一判定方。
+# 当前消费方：项目创建的先验知识播种（按项目深度定 seed mastery）。
+# L2 ready_to_complete 对它的消费待 kernel 完成判断逻辑成型（governance 已 defer 该机制）。
+MASTERY_THRESHOLDS = {"surface": 0.5, "working": 0.7, "deep": 0.9}
+
+
+def mastery_threshold(mastery_depth: str | None) -> float:
+    """mastery_depth → 完成 p_mastery 阈值（None → working=0.7）。"""
+    return MASTERY_THRESHOLDS.get(mastery_depth or "working", 0.7)
+
 logger = logging.getLogger(__name__)
 
 _MASTERED_THRESHOLD = 0.6  # 与 graph_service.learnable_frontier 默认一致
