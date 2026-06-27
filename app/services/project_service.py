@@ -31,6 +31,7 @@ from app.llm.client import LLMClient
 from app.llm.prompts.project_init import SYSTEM_PROJECT_DRAFT, PROJECT_DRAFT_FROM_DIALOG
 from app.services.framework_service import generate_framework
 from app.services import subject_taxonomy
+from app.services import feasibility_service
 
 logger = logging.getLogger(__name__)
 
@@ -425,6 +426,17 @@ class ProjectService:
 
         # F1b 纯生成式知识框架（弃模板/弃官方背书）：LLM 为这个项目量身生成
         # 阶段 + 大章节(depth1) > 小课时(depth2) + 每课 KP + 顺序先修边。
+        # INC-D 可行性：生成前粗估节点数/耗时 → 注入 prompt 调深度（soft，不拦截）
+        _feas = feasibility_service.estimate_feasibility(
+            estimated_hours=feasibility_service.estimate_hours_rough(
+                feasibility_service.estimate_node_count(
+                    proj.goal_type, proj.scope_mode, proj.mastery_depth),
+                proj.mastery_depth,
+            ),
+            weekly_hours=proj.weekly_hours,
+            remaining_weeks_val=feasibility_service.remaining_weeks(
+                proj.target_completion_date, default=total_weeks),
+        )
         framework = await generate_framework(
             name=proj.name, subject=proj.subject, summary=proj.summary,
             weeks=total_weeks, user_id=user_id,
@@ -432,7 +444,7 @@ class ProjectService:
             goal_type=proj.goal_type, mastery_depth=proj.mastery_depth,
             domain_template=subject_taxonomy.domain_template_for(proj.subject),
             scope_mode=proj.scope_mode, scope_topics=list(proj.scope_topics or []),
-            # feasibility_advice 留 INC-D/E 注入
+            feasibility_advice=feasibility_service.feasibility_advice_for_prompt(_feas["band"]),  # INC-D
         )
         if not framework:
             # 纯生成式失败 → 不退模板、不留半成品，置 failed 态（前端展示「生成失败·重试」，F2）
