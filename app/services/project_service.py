@@ -24,7 +24,7 @@ from app.models.note import Note
 from app.schemas.project import (
     ProjectCreate, ProjectUpdate, ProjectReorderRequest,
     ProjectInitDraft, ProjectPreviewCard, ProjectConfirmRequest,
-    ProjectDataSummary,
+    ProjectDataSummary, FrameworkPreviewNode,
 )
 from app.core.exceptions import NotFoundError, PermissionDeniedError, ValidationError
 from app.llm.client import LLMClient
@@ -119,6 +119,42 @@ def _build_phases_for_tone(tone: str) -> list[tuple[str, str, int]]:
     return _TONE_PHASES.get(tone, _TONE_PHASES["default"])
 
 
+_PREVIEW_DIFFS = {"blue", "purple", "gold"}
+
+
+def _framework_to_preview(framework: dict) -> tuple[list[FrameworkPreviewNode], dict]:
+    """框架 dict → (framework_preview 章节/课时列表, tree_summary 难度计数)。INC-E。"""
+    nodes: list[FrameworkPreviewNode] = []
+    blue = purple = gold = 0
+    for ch in framework.get("chapters", []):
+        if not isinstance(ch, dict):
+            continue
+        lessons_out = []
+        for ls in ch.get("lessons", []) or []:
+            if not isinstance(ls, dict) or not str(ls.get("title", "")).strip():
+                continue
+            d = ls.get("difficulty") if ls.get("difficulty") in _PREVIEW_DIFFS else "blue"
+            lessons_out.append({
+                "title": str(ls.get("title", "")),
+                "kp_names": list(ls.get("kp_names", []) or []),
+                "difficulty": d,
+            })
+            if d == "blue":
+                blue += 1
+            elif d == "purple":
+                purple += 1
+            else:
+                gold += 1
+        nodes.append(FrameworkPreviewNode(
+            chapter_title=str(ch.get("title", "")),
+            phase_name=str(ch.get("phase_name", "")),
+            lessons=lessons_out,
+        ))
+    summary = {"total_nodes": blue + purple + gold,
+               "blue_count": blue, "purple_count": purple, "gold_count": gold}
+    return nodes, summary
+
+
 class ProjectService:
 
     # ── 列表 / 详情 ─────────────────────────────────────────────────────
@@ -184,6 +220,12 @@ class ProjectService:
             weekly_hours=data.weekly_hours,
             sort_order=next_sort,
             started_at=datetime.now(timezone.utc),
+            # v3 intake 字段（INC-E：快路径也持久化，/tree/generate 据此富化生成）
+            goal_type=data.goal_type, goal_spec=data.goal_spec,
+            starting_mode=data.starting_mode, starting_payload=data.starting_payload,
+            prior_knowledge_strategy=data.prior_knowledge_strategy,
+            mastery_depth=data.mastery_depth, scope_mode=data.scope_mode,
+            scope_topics=list(data.scope_topics or []),
         )
         db.add(proj)
         await db.flush()
@@ -209,48 +251,76 @@ class ProjectService:
     async def create_from_draft(
         self, db: AsyncSession, user_id: str, draft: ProjectInitDraft,
     ) -> ProjectPreviewCard:
-        """根据 Agent 整理的 draft 计算 preview card（不入库）。
+        """INC-E：/preview → 跑 F1 生成真框架 + 可行性 → preview card（不入库）。
 
-        PRD 行 333：用户点击确认之前必须看到 Agent 理解的项目骨架。
+        框架缓存进 card.framework_json，供 /confirm 据此建树（不重生成）。这是 ~30s 加载窗
+        （D9 两段确认的第一段）。生成失败 → framework_preview 空（前端检测 → 重试）。
         """
-        # 按学科调性生成阶段预览（INC-8 · 2026-06-24）
-        tone = _detect_tone(draft.subject, "user_project", draft.summary if hasattr(draft, 'summary') else None)
-        phase_templates = _build_phases_for_tone(tone)
-        phases = [
-            {"name": name, "description": desc, "est_weeks": max(1, round(days / 7))}
-            for name, desc, days in phase_templates
-        ]
-        # 关键事件初版只埋入目标完成日期
+        rem_weeks = feasibility_service.remaining_weeks(draft.target_completion_date, default=12)
+        # 生成前粗估 → feasibility_advice 注入 F1
+        pre_feas = feasibility_service.estimate_feasibility(
+            estimated_hours=feasibility_service.estimate_hours_rough(
+                feasibility_service.estimate_node_count(
+                    draft.goal_type, draft.scope_mode, draft.mastery_depth),
+                draft.mastery_depth),
+            weekly_hours=draft.weekly_hours, remaining_weeks_val=rem_weeks)
+        framework = await generate_framework(
+            name=draft.name, subject=draft.subject, summary=draft.summary,
+            weeks=int(rem_weeks), user_id=user_id,
+            goal_type=draft.goal_type, mastery_depth=draft.mastery_depth,
+            domain_template=subject_taxonomy.domain_template_for(draft.subject),
+            scope_mode=draft.scope_mode, scope_topics=list(draft.scope_topics or []),
+            feasibility_advice=feasibility_service.feasibility_advice_for_prompt(pre_feas["band"]),
+        )
+        if framework and framework.get("chapters"):
+            preview_nodes, tree_summary = _framework_to_preview(framework)
+            est_hours = feasibility_service.estimate_hours_from_counts(
+                tree_summary["blue_count"], tree_summary["purple_count"], tree_summary["gold_count"])
+            phases = [
+                {"name": str(p.get("name", "")), "description": str(p.get("description", "")),
+                 "est_weeks": max(1, int(p.get("weeks", 4) or 4))}
+                for p in framework.get("phases", [])
+                if isinstance(p, dict) and str(p.get("name", "")).strip()
+            ]
+        else:
+            # 生成失败：空框架（前端检测 framework_preview 空 → 重试），phases 退调性模板供展示
+            framework = {}
+            preview_nodes, tree_summary = [], {"total_nodes": 0, "blue_count": 0, "purple_count": 0, "gold_count": 0}
+            est_hours = 0.0
+            tone = _detect_tone(draft.subject, "user_project", draft.summary)
+            phases = [{"name": n, "description": d, "est_weeks": max(1, round(days / 7))}
+                      for n, d, days in _build_phases_for_tone(tone)]
+        feas = feasibility_service.estimate_feasibility(
+            estimated_hours=est_hours, weekly_hours=draft.weekly_hours, remaining_weeks_val=rem_weeks)
         milestones = []
         if draft.target_completion_date:
             milestones.append({
-                "title": "项目截止",
-                "type": "deadline",
+                "title": "项目截止", "type": "deadline",
                 "days_from_now": (draft.target_completion_date - datetime.now(timezone.utc)).days,
             })
         return ProjectPreviewCard(
             draft=draft,
             proposed_phases=phases,
             proposed_milestones=milestones,
-            proposed_tree_summary={
-                "total_nodes": 0,  # Agent 后续填充
-                "blue_count": 0,
-                "purple_count": 0,
-                "gold_count": 0,
-            },
-            estimated_total_hours=(draft.weekly_hours or 5) * 6,
+            proposed_tree_summary=tree_summary,
+            estimated_total_hours=round(est_hours or (draft.weekly_hours or 5) * 6, 1),
+            framework_preview=preview_nodes,
+            framework_json=framework,
+            feasibility=feas,
         )
 
     async def confirm_preview(
         self, db: AsyncSession, user_id: str, req: ProjectConfirmRequest,
     ) -> Project:
-        """用户确认 preview 后正式生成项目 + phases + milestones。
+        """INC-E：用户确认 → 落库 project（全 v3 字段）+ 从缓存框架建树（不重 LLM）。
 
-        PRD 行 339：Agent 根据信息进行全面项目初始化，生成结构/周期/时间线/树/初始知识模型/推荐顺序/测验规划。
-        Tree 节点由 Agent 后续调用 project_tree_service 添加（PRD 9.1 行 621 节点不允许用户手动新增）。
+        framework_json 在 → _build_tree_from_framework（建 phases + 树 + 先修边，advisory lock
+        防双确认重复，H1）；无 → 退调性 phases + framework_status=failed（preview 生成失败仍确认时，
+        供 /tree/generate 重试）。PRD 行 339 全面初始化在此一次完成（不再解耦到 /tree/generate）。
         """
         uid = uuid.UUID(user_id)
-        draft = req.preview.draft
+        card = req.preview
+        draft = card.draft
 
         max_sort = await db.execute(
             select(func.coalesce(func.max(Project.sort_order), -1)).where(Project.user_id == uid)
@@ -268,29 +338,19 @@ class ProjectService:
             init_context=draft.init_context,
             sort_order=next_sort,
             started_at=datetime.now(timezone.utc),
+            # v3 intake 字段（INC-E）
+            goal_type=draft.goal_type, goal_spec=draft.goal_spec,
+            starting_mode=draft.starting_mode, starting_payload=draft.starting_payload,
+            prior_knowledge_strategy=draft.prior_knowledge_strategy,
+            mastery_depth=draft.mastery_depth, scope_mode=draft.scope_mode,
+            scope_topics=list(draft.scope_topics or []),
         )
         db.add(proj)
         await db.flush()  # 拿到 proj.id
 
-        # phases
         now = datetime.now(timezone.utc)
-        cursor = now
-        for idx, p in enumerate(req.preview.proposed_phases):
-            weeks = int(p.get("est_weeks", 2))
-            end = cursor + timedelta(weeks=weeks)
-            db.add(ProjectPhase(
-                project_id=proj.id,
-                name=p["name"],
-                description=p.get("description", ""),
-                start_date=cursor,
-                end_date=end,
-                sort_order=idx,
-                is_current=(idx == 0),
-            ))
-            cursor = end
-
-        # milestones
-        for m in req.preview.proposed_milestones:
+        # milestones（不依赖框架）
+        for m in card.proposed_milestones:
             event = now + timedelta(days=int(m.get("days_from_now", 30)))
             db.add(ProjectMilestone(
                 project_id=proj.id,
@@ -299,6 +359,29 @@ class ProjectService:
                 milestone_type=m.get("type", "custom"),
                 event_date=event,
             ))
+
+        framework = card.framework_json or {}
+        if framework.get("chapters"):
+            # advisory lock 防双确认重复建树（H1）
+            lock_key = int(hashlib.md5(f"tree:{proj.id}".encode()).hexdigest()[:8], 16) % (2**31)
+            await db.execute(text(f"SELECT pg_advisory_xact_lock({lock_key})"))
+            # 从缓存框架建 phases + 树 + 先修边（不重 LLM）
+            await self._build_tree_from_framework(db, proj, framework)
+            # INC-F：prior_knowledge 播种（mastered_chapter_ids → status/p_mastery）后续补
+            proj.framework_status = "ready"
+        else:
+            # 无缓存框架（NL/onboarding 路径，或 preview 生成失败仍确认）→ 退调性 phases，树延后。
+            # **不强制 failed**：保持旧 ready 默认（onboarding D10 不在本轮改），树由 /tree/generate 建
+            # （该路径 generate 失败时才置 failed，见 generate_tree_nodes）。
+            cursor = now
+            for idx, p in enumerate(card.proposed_phases):
+                weeks = int(p.get("est_weeks", 2))
+                end = cursor + timedelta(weeks=weeks)
+                db.add(ProjectPhase(
+                    project_id=proj.id, name=p["name"], description=p.get("description", ""),
+                    start_date=cursor, end_date=end, sort_order=idx, is_current=(idx == 0),
+                ))
+                cursor = end
 
         await db.commit()
         # 端点用 ProjectListItem.model_validate(proj) 会同步访问 proj.phases，
