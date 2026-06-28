@@ -20870,7 +20870,7 @@
     },
     "/v1/projects/{project_id}/tree/generate": {
       "post": {
-        "description": "PRD 9.1 行 621：节点由 Agent 自动添加。\n幂等：已有节点则跳过返回 0。",
+        "description": "PRD 9.1 行 621：节点由 Agent 自动添加。幂等：已有节点则跳过返回。\n**INC-J**：`?rebuild=true` 清旧树 + 项目 KP（级联）后重新生成（破坏性，前端二次确认）。",
         "operationId": "generate_tree_v1_projects__project_id__tree_generate_post",
         "parameters": [
           {
@@ -20880,6 +20880,16 @@
             "schema": {
               "title": "Project Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rebuild",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Rebuild",
+              "type": "boolean"
             }
           }
         ],
@@ -20910,7 +20920,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "LLM 生成树节点（项目创建后由 Agent 调用）",
+        "summary": "LLM 生成树节点（含 INC-J 重建框架）",
         "tags": [
           "项目系统"
         ]

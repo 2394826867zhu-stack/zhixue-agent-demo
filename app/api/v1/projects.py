@@ -217,16 +217,17 @@ async def get_data(
 
 # ── 树状路径 ────────────────────────────────────────────────────────
 
-@router.post("/{project_id}/tree/generate", summary="LLM 生成树节点（项目创建后由 Agent 调用）", response_model=Envelope[TreeGenerateResult])
+@router.post("/{project_id}/tree/generate", summary="LLM 生成树节点（含 INC-J 重建框架）", response_model=Envelope[TreeGenerateResult])
 async def generate_tree(
     project_id: str,
+    rebuild: bool = False,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """PRD 9.1 行 621：节点由 Agent 自动添加。
-    幂等：已有节点则跳过返回 0。
+    """PRD 9.1 行 621：节点由 Agent 自动添加。幂等：已有节点则跳过返回。
+    **INC-J**：`?rebuild=true` 清旧树 + 项目 KP（级联）后重新生成（破坏性，前端二次确认）。
     """
-    count = await project_service.generate_tree_nodes(db, project_id, str(user.id))
+    count = await project_service.generate_tree_nodes(db, project_id, str(user.id), rebuild=rebuild)
     return ok({"nodes_added": count})
 
 

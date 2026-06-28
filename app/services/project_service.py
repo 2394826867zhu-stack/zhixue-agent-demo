@@ -501,7 +501,7 @@ class ProjectService:
     # ── LLM 驱动 · 生成树节点 ───────────────────────────────────────────
 
     async def generate_tree_nodes(
-        self, db: AsyncSession, project_id: str, user_id: str,
+        self, db: AsyncSession, project_id: str, user_id: str, rebuild: bool = False,
     ) -> int:
         """项目确认创建后，由 Agent 调用此方法填充树节点。
 
@@ -516,6 +516,18 @@ class ProjectService:
         # 镜像 task_service.generate_today 的做法。
         lock_key = int(hashlib.md5(f"tree:{proj.id}".encode()).hexdigest()[:8], 16) % (2**31)
         await db.execute(text(f"SELECT pg_advisory_xact_lock({lock_key})"))
+
+        if rebuild:
+            # INC-J「重建框架」：清旧树 + 项目生成的 KP（级联其闪卡/错题/先修边 ondelete=CASCADE）
+            # → 重新生成。破坏性（重置进度），前端走二次确认弹窗。intake 字段锁定不变 = 重 roll LLM。
+            from app.models.knowledge_point import KnowledgePoint
+            await db.execute(delete(ProjectTreeNode).where(ProjectTreeNode.project_id == proj.id))
+            await db.execute(delete(KnowledgePoint).where(
+                KnowledgePoint.project_id == proj.id,
+                KnowledgePoint.notebook_origin == "user_project",
+            ))
+            await db.flush()
+            proj.framework_status = "building"
 
         # 已有节点 → 返回已有数量（幂等：不重复生成）
         exists = await db.execute(
