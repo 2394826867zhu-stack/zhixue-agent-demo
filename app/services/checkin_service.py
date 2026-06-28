@@ -315,4 +315,6 @@ async def _post_checkin_stars(user_id: str) -> None:
                 description=f"连续打卡第{recent_days}天",
             )
     except Exception:
-        pass
+        # P1-10：发星失败不能再静默吞掉（旧 `pass` 让 140 星静默丢失且零可观测）。
+        # 唯一约束冲突属预期（防重复发星），其余为真实故障，统一暴露便于排查。
+        logger.warning("连续打卡发星失败（streak award）", exc_info=True)

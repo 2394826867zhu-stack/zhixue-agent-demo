@@ -186,6 +186,8 @@ class LLMClient:
             "model": "claude-opus-4-7",
             "max_tokens": 4096,
             "messages": [{"role": "user", "content": prompt}],
+            # P2-6：备用 LLM 也必须有超时上限，否则 Anthropic 挂起会无界占用（叠加上层持连接放大）。
+            "timeout": 60.0,
         }
         if system:
             kwargs["system"] = system

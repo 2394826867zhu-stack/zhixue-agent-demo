@@ -353,11 +353,22 @@ class ProjectService:
 
         now = datetime.now(timezone.utc)
         # milestones（不依赖框架）
+        # P1-12：milestone 来自 LLM/客户端回传，字段可能缺失或畸形——全部用 .get 兜底，
+        # 缺 title 的项跳过、days_from_now 非数回退 30，避免单条畸形导致 confirm 整体 500。
         for m in card.proposed_milestones:
-            event = now + timedelta(days=int(m.get("days_from_now", 30)))
+            if not isinstance(m, dict):
+                continue
+            title = (m.get("title") or "").strip()
+            if not title:
+                continue
+            try:
+                days = int(m.get("days_from_now", 30))
+            except (TypeError, ValueError):
+                days = 30
+            event = now + timedelta(days=days)
             db.add(ProjectMilestone(
                 project_id=proj.id,
-                title=m["title"],
+                title=title,
                 description=m.get("description", ""),
                 milestone_type=m.get("type", "custom"),
                 event_date=event,

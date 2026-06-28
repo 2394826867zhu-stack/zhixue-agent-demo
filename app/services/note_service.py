@@ -2,7 +2,7 @@ import uuid
 import os
 import base64
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -234,6 +234,9 @@ class NoteService:
                         card_type=card.get("card_type", "concept"),
                         front=card.get("front", ""),
                         back=card.get("back", ""),
+                        # P1-1：新卡 due 设 today+1（24h 首复），与 fsrs_service.create_card 口径一致。
+                        # 原先漏传 → 落模型 default=today → 当天即"到期"挤进当日复习任务。
+                        due_date=date.today() + timedelta(days=1),
                         # v0.27 Q-01 Q-02 · Flashcard 继承 KP 的 project_id + notebook_origin
                         project_id=kp.project_id,
                         notebook_origin=kp.notebook_origin,

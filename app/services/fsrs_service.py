@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime, date, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,6 +7,8 @@ from sqlalchemy import select, and_
 from app.models.flashcard import Flashcard
 from app.models.knowledge_point import KnowledgePoint
 from app.core.exceptions import NotFoundError, PermissionDeniedError
+
+logger = logging.getLogger(__name__)
 
 # py-fsrs rating mapping: 1→Again 2→Hard 3→Good 4→Easy
 RATING_MAP = {1: 1, 2: 2, 3: 3, 4: 4}
@@ -51,34 +54,41 @@ def _fsrs_schedule(card: Flashcard, rating: int) -> dict:
             "interval_days": max(interval, 1),
         }
 
-    except (ImportError, Exception):
-        # Fallback: simplified SM-2-style calculation
-        stability = card.stability
-        difficulty = card.difficulty
+    except ImportError:
+        # py-fsrs 未安装是预期内的兜底（部署可不带该依赖），info 级即可。
+        logger.info("py-fsrs 未安装，使用 SM-2 兜底调度")
+    except Exception:
+        # P1-5：真实调度异常不能再被静默吞掉退化成 SM-2——暴露出来以便排查
+        # （py-fsrs 版本升级 / State 映射不上 / 字段缺失等）。
+        logger.exception("py-fsrs 调度失败，降级 SM-2 兜底（请排查 py-fsrs 版本/卡状态映射）")
 
-        if rating == 1:  # Again
-            stability = max(stability * 0.2, 1.0)
-            difficulty = min(difficulty + 1.0, 10.0)
-        elif rating == 2:  # Hard
-            stability = stability * 0.8
-            difficulty = min(difficulty + 0.5, 10.0)
-        elif rating == 3:  # Good
-            stability = stability * 2.0
-        else:  # Easy
-            stability = stability * 3.0
-            difficulty = max(difficulty - 0.5, 1.0)
+    # Fallback: simplified SM-2-style calculation（仅当上面 except 触发、未 return 时到达）
+    stability = card.stability
+    difficulty = card.difficulty
 
-        interval = max(round(stability), 1)
-        new_due = date.today() + timedelta(days=interval)
-        state = "New" if card.review_count == 0 else ("Learning" if stability < 7 else "Review")
+    if rating == 1:  # Again
+        stability = max(stability * 0.2, 1.0)
+        difficulty = min(difficulty + 1.0, 10.0)
+    elif rating == 2:  # Hard
+        stability = stability * 0.8
+        difficulty = min(difficulty + 0.5, 10.0)
+    elif rating == 3:  # Good
+        stability = stability * 2.0
+    else:  # Easy
+        stability = stability * 3.0
+        difficulty = max(difficulty - 0.5, 1.0)
 
-        return {
-            "stability": round(stability, 4),
-            "difficulty": round(difficulty, 4),
-            "due_date": new_due,
-            "fsrs_state": state,
-            "interval_days": interval,
-        }
+    interval = max(round(stability), 1)
+    new_due = date.today() + timedelta(days=interval)
+    state = "New" if card.review_count == 0 else ("Learning" if stability < 7 else "Review")
+
+    return {
+        "stability": round(stability, 4),
+        "difficulty": round(difficulty, 4),
+        "due_date": new_due,
+        "fsrs_state": state,
+        "interval_days": interval,
+    }
 
 
 class FSRSService:
