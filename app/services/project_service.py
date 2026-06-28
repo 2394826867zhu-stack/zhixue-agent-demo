@@ -24,11 +24,13 @@ from app.models.note import Note
 from app.schemas.project import (
     ProjectCreate, ProjectUpdate, ProjectReorderRequest,
     ProjectInitDraft, ProjectPreviewCard, ProjectConfirmRequest,
-    ProjectDataSummary, FrameworkPreviewNode,
+    ProjectDataSummary, FrameworkPreviewNode, ProjectDraftExtraction,
 )
 from app.core.exceptions import NotFoundError, PermissionDeniedError, ValidationError
 from app.llm.client import LLMClient
-from app.llm.prompts.project_init import SYSTEM_PROJECT_DRAFT, PROJECT_DRAFT_FROM_DIALOG
+from app.llm.prompts.project_init import (
+    SYSTEM_PROJECT_DRAFT, PROJECT_DRAFT_FROM_DIALOG, SYSTEM_DRAFT_EXTRACT, DRAFT_EXTRACT,
+)
 from app.services.framework_service import generate_framework
 from app.services import subject_taxonomy
 from app.services import feasibility_service
@@ -467,6 +469,34 @@ class ProjectService:
                 init_context={"user_raw": dialog[:500]},
             )
             return await self.create_from_draft(db, user_id, fallback_draft)
+
+    async def extract_draft_fields(
+        self, db: AsyncSession, user_id: str, dialog: str,
+    ) -> ProjectDraftExtraction:
+        """INC-I：一句话 NL → 带置信度字段（预填漏斗）。**只提取不创建**（spec §11.6）。
+
+        安全规则在 prompt 强制（保守 goal_type / 日期不推断 / subject 映射）；置信门控在前端。
+        空输入 / 提取失败 → 空 fields + warning（200 兜底，绝不 500，对齐冷启动诚实兜底）。
+        """
+        if not dialog or not dialog.strip():
+            return ProjectDraftExtraction(fields={}, warnings=[])
+        llm = LLMClient()
+        prompt = DRAFT_EXTRACT.format(dialog=dialog[:1000])
+        try:
+            raw = await llm.generate(
+                prompt=prompt, system=SYSTEM_DRAFT_EXTRACT,
+                user_id=user_id, endpoint="project.extract_fields",
+            )
+            data = _extract_json(raw)
+            fields = data.get("fields") if isinstance(data, dict) else None
+            warnings = data.get("warnings") if isinstance(data, dict) else None
+            return ProjectDraftExtraction(
+                fields=fields if isinstance(fields, dict) else {},
+                warnings=warnings if isinstance(warnings, list) else [],
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("extract_draft_fields failed: %s", e)
+            return ProjectDraftExtraction(fields={}, warnings=["无法从输入中识别学习目标，请手动填写"])
 
     # ── LLM 驱动 · 生成树节点 ───────────────────────────────────────────
 

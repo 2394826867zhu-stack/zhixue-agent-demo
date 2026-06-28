@@ -12,7 +12,7 @@ from app.schemas.project import (
     ProjectCreate, ProjectUpdate, ProjectReorderRequest,
     ProjectInitDraft, ProjectPreviewCard, ProjectConfirmRequest,
     ProjectListItem, ProjectListResponse, ProjectDetail,
-    ProjectDataSummary,
+    ProjectDataSummary, ProjectDraftExtraction,
     TreeNodeOut, TreeNodeBubble,
     PhaseOut, MilestoneOut, PhaseSummaryItem,
 )
@@ -145,20 +145,18 @@ async def preview_from_dialog(
     return ok(preview.model_dump(mode="json"))
 
 
-@router.post("/from-agent-dialog/llm-preview", summary="Agent 对话式创建 · LLM 整理自然语言", response_model=Envelope[ProjectPreviewCard | None])
+@router.post("/from-agent-dialog/llm-preview", summary="NL 快速预填 · 提取带置信度字段（INC-I）", response_model=Envelope[ProjectDraftExtraction])
 async def llm_preview_from_dialog(
     body: dict,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """用户自然语言对话 → LLM 整理 → 结构化预览卡。
-    PRD 9.2 行 624：Agent 把用户表达整理为结构化项目描述。
+    """用户一句话 → LLM 提取带置信度字段，预填三阶漏斗（INC-I，spec §10）。**只提取不创建**。
+    安全规则在 prompt 强制（保守 goal_type / 日期不推断 / subject 映射）；置信门控在前端。
     """
     dialog = (body or {}).get("dialog") or ""
-    if not dialog.strip():
-        return ok(None)
-    preview = await project_service.draft_from_dialog(db, str(user.id), dialog)
-    return ok(preview.model_dump(mode="json"))
+    extraction = await project_service.extract_draft_fields(db, str(user.id), dialog)
+    return ok(extraction.model_dump(mode="json"))
 
 
 @router.post("/from-agent-dialog/confirm", summary="Agent 对话式创建 · 确认生成项目", response_model=Envelope[ProjectListItem])

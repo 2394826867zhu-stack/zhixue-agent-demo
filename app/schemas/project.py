@@ -162,6 +162,16 @@ class ProjectConfirmRequest(BaseModel):
     preview: ProjectPreviewCard
 
 
+class ProjectDraftExtraction(BaseModel):
+    """NL 快速预填提取结果（INC-I）。
+
+    fields: { 字段名: {value, confidence(0-1)} }，前端按置信度门控预填漏斗
+    （≥0.85 填+badge / 0.70-0.85 填+高亮 / <0.70 留空）。warnings: 需用户确认的提示。
+    """
+    fields: dict = {}
+    warnings: list[str] = []
+
+
 # ─────────────────────────────────────────
 # Project Out（列表 / 详情）
 # ─────────────────────────────────────────

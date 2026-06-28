@@ -3750,6 +3750,28 @@
         "title": "Envelope[ProjectDetail]",
         "type": "object"
       },
+      "Envelope_ProjectDraftExtraction_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ProjectDraftExtraction"
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[ProjectDraftExtraction]",
+        "type": "object"
+      },
       "Envelope_ProjectListItem_": {
         "properties": {
           "code": {
@@ -4437,35 +4459,6 @@
           "data"
         ],
         "title": "Envelope[Union[CheckInOut, NoneType]]",
-        "type": "object"
-      },
-      "Envelope_Union_ProjectPreviewCard__NoneType__": {
-        "properties": {
-          "code": {
-            "default": 200,
-            "title": "Code",
-            "type": "integer"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ProjectPreviewCard"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "message": {
-            "default": "success",
-            "title": "Message",
-            "type": "string"
-          }
-        },
-        "required": [
-          "data"
-        ],
-        "title": "Envelope[Union[ProjectPreviewCard, NoneType]]",
         "type": "object"
       },
       "Envelope_UserPrefsOut_": {
@@ -9345,6 +9338,26 @@
           "updated_at"
         ],
         "title": "ProjectDetail",
+        "type": "object"
+      },
+      "ProjectDraftExtraction": {
+        "description": "NL 快速预填提取结果（INC-I）。\n\nfields: { 字段名: {value, confidence(0-1)} }，前端按置信度门控预填漏斗\n（≥0.85 填+badge / 0.70-0.85 填+高亮 / <0.70 留空）。warnings: 需用户确认的提示。",
+        "properties": {
+          "fields": {
+            "default": {},
+            "title": "Fields",
+            "type": "object"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "title": "ProjectDraftExtraction",
         "type": "object"
       },
       "ProjectInitDraft": {
@@ -20475,7 +20488,7 @@
     },
     "/v1/projects/from-agent-dialog/llm-preview": {
       "post": {
-        "description": "用户自然语言对话 → LLM 整理 → 结构化预览卡。\nPRD 9.2 行 624：Agent 把用户表达整理为结构化项目描述。",
+        "description": "用户一句话 → LLM 提取带置信度字段，预填三阶漏斗（INC-I，spec §10）。**只提取不创建**。\n安全规则在 prompt 强制（保守 goal_type / 日期不推断 / subject 映射）；置信门控在前端。",
         "operationId": "llm_preview_from_dialog_v1_projects_from_agent_dialog_llm_preview_post",
         "requestBody": {
           "content": {
@@ -20493,7 +20506,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_Union_ProjectPreviewCard__NoneType__"
+                  "$ref": "#/components/schemas/Envelope_ProjectDraftExtraction_"
                 }
               }
             },
@@ -20515,7 +20528,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Agent 对话式创建 · LLM 整理自然语言",
+        "summary": "NL 快速预填 · 提取带置信度字段（INC-I）",
         "tags": [
           "项目系统"
         ]

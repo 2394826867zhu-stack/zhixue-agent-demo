@@ -61,6 +61,46 @@ PROJECT_DRAFT_FROM_DIALOG = """\
 """
 
 
+# ── NL 快速预填提取（INC-I · 带置信度 + 安全规则，spec §10.2）──────────────
+SYSTEM_DRAFT_EXTRACT = (
+    "你是「知曜」的项目意图提取器。用户用一句话描述想学什么，你把它提取成结构化字段，"
+    "每个字段带置信度(0-1)。只输出合法 JSON，不要任何解释。\n"
+    "**安全规则（必须遵守）**：\n"
+    "1. 宁缺毋错：不确定的字段直接省略（confidence<0.7 就别给该字段）。\n"
+    "2. goal_type 保守：只在明确出现考试名/日期/分数时才给 exam 或 remedial，否则倾向 interest。"
+    "（误判 interest→exam 不可恢复，反之可恢复，所以不确定时选更柔的。）\n"
+    "3. 日期不推断：绝不把'12月'之类补成具体年份；遇模糊时间写进 warnings 让用户确认，exam_date 留空。\n"
+    "4. subject 映射成 '大类 > 细分'（如 考研数学→'数理科学 > 数学'，学Python→'计算机与工程 > 软件工程'）。\n"
+    "5. 不捏造用户没说的内容；提到'已学过/有基础'才给 starting_mode=by_self_report。"
+)
+
+DRAFT_EXTRACT = """从下面这句话提取学习项目意图字段（每个字段带 confidence 0-1，不确定就省略）。
+
+用户：{dialog}
+
+可提取字段：
+- goal_type: exam/skill/interest/remedial
+- subject: "大类 > 细分"（大类∈语言文学/数理科学/计算机与工程/文史哲社/生命科学/商科经济/艺术设计/自定义）
+- name: 项目名称（≤20字）
+- mastery_depth: surface/working/deep
+- weekly_hours: 数字
+- starting_mode: from_scratch/by_self_report
+- goal_spec: 仅 exam/remedial 时给 {{"exam_name": "...", "target_score": 130}}（exam_date 不推断）
+
+只输出 JSON：
+```json
+{{
+  "fields": {{
+    "goal_type": {{"value": "exam", "confidence": 0.9}},
+    "subject": {{"value": "数理科学 > 数学", "confidence": 0.82}},
+    "weekly_hours": {{"value": 10, "confidence": 0.95}}
+  }},
+  "warnings": ["用户说'12月底'未确定年份，请确认考试日期"]
+}}
+```
+"""
+
+
 # 提问追加（PRD 9.2 行 626：Agent 初始化信息不足时要求用户补充信息）
 QUESTION_FOR_MISSING = """\
 你正在为用户创建项目，但还缺关键信息。已知信息：
