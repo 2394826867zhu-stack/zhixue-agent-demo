@@ -31,7 +31,7 @@ from app.llm.client import LLMClient
 from app.llm.prompts.project_init import (
     SYSTEM_PROJECT_DRAFT, PROJECT_DRAFT_FROM_DIALOG, SYSTEM_DRAFT_EXTRACT, DRAFT_EXTRACT,
 )
-from app.services.framework_service import generate_framework
+from app.services.framework_service import generate_framework, validate_framework
 from app.services import subject_taxonomy
 from app.services import feasibility_service
 from app.services.learner_state_service import mastery_threshold
@@ -375,7 +375,10 @@ class ProjectService:
             ))
 
         framework = card.framework_json or {}
-        if framework.get("chapters"):
+        # P0-2：confirm 不能盲信客户端回传的 framework_json——F1 的 validate_framework
+        # (规模/反扁平占位闸) 只在 generate 路径跑，confirm 必须复跑同一校验，否则可被
+        # 构造任意框架绕过结构防线。校验不过 → 退 phases 兜底路径(不建脏树)。
+        if framework.get("chapters") and validate_framework(framework):
             # advisory lock 防双确认重复建树（H1）
             lock_key = int(hashlib.md5(f"tree:{proj.id}".encode()).hexdigest()[:8], 16) % (2**31)
             await db.execute(text(f"SELECT pg_advisory_xact_lock({lock_key})"))
@@ -384,15 +387,23 @@ class ProjectService:
             # INC-F：prior_knowledge 播种（mastered_chapter_ids → status/p_mastery）后续补
             proj.framework_status = "ready"
         else:
-            # 无缓存框架（NL/onboarding 路径，或 preview 生成失败仍确认）→ 退调性 phases，树延后。
-            # **不强制 failed**：保持旧 ready 默认（onboarding D10 不在本轮改），树由 /tree/generate 建
-            # （该路径 generate 失败时才置 failed，见 generate_tree_nodes）。
+            # 无缓存框架（NL/onboarding 路径，或 preview 生成失败仍确认），或框架校验不过 →
+            # 退调性 phases，树延后。**不强制 failed**：保持旧 ready 默认（onboarding D10 不在本轮改），
+            # 树由 /tree/generate 建（该路径 generate 失败时才置 failed，见 generate_tree_nodes）。
             cursor = now
             for idx, p in enumerate(card.proposed_phases):
-                weeks = int(p.get("est_weeks", 2))
+                if not isinstance(p, dict):
+                    continue
+                pname = (p.get("name") or "").strip()
+                if not pname:
+                    continue
+                try:
+                    weeks = int(p.get("est_weeks", 2))
+                except (TypeError, ValueError):
+                    weeks = 2
                 end = cursor + timedelta(weeks=weeks)
                 db.add(ProjectPhase(
-                    project_id=proj.id, name=p["name"], description=p.get("description", ""),
+                    project_id=proj.id, name=pname[:60], description=str(p.get("description", ""))[:500],
                     start_date=cursor, end_date=end, sort_order=idx, is_current=(idx == 0),
                 ))
                 cursor = end
@@ -609,6 +620,12 @@ class ProjectService:
 
         _DIFF = ["blue", "purple", "gold"]
         _DIFF_RANK = {"blue": 0, "purple": 1, "gold": 2}
+        # P0-2：框架来源可能是客户端回传 → 必须钳制规模，防超大写入（DoS/数据膨胀）。
+        _MAX_CHAPTERS = 50
+        _MAX_LESSONS = 50
+        # P0-2：KnowledgePoint.subject 列宽仅 String(50)，而 Project.subject 已扩到 80；
+        # 若不截断，>50 字符 subject 会让建树事务整体 500 回滚。
+        kp_subject = str(proj.subject)[:50] if proj.subject else None
 
         def _valid_diff(v):
             return v if isinstance(v, str) and v in _DIFF_RANK else None
@@ -664,13 +681,13 @@ class ProjectService:
         sort = 1
         lesson_kp_ids: list[uuid.UUID] = []        # 课时顺序 → 先修兜底链
         kp_name_to_id: dict[str, uuid.UUID] = {}   # 课时名 / kp_name → kp_id（先修边解析）
-        for ch in framework.get("chapters", []):
+        for ch in (framework.get("chapters", []) or [])[:_MAX_CHAPTERS]:
             if not isinstance(ch, dict) or not str(ch.get("title", "")).strip():
                 continue
             ph = phase_lookup.get(ch.get("phase_name")) or default_phase
             phase_diff = _diff_for(ch.get("phase_name"))  # 缺失难度的兜底
-            raw_lessons = [ls for ls in ch.get("lessons", [])
-                           if isinstance(ls, dict) and str(ls.get("title", "")).strip()]
+            raw_lessons = [ls for ls in (ch.get("lessons", []) or [])
+                           if isinstance(ls, dict) and str(ls.get("title", "")).strip()][:_MAX_LESSONS]
             lesson_diffs = [_valid_diff(ls.get("difficulty")) or phase_diff for ls in raw_lessons]
             # 章节(容器)难度 = 其课时里最高难度（无则 phase 兜底）
             chap_diff = max(lesson_diffs, key=lambda d: _DIFF_RANK[d]) if lesson_diffs else phase_diff
@@ -699,7 +716,7 @@ class ProjectService:
                     ls_status, ls_comp, ls_mast = "locked", 0.0, 0.0
                 kp = KnowledgePoint(
                     user_id=proj.user_id, project_id=proj.id,
-                    name=str(ls["title"])[:255], subject=proj.subject,
+                    name=str(ls["title"])[:255], subject=kp_subject,
                     difficulty_tier=ls_diff, mastery_status=kp_status, p_mastery=kp_pm,
                     notebook_origin="user_project",
                 )
