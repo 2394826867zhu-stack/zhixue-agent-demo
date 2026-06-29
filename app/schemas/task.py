@@ -69,6 +69,10 @@ class DailyTaskOut(BaseModel):
     task_type: str
     subject: str | None
     source_ref_id: uuid.UUID | None
+    # 审计(2026-06-29)：new_lesson 任务的 source_ref_id 可能指向官方课程章节(chapter)
+    # 或项目树节点(tree_node)，二者建会话入参不同。原先不暴露类型→前端一律按 chapter
+    # 建会话，项目节点任务点「开始」会 404。get_today 据 DB 归属填充本字段，前端按此路由。
+    source_ref_kind: str | None = None  # "chapter" | "tree_node" | None
     estimated_minutes: int
     priority: str
     ai_priority_score: float

@@ -24,7 +24,7 @@ async def generate_today(
     db: AsyncSession = Depends(get_db),
 ):
     tasks = await task_service.generate_today(db, str(user.id))
-    return ok([DailyTaskOut.model_validate(t) for t in tasks])
+    return ok(await task_service.serialize_with_ref_kind(db, tasks))
 
 
 @router.get("", summary="获取今日任务列表", response_model=Envelope[list[DailyTaskOut]])
@@ -33,7 +33,7 @@ async def get_today(
     db: AsyncSession = Depends(get_db),
 ):
     tasks = await task_service.get_today(db, str(user.id))
-    return ok([DailyTaskOut.model_validate(t) for t in tasks])
+    return ok(await task_service.serialize_with_ref_kind(db, tasks))
 
 
 # 必须定义在 `/{task_id}` 之前：Starlette 按注册顺序匹配，否则
@@ -45,7 +45,7 @@ async def get_today_alias(
     db: AsyncSession = Depends(get_db),
 ):
     tasks = await task_service.get_today(db, str(user.id))
-    return ok([DailyTaskOut.model_validate(t) for t in tasks])
+    return ok(await task_service.serialize_with_ref_kind(db, tasks))
 
 
 @router.post("", summary="手动新增任务", response_model=Envelope[DailyTaskOut])

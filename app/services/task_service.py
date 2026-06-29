@@ -144,6 +144,33 @@ class TaskService:
         today = date.today()
         return await self._get_today_tasks(db, uid, today)
 
+    async def serialize_with_ref_kind(self, db: AsyncSession, tasks: list[DailyTask]):
+        """审计(2026-06-29)：为 new_lesson 任务标注 source_ref 是 chapter 还是 tree_node。
+
+        new_lesson 的 source_ref_id 可能指向官方课程章节或项目树节点，二者建会话入参不同。
+        一次批量查询 project_tree_nodes 判定归属，前端据此选 createSession(chapter_id) 还是
+        createSessionForNode(tree_node_id)——否则项目节点任务点「开始」会 404。
+        """
+        from app.schemas.task import DailyTaskOut
+        from app.models.project import ProjectTreeNode
+
+        ref_ids = [t.source_ref_id for t in tasks
+                   if t.task_type == "new_lesson" and t.source_ref_id is not None]
+        node_ids: set = set()
+        if ref_ids:
+            rows = await db.execute(
+                select(ProjectTreeNode.id).where(ProjectTreeNode.id.in_(ref_ids))
+            )
+            node_ids = {r[0] for r in rows.fetchall()}
+
+        out = []
+        for t in tasks:
+            o = DailyTaskOut.model_validate(t)
+            if t.task_type == "new_lesson" and t.source_ref_id is not None:
+                o.source_ref_kind = "tree_node" if t.source_ref_id in node_ids else "chapter"
+            out.append(o)
+        return out
+
     async def create_manual(self, db: AsyncSession, user_id: str, data: DailyTaskCreate) -> DailyTask:
         uid = uuid.UUID(user_id)
         task_date = data.task_date or date.today()

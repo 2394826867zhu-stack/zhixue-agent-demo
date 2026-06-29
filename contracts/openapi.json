@@ -1814,6 +1814,17 @@
             ],
             "title": "Source Ref Id"
           },
+          "source_ref_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Ref Kind"
+          },
           "status": {
             "title": "Status",
             "type": "string"
