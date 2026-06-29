@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import select, func, update
@@ -14,6 +15,8 @@ from app.schemas.studyspace import (
 )
 from app.schemas.curriculum import CurriculumLessonOut
 from app.services.star_service import StarService
+
+logger = logging.getLogger(__name__)
 
 
 class StudySpaceService:
@@ -241,13 +244,29 @@ class StudySpaceService:
         try:
             from app.services.fsrs_service import fsrs_service
             from app.models.flashcard import Flashcard
+            from app.models.project import ProjectTreeNode
+            # P1-4：建卡范围限定**本会话锚定的 KP**（章节会话→该章节 KP；节点会话→该节点 KP），
+            # 不再无界全表扫描用户所有无卡 KP——原实现会顺带给别科目/别项目陈年 KP 建卡（归属错乱），
+            # 且 limit(20) 可能把本会话真正该建卡的 KP 挤掉。
+            scope_filters = [
+                KnowledgePoint.user_id == uuid.UUID(user_id),
+                Flashcard.id.is_(None),
+            ]
+            if session.chapter_id:
+                scope_filters.append(KnowledgePoint.chapter_id == session.chapter_id)
+            elif session.tree_node_id:
+                _node = await db.get(ProjectTreeNode, session.tree_node_id)
+                # 无锚点 KP → 用永假条件，宁可不建也不退回全表扫描。
+                scope_filters.append(
+                    KnowledgePoint.id == _node.kp_id if (_node and _node.kp_id)
+                    else KnowledgePoint.id.is_(None)
+                )
+            else:
+                scope_filters.append(KnowledgePoint.id.is_(None))  # 无会话锚点 → 不建
             kp_rows = await db.execute(
                 select(KnowledgePoint)
                 .outerjoin(Flashcard, Flashcard.knowledge_point_id == KnowledgePoint.id)
-                .where(
-                    KnowledgePoint.user_id == uuid.UUID(user_id),
-                    Flashcard.id.is_(None),
-                )
+                .where(*scope_filters)
                 .limit(20)
             )
             for kp in kp_rows.scalars().all():
