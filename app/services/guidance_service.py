@@ -46,16 +46,22 @@ class GuidanceService:
             content=question,
         )
         db.add(user_msg)
-        await db.flush()
 
-        # fetch related KPs for context
+        # fetch related KPs for context（读，仍在首事务内）
         kp_context = await self._fetch_kp_context(db, uid, subject, question)
 
-        # AI first response
+        # P1-6：先提交 session+user_msg 并结束读事务，释放连接，再调用长 LLM——
+        # 不在持有 DB 事务期间夹数十秒 LLM（防 idle-in-transaction → 连接池耗尽，
+        # 与 agent_service P0-4 同款处理）。
+        session.message_count = 1
+        await db.commit()
+
+        # AI first response（不持连接）
         ai_content = await self._call_llm(
             conversation=[{"role": "user", "content": question}],
             user_message=question,
             kp_context=kp_context,
+            user_id=user_id,
         )
 
         ai_msg = GuidanceMessage(
@@ -95,6 +101,13 @@ class GuidanceService:
         history = list(reversed(history_result.scalars().all()))
         conversation = [{"role": m.role, "content": m.content} for m in history]
 
+        # v0.34 P1-1 · 苏格拉底 5 轮上限（user 已发条数）——基于当前 message_count 判定（提交前算）。
+        # message_count 包含 user+ai；user 单边发条数 = message_count // 2 + 1（含正在处理的这条）。
+        user_turns_after = (session.message_count // 2) + 1
+        force_hint_card = user_turns_after > MAX_GUIDANCE_TURNS
+
+        kp_context = await self._fetch_kp_context(db, uid, session.subject, message)
+
         # save user message
         user_msg = GuidanceMessage(
             session_id=session.id,
@@ -103,27 +116,24 @@ class GuidanceService:
             content=message,
         )
         db.add(user_msg)
-        await db.flush()
 
-        kp_context = await self._fetch_kp_context(db, uid, session.subject, message)
-
-        # v0.34 P1-1 · 苏格拉底 5 轮上限（user 已发条数）
-        # message_count 包含 user+ai；user 单边发条数 = message_count // 2
-        # 当前正在处理的 user_msg 已 add 但 message_count 还没 +2，user 已发条数 = (message_count // 2) + 1
-        user_turns_after = (session.message_count // 2) + 1
-        force_hint_card = user_turns_after > MAX_GUIDANCE_TURNS
+        # P1-6：history/kp_context 读完后先提交（含本条 user_msg）释放连接，再调长 LLM，
+        # 避免在持有事务期间夹 LLM 调用导致 idle-in-transaction 连接池耗尽。
+        await db.commit()
 
         if force_hint_card:
             ai_content = await self._call_llm_hint_card(
                 conversation=conversation,
                 user_message=message,
                 kp_context=kp_context,
+                user_id=user_id,
             )
         else:
             ai_content = await self._call_llm(
                 conversation=conversation,
                 user_message=message,
                 kp_context=kp_context,
+                user_id=user_id,
             )
 
         ai_msg = GuidanceMessage(
@@ -209,7 +219,8 @@ class GuidanceService:
         return "\n".join(parts)
 
     async def _call_llm(
-        self, conversation: list[dict], user_message: str, kp_context: str
+        self, conversation: list[dict], user_message: str, kp_context: str,
+        user_id: str | None = None,
     ) -> str:
         from app.llm.client import llm_client
         from app.llm.prompts.guidance_prompts import (
@@ -236,13 +247,16 @@ class GuidanceService:
             )
 
         try:
-            return await llm_client.generate(prompt, system=SYSTEM_GUIDANCE)
+            # P1-7：透传 user_id 让配额对引导多轮长对话生效（原缺失 → 完全绕过日 token 配额/熔断）。
+            return await llm_client.generate(
+                prompt, system=SYSTEM_GUIDANCE, user_id=user_id, endpoint="guidance")
         except Exception as e:
             logger.warning(f"Guidance LLM call failed: {e}")
             raise LLMError() from e
 
     async def _call_llm_hint_card(
-        self, conversation: list[dict], user_message: str, kp_context: str
+        self, conversation: list[dict], user_message: str, kp_context: str,
+        user_id: str | None = None,
     ) -> str:
         """v0.34 P1-1 · 5 轮后 给"提示词卡片"
 
@@ -274,7 +288,8 @@ class GuidanceService:
             "请按上述结构产出【提示词卡片】。"
         )
         try:
-            content = await llm_client.generate(prompt, system=hint_system)
+            content = await llm_client.generate(
+                prompt, system=hint_system, user_id=user_id, endpoint="guidance")
             return content
         except Exception as e:
             logger.warning(f"Guidance hint card LLM failed: {e}")
