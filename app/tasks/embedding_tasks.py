@@ -20,7 +20,10 @@ def _run(coro):
     return asyncio.run(coro)
 
 
-@celery_app.task(name="app.tasks.embedding_tasks.embed_kp", time_limit=120, soft_time_limit=100)
+# P1-8：embed 系列原先无 retry——抖动(DeepSeek/DB/Redis)即静默丢索引、RAG 永久缺该内容。
+# 加 autoretry_for+退避；重试耗尽后异常上抛 → task_failure 信号落 DLQ(F-11)，可观测可补投。
+@celery_app.task(name="app.tasks.embedding_tasks.embed_kp", time_limit=120, soft_time_limit=100,
+                 autoretry_for=(Exception,), max_retries=2, retry_backoff=True)
 def embed_kp(kp_id: str):
     """单 KP 入库。KP 创建 / 更新时延迟 5min 触发。"""
     _run(_embed_kp_async(kp_id))
@@ -60,7 +63,8 @@ async def _embed_kp_async(kp_id: str):
         logger.info(f"embed_kp: {kp_id} indexed")
 
 
-@celery_app.task(name="app.tasks.embedding_tasks.embed_mistake", time_limit=120, soft_time_limit=100)
+@celery_app.task(name="app.tasks.embedding_tasks.embed_mistake", time_limit=120, soft_time_limit=100,
+                 autoretry_for=(Exception,), max_retries=2, retry_backoff=True)
 def embed_mistake(question_id: str):
     """错题（答错的 TrainingQuestion）入库。F 业务联动：答错时延迟触发。"""
     _run(_embed_mistake_async(question_id))
@@ -100,7 +104,8 @@ async def _embed_mistake_async(question_id: str):
         logger.info(f"embed_mistake: {question_id} indexed")
 
 
-@celery_app.task(name="app.tasks.embedding_tasks.embed_note", time_limit=180, soft_time_limit=160)
+@celery_app.task(name="app.tasks.embedding_tasks.embed_note", time_limit=180, soft_time_limit=160,
+                 autoretry_for=(Exception,), max_retries=2, retry_backoff=True)
 def embed_note(note_id: str):
     """笔记入库：用 exam_version（精简摘要）作为可检索摘要 + full_version 切块。"""
     _run(_embed_note_async(note_id))
@@ -180,7 +185,8 @@ def _chunk_by_heading(text: str, max_chars: int = 1200) -> list[str]:
     return [b for b in final if b.strip()]
 
 
-@celery_app.task(name="app.tasks.embedding_tasks.embed_chapter")
+@celery_app.task(name="app.tasks.embedding_tasks.embed_chapter",
+                 autoretry_for=(Exception,), max_retries=2, retry_backoff=True)
 def embed_chapter(chapter_id: str):
     """单课程章节入库（official content，user_id=NULL）"""
     _run(_embed_chapter_async(chapter_id))

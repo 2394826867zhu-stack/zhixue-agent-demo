@@ -131,29 +131,43 @@ class ProjectTreeService:
             logging.getLogger(__name__).warning(f"phase_completed episode hook failed: {_e}")
         return node
 
+    def _owned_node_ids(self, user_id: str):
+        """P1-13：当前用户拥有的节点 id 子查询（节点→项目→user_id）。
+        update_mastery/update_progress 用它把 UPDATE 限定在 owner 名下，
+        防上游透传未校验 node_id 改到他人节点（纵深防御，安全 by-construction）。"""
+        return (
+            select(ProjectTreeNode.id)
+            .join(Project, Project.id == ProjectTreeNode.project_id)
+            .where(Project.user_id == uuid.UUID(user_id))
+        )
+
     async def update_mastery(
-        self, db: AsyncSession, node_id: str, mastery_pct: float,
+        self, db: AsyncSession, node_id: str, mastery_pct: float, user_id: str,
     ) -> None:
-        """测验后由 training_service 调用更新掌握度。"""
+        """测验后由 training_service 调用更新掌握度（须传 user_id 做归属校验）。"""
         if not 0.0 <= mastery_pct <= 1.0:
             raise ValidationError("mastery_pct 必须在 0-1 之间")
         await db.execute(
             update(ProjectTreeNode)
-            .where(ProjectTreeNode.id == uuid.UUID(node_id))
+            .where(
+                ProjectTreeNode.id == uuid.UUID(node_id),
+                ProjectTreeNode.id.in_(self._owned_node_ids(user_id)),
+            )
             .values(mastery_pct=mastery_pct)
         )
         await db.commit()
 
     async def update_progress(
-        self, db: AsyncSession, node_id: str, completion_pct: float,
+        self, db: AsyncSession, node_id: str, completion_pct: float, user_id: str,
     ) -> None:
-        """学习推进时由 studyspace_service 调用。
+        """学习推进时由 studyspace_service 调用（须传 user_id 做归属校验）。
 
         v0.27 Q-03 · completion 满 1.0 时自动解锁子节点。
         """
         if not 0.0 <= completion_pct <= 1.0:
             raise ValidationError("completion_pct 必须在 0-1 之间")
         nid = uuid.UUID(node_id)
+        owned = self._owned_node_ids(user_id)
         values: dict = {
             "completion_pct": completion_pct,
             "last_studied_at": datetime.now(timezone.utc),
@@ -165,16 +179,17 @@ class ProjectTreeService:
             values["status"] = "in_progress"
         await db.execute(
             update(ProjectTreeNode)
-            .where(ProjectTreeNode.id == nid)
+            .where(ProjectTreeNode.id == nid, ProjectTreeNode.id.in_(owned))
             .values(**values)
         )
-        # 解锁子节点（仅当本节点完成时）
+        # 解锁子节点（仅当本节点完成时；同样限定 owner 名下）
         if completion_pct >= 1.0:
             await db.execute(
                 update(ProjectTreeNode)
                 .where(
                     ProjectTreeNode.parent_id == nid,
                     ProjectTreeNode.status == "locked",
+                    ProjectTreeNode.id.in_(owned),
                 )
                 .values(status="available")
             )
@@ -198,8 +213,12 @@ class ProjectTreeService:
         parent = None
         depth = 0
         if parent_id:
+            # P1-13：父节点须属于同一项目，杜绝把节点挂到别项目/别用户的树下。
             parent_result = await db.execute(
-                select(ProjectTreeNode).where(ProjectTreeNode.id == uuid.UUID(parent_id))
+                select(ProjectTreeNode).where(
+                    ProjectTreeNode.id == uuid.UUID(parent_id),
+                    ProjectTreeNode.project_id == pid,
+                )
             )
             parent = parent_result.scalar_one_or_none()
             if parent is None:
