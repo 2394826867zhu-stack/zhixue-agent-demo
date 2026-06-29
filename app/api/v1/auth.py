@@ -73,7 +73,6 @@ async def delete_me(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # 删 users 行 → 全部用户数据按 FK ondelete=CASCADE 在 DB 层级联删除（隐私政策"注销后永久删除"）。
-    await db.delete(user)
-    await db.commit()
+    # P1-11/P2-5：显式清理无 FK 的审计/用量表 + 磁盘文件，再级联删 users 行（详见 service）。
+    await auth_service.delete_account(db, user)
     return ok(None)

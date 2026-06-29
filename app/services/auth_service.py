@@ -120,5 +120,47 @@ class AuthService:
         await db.refresh(user)
         return user
 
+    async def delete_account(self, db: AsyncSession, user: User) -> None:
+        """注销账号：永久删除用户及其全部数据（隐私政策"注销后永久删除"）。
+
+        P1-11：多数表靠 FK ondelete=CASCADE 随 users 行删除，但以下 4 张审计/用量表
+        的 user_id 是**裸列无 FK**，不会被级联清理——必须显式 DELETE，否则注销后残留
+        孤儿数据（含 agent_tool_traces.arguments / rag_retrieval_traces.masked_query
+        等用户行为/内容残留）。
+        P2-5：用户上传的物理文件也不随 DB 行删除，best-effort 清盘。
+        """
+        from sqlalchemy import delete as _delete, select as _select
+        from app.models.agent_tool_trace import AgentToolTrace
+        from app.models.rag_retrieval_trace import RagRetrievalTrace
+        from app.models.token_usage import TokenUsage
+        from app.models.user_quota import UserQuota
+        from app.models.file_upload import FileUpload
+
+        uid = user.id
+
+        # P2-5：先按归属取出磁盘文件名，删 DB 行前 best-effort 删盘（删行后查不到归属）。
+        try:
+            import os
+            stored = (await db.execute(
+                _select(FileUpload.stored_filename).where(FileUpload.user_id == uid)
+            )).scalars().all()
+            for fname in stored:
+                path = os.path.join(settings.LOCAL_UPLOAD_DIR, os.path.basename(fname))
+                try:
+                    if os.path.isfile(path):
+                        os.remove(path)
+                except OSError:
+                    pass  # 单个文件删失败不阻断注销
+        except Exception:  # noqa: BLE001 — 磁盘清理是 best-effort，不阻断账号删除
+            pass
+
+        # P1-11：显式清无 FK 的审计/用量表（顺序无所谓，都是裸 user_id 列）。
+        for model in (AgentToolTrace, RagRetrievalTrace, TokenUsage, UserQuota):
+            await db.execute(_delete(model).where(model.user_id == uid))
+
+        # 其余有 FK 的表随 users 行 ondelete=CASCADE 级联删除。
+        await db.delete(user)
+        await db.commit()
+
 
 auth_service = AuthService()
