@@ -33,8 +33,8 @@ class User(Base):
 
     # v0.25 · UI 偏好（PRD 9.11 + ui-ux brief）
     theme_mode: Mapped[str] = mapped_column(
-        String(10), nullable=False, server_default="auto",
-    )  # "auto" | "light" | "dark"
+        String(10), nullable=False, server_default="light",
+    )  # "auto" | "light" | "dark"（默认 light：产品定位浅色为主，auto/dark 为用户主动选择）
     dynamic_type_scale: Mapped[float] = mapped_column(
         Float, nullable=False, server_default="1.0",
     )  # 0.8 - 1.4 适配 iOS Dynamic Type
