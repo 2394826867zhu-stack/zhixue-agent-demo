@@ -650,8 +650,11 @@ class ProjectService:
         default_phase = next(iter(phase_lookup.values()), None)
 
         def _diff_for(phase_name) -> str:
+            # P2-3：缺难度兜底——按阶段序号给 blue→purple 渐进，但**封顶 purple 不到 gold**。
+            # 原 min(sort_order,2) 让第 3+ 阶段所有缺难度课时一律 gold，违背 surface「不出金」；
+            # gold 只应来自 LLM 每课显式 difficulty，不由阶段序号臆断。
             ph = phase_lookup.get(phase_name or "")
-            return _DIFF[min(ph.sort_order, 2)] if ph else "blue"
+            return _DIFF[min(ph.sort_order, 1)] if ph else "blue"
 
         # 2. 根节点
         root = ProjectTreeNode(

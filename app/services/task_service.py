@@ -428,11 +428,14 @@ class TaskService:
                 grade_year = int(parts[1])
                 grade_type = "_".join(parts[:-1]) if "_" in parts[0] else parts[0]
 
-        # Chapters already visited by this user
+        # Chapters already completed by this user
+        # P2-7：只排除**已完成**的章节，不能排除「有任意 session」的章节——否则用户点开
+        # 但没学完(留下 active/paused session)的课次日就从每日任务消失、被跳到下一章。
         visited = await db.execute(
             select(StudySpaceSession.chapter_id).where(
                 StudySpaceSession.user_id == uid,
                 StudySpaceSession.chapter_id.isnot(None),
+                StudySpaceSession.status == "completed",
             )
         )
         visited_ids = {r[0] for r in visited.fetchall()}
