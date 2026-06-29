@@ -190,7 +190,9 @@ class StudySpaceService:
             await db.rollback()
             raise AppError(400, "会话已完成", 400)
 
-        # Award stars（award 内部 commit → 完成 + 发星同一次提交，原子）
+        # P0-3 原子完成：发星 + 节点完成 + 解锁下一节 + 项目进度 + 闭合每日任务收进**同一事务**，
+        # 最后统一 commit。原先 award 内部 commit 后，节点完成/解锁/任务闭合跑在新事务里，
+        # 若中途崩溃会留下「已发星已完成、但进度/解锁/任务全丢且无法重试」的不一致态。
         lesson_label = chapter.lesson_title if chapter else "课时"
         star_svc = StarService()
         await star_svc.award(
@@ -199,8 +201,8 @@ class StudySpaceService:
             reason="lesson_complete",
             description=f"完成课时：{lesson_label}",
             meta={"session_id": str(session_id)},
+            commit=False,  # 与下方闭环写入同一事务原子提交
         )
-        await db.refresh(session)
 
         # INC-2 节点会话 → 富化节点 KP（回填教学内容 + 记一次正向掌握信号）：
         # 让既有自动建卡(需 name+content)能为该 KP 出卡 + 掌握度真更新。必须在下方
@@ -218,6 +220,11 @@ class StudySpaceService:
         # 闭环：学完课时 → 精确完成指向该节点的 new_lesson 每日任务（不靠死的 trigger 机制）
         if session.tree_node_id:
             await _task_svc.complete_lesson_tasks(db, user_id, session.tree_node_id)
+
+        # 关键闭环原子提交点：到此「完成+发星+节点完成+解锁+进度+任务闭合」全部落盘或全部回滚。
+        # 此后的建卡/时间线/episode/celebrate 都是 best-effort 副作用，失败不影响闭环一致性。
+        await db.commit()
+        await db.refresh(session)
 
         # v0.27 Q-04 · Agent 切换 celebrate 状态（PRD 2.1 行 167）
         try:

@@ -68,7 +68,13 @@ class StarService:
         reason: str,
         description: str = "",
         meta: dict | None = None,
+        commit: bool = True,
     ) -> None:
+        """发放知星。
+
+        commit=False（P0-3）：调用方需要把发星与其它写入收进**同一事务**原子提交时使用，
+        此时只 flush 不 commit，由调用方统一提交/回滚。默认 True 保持既有调用方行为不变。
+        """
         entry = StarLedger(
             user_id=uuid.UUID(user_id),
             amount=amount,
@@ -77,7 +83,10 @@ class StarService:
             meta=meta,
         )
         db.add(entry)
-        await db.commit()
+        if commit:
+            await db.commit()
+        else:
+            await db.flush()
 
     async def get_shop(self, db: AsyncSession, user_id: str) -> ShopResponse:
         uid = uuid.UUID(user_id)
