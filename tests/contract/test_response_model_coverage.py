@@ -18,6 +18,7 @@ EXEMPT_PATHS: set[str] = {
     "/v1/agent/regenerate",
     "/v1/agent/correct",
     "/v1/files/{filename}",  # FileResponse 二进制下载
+    "/v1/updates",  # Expo OTA manifest 代理：透传 EAS multipart（非 JSON 信封，供 Expo 客户端非前端 codegen）
 }
 
 
