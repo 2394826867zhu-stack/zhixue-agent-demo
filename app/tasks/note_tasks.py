@@ -106,8 +106,11 @@ async def _process_note_async(task, note_id: str, user_id: str):
         await _update_task_progress(note_id, 75, "正在提取知识点...")
 
         # Step 3: 更新笔记
+        from app.core.subjects import normalize_subject
         note.title = note.title or extracted.get("title", "")
-        note.subject = note.subject or extracted.get("subject", "other")
+        # D1：归一化学科名（用户传的 or LLM 推断的英文/变体 → 规范中文），
+        # 否则同一科目（化学 vs chemistry）会割裂 overview/成绩预测。KP 继承此 subject。
+        note.subject = normalize_subject(note.subject or extracted.get("subject", ""))
         note.full_version = full_v
         note.exam_version = exam_v
         note.graph_mermaid = _clean_mermaid(graph_v)

@@ -444,10 +444,12 @@ async def _manage_knowledge_points(
             name = item.get("title", "").strip() or item.get("name", "").strip()
             if not name:
                 continue
+            from app.core.subjects import normalize_subject
             kp = KnowledgePoint(
                 user_id=uid,
                 name=name,
-                subject=item.get("subject"),
+                # D1：归一化学科名（LLM 可能给英文）→ 规范中文，避免割裂分析。
+                subject=normalize_subject(item["subject"]) if item.get("subject") else None,
                 content=item.get("content"),
                 mastery_status=item.get("mastery_status", "learning"),
                 bloom_level="remember",

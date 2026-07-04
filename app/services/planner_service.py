@@ -28,7 +28,10 @@ from app.llm.prompts.agent import TOOL_DEFINITIONS
 logger = logging.getLogger(__name__)
 
 
-MAX_REFLECT_ROUNDS = 2
+# reflect 轮数：实测第 2 轮 reflect 极少收敛却让响应再多等 ~15s（plan+execute+verify
+# 各一次 LLM 调用），整体拖到 40s+。降到 1 轮——保留一次自我纠错，砍掉收益最低的第 2 轮，
+# 复杂请求响应明显变快（配合 execute 的 tool_cache 进一步去冗余）。
+MAX_REFLECT_ROUNDS = 1
 
 # 复杂任务的关键词 fast-path
 _COMPLEX_KEYWORDS = (
@@ -168,14 +171,39 @@ async def execute(
     user_id: str,
     plan_obj: dict,
     trace_callback=None,  # async fn(tool_name, args, result, latency_ms, status)
+    tool_cache: dict | None = None,  # 跨 reflect 轮的 (tool,args)→result 结果缓存
 ) -> list[dict]:
-    """按 plan 顺序调工具。失败的 step 记录 error 但继续后续 step。"""
+    """按 plan 顺序调工具。失败的 step 记录 error 但继续后续 step。
+
+    tool_cache：单次用户回合内共享。reflect 重规划常产出与上轮相同的 (tool, args)
+    调用——命中缓存则直接复用上次结果，不再真调工具。既消除冗余调用（diagnose_learning
+    被反复调）、又避免有副作用的工具（start_training/manage_tasks）创建重复实体，还显著
+    缩短 reflect 轮的执行耗时。同一回合内重复同 (tool,args) 几乎总是冗余而非有意，安全。
+    """
     from app.services.agent_tools import dispatch_tool
     results = []
     for step in plan_obj.get("steps", []):
         tool = step.get("tool")
         args = step.get("args") or {}
         if not tool:
+            continue
+        cache_key = None
+        if tool_cache is not None:
+            try:
+                cache_key = tool + ":" + json.dumps(args, ensure_ascii=False, sort_keys=True)
+            except Exception:
+                cache_key = None
+        if cache_key is not None and cache_key in tool_cache:
+            cached = tool_cache[cache_key]
+            results.append({
+                "tool": tool,
+                "args": args,
+                "why": step.get("why", ""),
+                "result": cached["result"],
+                "latency_ms": 0,
+                "status": cached["status"],
+                "cached": True,
+            })
             continue
         t0 = time.time()
         try:
@@ -185,6 +213,8 @@ async def execute(
             result = {"error": str(e)}
             status = "error"
         latency_ms = int((time.time() - t0) * 1000)
+        if cache_key is not None:
+            tool_cache[cache_key] = {"result": result, "status": status}
         results.append({
             "tool": tool,
             "args": args,
