@@ -52,6 +52,43 @@ async def test_completing_lesson_autocompletes_daily_task(client: AsyncClient, m
 
 
 @pytest.mark.asyncio
+async def test_completing_chapter_lesson_autocompletes_daily_task(client: AsyncClient, db):
+    """QA 走查实锤（2026-07-04）：官方章节型 new_lesson 任务（source_ref=chapter）学完不闭合——
+    complete() 原只按 session.tree_node_id 闭合任务，chapter 会话（今日任务「开始」的主路径）漏掉。"""
+    import uuid as _uuid
+    from datetime import date
+    from sqlalchemy import select
+    from app.models.curriculum import CurriculumChapter
+    from app.models.task import DailyTask
+    from app.models.user import User
+
+    h = await _auth(client, "eco_chapter_task@zhiyao.ai")
+    user = (await db.execute(select(User).where(User.email == "eco_chapter_task@zhiyao.ai"))).scalar_one()
+
+    chapter = CurriculumChapter(
+        subject="数学", grade_type="senior", grade_year=1, semester=1,
+        chapter_index=1, chapter_title="空间向量", lesson_index=1, lesson_title="空间向量及其运算",
+    )
+    db.add(chapter)
+    await db.flush()
+    task = DailyTask(
+        user_id=user.id, title="开始学习·空间向量及其运算", task_type="new_lesson",
+        source_ref_id=chapter.id, status="pending", task_date=date.today(),
+        estimated_minutes=30,
+    )
+    db.add(task)
+    await db.commit()
+
+    sess = (await client.post("/v1/studyspace/sessions", headers=h, json={"chapter_id": str(chapter.id)})).json()["data"]
+    r = await client.post(f"/v1/studyspace/sessions/{sess['id']}/complete", headers=h, json={})
+    assert r.status_code == 200, r.text
+
+    fresh = (await db.execute(select(DailyTask).where(DailyTask.id == task.id))).scalar_one()
+    await db.refresh(fresh)
+    assert fresh.status == "done", f"学完章节课时应闭合对应任务，实得 {fresh.status}"
+
+
+@pytest.mark.asyncio
 async def test_note_generate_with_project_id_associates(client: AsyncClient, monkeypatch):
     async def _gen(**k):
         return _FW

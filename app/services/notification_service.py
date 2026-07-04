@@ -116,7 +116,11 @@ class NotificationService:
         user_row = await db.execute(select(User).where(User.id == uid))
         user = user_row.scalar_one_or_none()
         if user and user.expo_push_token and user.push_enabled:
-            error = await _push_svc.send_push(user.expo_push_token, content)
+            # A·P2-2：带上 type/action，客户端点击推送按 notificationRouting 深链落屏。
+            push_data = {"notification_type": notification_type}
+            if related_action:
+                push_data["related_action"] = related_action
+            error = await _push_svc.send_push(user.expo_push_token, content, data=push_data)
             if error == "DeviceNotRegistered":
                 user.expo_push_token = None
                 await db.commit()

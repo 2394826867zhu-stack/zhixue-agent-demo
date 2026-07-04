@@ -33,13 +33,16 @@ def _fsrs_schedule(card: Flashcard, rating: int) -> dict:
         from fsrs import Scheduler, Card, Rating, State
         scheduler = Scheduler()
 
-        state_map = {"New": State.New, "Learning": State.Learning, "Review": State.Review, "Relearning": State.Relearning}
+        # py-fsrs v4+ 删除了 State.New（新卡直接从 Learning 起步）——按版本取兜底，
+        # 否则每次复习都 AttributeError 静默降级 SM-2（QA 走查日志实锤）。
+        _new_state = getattr(State, "New", State.Learning)
+        state_map = {"New": _new_state, "Learning": State.Learning, "Review": State.Review, "Relearning": State.Relearning}
         rating_map = {1: Rating.Again, 2: Rating.Hard, 3: Rating.Good, 4: Rating.Easy}
 
         fsrs_card = Card()
         fsrs_card.stability = card.stability
         fsrs_card.difficulty = card.difficulty
-        fsrs_card.state = state_map.get(card.fsrs_state, State.New)
+        fsrs_card.state = state_map.get(card.fsrs_state, _new_state)
         fsrs_card.reps = card.review_count
 
         now = datetime.now(timezone.utc)

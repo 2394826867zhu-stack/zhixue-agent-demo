@@ -30,6 +30,27 @@ QUESTION_GENERATE_PROMPT = """根据以下知识点，生成{count}道练习题�
 4. essay题目答案包含评分要点（3-5个）
 """
 
+# 组卷强制题型的格式规则（QA 走查实锤：choice 无格式约束 → LLM 出选择题不带选项，
+# 前端 parseChoiceOptions 解析失败只能回退文本框）。question_text 是纯文本，选项必须嵌在题干。
+_TYPE_FORMAT_RULES = {
+    "choice": "题干末尾必须包含且仅包含四个选项，每个选项独占一行，格式严格为「A. 内容」「B. 内容」「C. 内容」「D. 内容」；reference_answer 以正确选项字母开头（如「B。因为…」）",
+    "true_false": "题干为一个可判断对错的陈述句（不加问号）；reference_answer 以「正确」或「错误」开头再给一句理由",
+    "fill_blank": "题干用「______」标注填空位置，有明确唯一的填写目标",
+    "short_answer": "题目要求简要说明概念/原因，reference_answer 给出要点式答案",
+    "proof": "题目要求证明一个命题，reference_answer 给出完整证明步骤",
+    "calculation": "题目为计算/推导题，reference_answer 提供完整解题过程",
+    "essay": "开放论述题，reference_answer 包含 3-5 个评分要点",
+    "programming": "编程题给出明确的输入输出要求，reference_answer 给出参考代码 + 思路",
+}
+
+
+def forced_type_clause(qtype: str) -> str:
+    """组卷「强制题型」附加指令：题型 + 该题型的输出格式规则。"""
+    rule = _TYPE_FORMAT_RULES.get(qtype, "")
+    tail = f"格式要求：{rule}" if rule else ""
+    return f"\n\n【强制题型】请生成一道 {qtype} 题。{tail}"
+
+
 # AI评分：根据参考答案评判用户答案
 ANSWER_GRADE_PROMPT = """请评判以下学生答案，给出评分和反馈。
 

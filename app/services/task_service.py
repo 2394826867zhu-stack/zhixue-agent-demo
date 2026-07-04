@@ -243,20 +243,22 @@ class TaskService:
         return len(tasks)
 
     async def complete_lesson_tasks(
-        self, db: AsyncSession, user_id: str, tree_node_id, *, commit: bool = True
+        self, db: AsyncSession, user_id: str, source_ref_id, *, commit: bool = True
     ) -> int:
-        """学完某课时 → 精确完成指向该树节点的 new_lesson 每日任务（闭环：学完即任务完成）。
+        """学完某课时 → 精确完成指向它的 new_lesson 每日任务（闭环：学完即任务完成）。
 
-        按 source_ref_id==tree_node_id 精确匹配（非 source=='system' 触发器——既有触发器机制
-        因 source/auto_complete_trigger 从未在写入侧赋值而恒空、形同死代码；且触发器按 trigger+
-        当天粗匹配会误完成同日其它课的任务）。source 无关，故生成的 'user' 任务也能被学完闭合。
+        source_ref_id 可为项目树节点 id 或官方课程章节 id（每日任务两种来源都生成，
+        QA 走查实锤 chapter 型任务此前学完不闭合）。按 source_ref_id 精确匹配（非
+        source=='system' 触发器——既有触发器机制因 source/auto_complete_trigger 从未在
+        写入侧赋值而恒空、形同死代码；且触发器按 trigger+当天粗匹配会误完成同日其它课
+        的任务）。source 无关，故生成的 'user' 任务也能被学完闭合。
         """
         uid = uuid.UUID(user_id)
         res = await db.execute(
             select(DailyTask).where(
                 DailyTask.user_id == uid,
                 DailyTask.task_type == "new_lesson",
-                DailyTask.source_ref_id == tree_node_id,
+                DailyTask.source_ref_id == source_ref_id,
                 DailyTask.status != "done",
             )
         )
