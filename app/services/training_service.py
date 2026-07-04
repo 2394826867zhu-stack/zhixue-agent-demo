@@ -131,7 +131,9 @@ class TrainingService:
         import random
         type_pool = list(data.question_types)
         from app.llm.client import llm_client
-        from app.llm.prompts.training_prompts import QUESTION_GENERATE_PROMPT, SYSTEM_TRAINING
+        from app.llm.prompts.training_prompts import (
+            QUESTION_GENERATE_PROMPT, SYSTEM_TRAINING, forced_type_clause,
+        )
 
         # F 召回侧：出题前召回该生历史错题，注入 prompt 以针对性强化薄弱点（DB 读）
         mistake_hint = await self._recall_mistakes_hint(
@@ -191,7 +193,7 @@ class TrainingService:
                         key_formula=kp.key_formula or "无",
                         bloom_level=kp.bloom_level,
                         count=1,
-                    ) + f"\n\n【强制题型】请生成一道 {qtype} 题。"
+                    ) + forced_type_clause(qtype)
                     + (f"\n\n{mistake_hint}" if mistake_hint else ""),
                     system=SYSTEM_TRAINING,
                     user_id=user_id,
@@ -547,7 +549,9 @@ class TrainingService:
         self, db: AsyncSession, session: TrainingSession, kps: list[KnowledgePoint], data: TrainingStartRequest
     ) -> list[TrainingQuestion]:
         from app.llm.client import llm_client
-        from app.llm.prompts.training_prompts import QUESTION_GENERATE_PROMPT, SYSTEM_TRAINING
+        from app.llm.prompts.training_prompts import (
+            QUESTION_GENERATE_PROMPT, SYSTEM_TRAINING, forced_type_clause,
+        )
 
         questions = []
 
