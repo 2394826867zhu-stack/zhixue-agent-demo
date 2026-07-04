@@ -33,6 +33,34 @@ async def test_send_push_device_not_registered():
 
 
 @pytest.mark.asyncio
+async def test_send_push_data_payload_passthrough():
+    """A·P2-2：data（notification_type/related_action）须进 Expo payload，客户端点击深链用。"""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"data": [{"status": "ok", "id": "abc123"}]}
+
+    with patch("httpx.AsyncClient") as MockClient:
+        instance = MockClient.return_value.__aenter__.return_value
+        instance.post = AsyncMock(return_value=mock_resp)
+        from app.services import push_service
+        result = await push_service.send_push(
+            "ExponentPushToken[xxx]", "有 3 张闪卡到期",
+            data={"notification_type": "fsrs_review_due", "related_action": "open_flashcard_review"},
+        )
+        sent_json = instance.post.call_args.kwargs["json"]
+
+    assert result is None
+    assert sent_json["data"] == {"notification_type": "fsrs_review_due", "related_action": "open_flashcard_review"}
+    # 不带 data 时 payload 无 data 键（向后兼容）
+    with patch("httpx.AsyncClient") as MockClient:
+        instance = MockClient.return_value.__aenter__.return_value
+        instance.post = AsyncMock(return_value=mock_resp)
+        from app.services import push_service
+        await push_service.send_push("ExponentPushToken[xxx]", "内容")
+        sent_json = instance.post.call_args.kwargs["json"]
+    assert "data" not in sent_json
+
+
+@pytest.mark.asyncio
 async def test_send_push_network_error():
     import httpx
     with patch("httpx.AsyncClient") as MockClient:
