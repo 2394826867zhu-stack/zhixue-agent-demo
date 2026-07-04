@@ -28,6 +28,16 @@ async def test_kb_process_async_extracts_and_marks_done(
     monkeypatch.setattr(rag, "upsert_doc", AsyncMock())
     monkeypatch.setattr(rag, "delete_doc", AsyncMock())
 
+    # 任务用 app 主 engine（settings.DATABASE_URL=dev 库），本机与 conftest 的 zhiyao_test
+    # 不同库 → 任务查不到测试建的记录（CI 两 URL 相同故一直绿）。把任务的 session maker
+    # 指到测试库（_process_async 函数内延迟 import，patch 模块属性即生效）。
+    import app.core.database as core_db
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+    monkeypatch.setattr(
+        core_db, "AsyncSessionLocal",
+        async_sessionmaker(db.bind, class_=AsyncSession, expire_on_commit=False),
+    )
+
     await client.post("/v1/auth/register", json={"email": "kbproc@zhiyao.ai", "password": "password123"})
     user = (await db.execute(select(User).where(User.email == "kbproc@zhiyao.ai"))).scalar_one()
 
