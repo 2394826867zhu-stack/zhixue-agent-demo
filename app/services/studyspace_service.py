@@ -220,9 +220,13 @@ class StudySpaceService:
         # Auto-complete matching system tasks（trigger 机制，留存）
         from app.services.task_service import task_service as _task_svc
         await _task_svc.auto_complete_system_tasks(db, user_id, "lesson_complete")
-        # 闭环：学完课时 → 精确完成指向该节点的 new_lesson 每日任务（不靠死的 trigger 机制）
+        # 闭环：学完课时 → 精确完成指向它的 new_lesson 每日任务（不靠死的 trigger 机制）。
+        # 每日任务两种来源：项目树节点（tree_node_id）/ 官方课程章节（chapter_id）——都要闭合
+        # （QA 走查实锤：chapter 型任务学完后一直 pending）。
         if session.tree_node_id:
             await _task_svc.complete_lesson_tasks(db, user_id, session.tree_node_id)
+        if session.chapter_id:
+            await _task_svc.complete_lesson_tasks(db, user_id, session.chapter_id)
 
         # 关键闭环原子提交点：到此「完成+发星+节点完成+解锁+进度+任务闭合」全部落盘或全部回滚。
         # 此后的建卡/时间线/episode/celebrate 都是 best-effort 副作用，失败不影响闭环一致性。
