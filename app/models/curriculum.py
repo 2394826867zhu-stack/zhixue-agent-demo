@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey
+from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, Index, text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime, timezone
@@ -8,6 +8,18 @@ from app.core.database import Base
 
 class CurriculumChapter(Base):
     __tablename__ = "curriculum_chapters"
+
+    # 系统 seed 内容（owner_user_id IS NULL）的唯一键 —— 防双 worker 并发 seed 造重复
+    # （见 migration 053）。用户导入内容不受约束。
+    __table_args__ = (
+        Index(
+            "uq_curriculum_system_seed_key",
+            "subject", "grade_type", "grade_year", "semester",
+            "chapter_index", "lesson_index", "textbook_version",
+            unique=True,
+            postgresql_where=text("owner_user_id IS NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     subject: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
